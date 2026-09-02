@@ -1,0 +1,33 @@
+# Project build and generated output
+/build/
+/out/
+/compile_commands.json
+/CMakeUserPresets.json
+
+# Project-local Python and west state
+/.deps/
+/.venv/
+/.venv-*/
+/.west/
+
+# Python caches and test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# CMake and editor transient state
+CMakeFiles/
+CMakeCache.txt
+.cache/
+*.log
+
+# Obsidian user/session state; shared vault settings remain tracked
+docs/.obsidian/workspace*.json
+docs/.obsidian/cache/
+docs/.trash/
+
+# Platform noise
+.DS_Store
+Desktop.ini
+Thumbs.db

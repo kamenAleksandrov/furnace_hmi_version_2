@@ -1,0 +1,144 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "host-debug",
+      "displayName": "Host foundation (Debug)",
+      "description": "Desktop LVGL proof and portable tests with debug information",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON",
+        "FURNACE_HMI_BUILD_DESKTOP": "ON",
+        "FURNACE_HMI_BUILD_HOST_TESTS": "ON"
+      }
+    },
+    {
+      "name": "host-release",
+      "displayName": "Host foundation (Release)",
+      "description": "Optimized desktop LVGL proof and portable tests",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON",
+        "FURNACE_HMI_BUILD_DESKTOP": "ON",
+        "FURNACE_HMI_BUILD_HOST_TESTS": "ON"
+      }
+    },
+    {
+      "name": "host-msvc-core-debug",
+      "displayName": "Portable core with MSVC (Debug)",
+      "description": "Portable-only MSVC cross-compiler check; use host-msvc-desktop-debug for the complete desktop proof",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/host-msvc-core-debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "FURNACE_HMI_BUILD_DESKTOP": "OFF",
+        "FURNACE_HMI_BUILD_HOST_TESTS": "ON"
+      }
+    },
+    {
+      "name": "host-msvc-desktop-debug",
+      "displayName": "Desktop LVGL proof with MSVC (Debug)",
+      "description": "MSVC/PDB desktop build used by the verified VS Code cppvsdbg workflow",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/host-msvc-desktop-debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "FURNACE_HMI_BUILD_DESKTOP": "ON",
+        "FURNACE_HMI_BUILD_HOST_TESTS": "ON",
+        "FURNACE_HMI_LVGL_SOURCE_DIR": "${sourceDir}/.deps/zephyr-workspace/modules/lib/gui/lvgl",
+        "SDL2_DIR": "${sourceDir}/.deps/tools/sdl2-msvc-2.32.10/SDL2-2.32.10/cmake"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "host-debug",
+      "configurePreset": "host-debug"
+    },
+    {
+      "name": "host-release",
+      "configurePreset": "host-release"
+    },
+    {
+      "name": "host-msvc-core-debug",
+      "configurePreset": "host-msvc-core-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "host-msvc-desktop-debug",
+      "configurePreset": "host-msvc-desktop-debug",
+      "configuration": "Debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "host-debug",
+      "configurePreset": "host-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
+    {
+      "name": "host-release",
+      "configurePreset": "host-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
+    {
+      "name": "host-msvc-core-debug",
+      "configurePreset": "host-msvc-core-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
+    {
+      "name": "host-msvc-desktop-debug",
+      "configurePreset": "host-msvc-desktop-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    }
+  ]
+}

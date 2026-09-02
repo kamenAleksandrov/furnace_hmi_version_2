@@ -1,0 +1,59 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Desktop MSVC: debug UI",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/host-msvc-desktop-debug/simulator/desktop/Debug/furnace_hmi_desktop.exe",
+      "cwd": "${workspaceFolder}/build/host-msvc-desktop-debug/simulator/desktop/Debug",
+      "stopAtEntry": false,
+      "console": "internalConsole",
+      "preLaunchTask": "host: build MSVC desktop debug"
+    },
+    {
+      "name": "Zephyr qemu_x86: break at main",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/zephyr-qemu_x86/zephyr/zephyr.elf",
+      "cwd": "${workspaceFolder}/build/zephyr-qemu_x86",
+      "MIMode": "gdb",
+      "miDebuggerPath": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1/gnu/x86_64-zephyr-elf/bin/x86_64-zephyr-elf-gdb.exe",
+      "miDebuggerServerAddress": "localhost:1234",
+      "debugServerPath": "cmake",
+      "debugServerArgs": "--build \"${workspaceFolder}/build/zephyr-qemu_x86\" --target debugserver",
+      "serverStarted": "\\[QEMU\\] CPU:",
+      "filterStdout": true,
+      "filterStderr": true,
+      "stopAtEntry": false,
+      "launchCompleteCommand": "exec-continue",
+      "setupCommands": [
+        {
+          "description": "Break at the foundation application's real entry point",
+          "text": "-break-insert main",
+          "ignoreFailures": false
+        }
+      ],
+      "environment": [
+        {
+          "name": "ZEPHYR_SDK_INSTALL_DIR",
+          "value": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1"
+        },
+        {
+          "name": "ZEPHYR_TOOLCHAIN_VARIANT",
+          "value": "zephyr"
+        },
+        {
+          "name": "QEMU_BIN_PATH",
+          "value": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1/hosttools/qemu"
+        },
+        {
+          "name": "PATH",
+          "value": "${workspaceFolder}/.deps/tools/dtc-1.7.2/mingw64/bin;${env:PATH}"
+        }
+      ],
+      "preLaunchTask": "zephyr: build qemu_x86 proof",
+      "externalConsole": false
+    }
+  ]
+}

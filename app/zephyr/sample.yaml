@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  name: Furnace HMI V2 Zephyr foundation proof
+tests:
+  sample.furnace_hmi.foundation:
+    build_only: true
+    platform_allow:
+      - qemu_x86
+    tags:
+      - foundation

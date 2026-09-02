@@ -1,0 +1,254 @@
+{
+  "$id": "urn:furnace-hmi-v2:codebase-index:1.0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "boards": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "build_directory": { "$ref": "#/$defs/relativePath" },
+          "definition_directory": { "$ref": "#/$defs/relativePath" },
+          "files": {
+            "items": { "$ref": "#/$defs/relativePath" },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "name": { "$ref": "#/$defs/nonEmptyString" },
+          "revision": { "$ref": "#/$defs/nonEmptyString" },
+          "source": { "enum": ["CMakeCache.txt", "repository"] }
+        },
+        "required": ["name", "source"],
+        "type": "object"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "build_targets": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "items": { "$ref": "#/$defs/relativePath" },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "build_system": { "const": "cmake-file-api" },
+          "configuration": { "type": "string" },
+          "external_source_count": { "minimum": 0, "type": "integer" },
+          "input": { "$ref": "#/$defs/relativePath" },
+          "name": { "$ref": "#/$defs/nonEmptyString" },
+          "sources": {
+            "items": { "$ref": "#/$defs/relativePath" },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "type": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "required": [
+          "artifacts",
+          "build_system",
+          "configuration",
+          "external_source_count",
+          "input",
+          "name",
+          "sources",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "compile_units": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "database": { "$ref": "#/$defs/relativePath" },
+          "language": { "$ref": "#/$defs/nonEmptyString" },
+          "source": { "$ref": "#/$defs/relativePath" }
+        },
+        "required": ["database", "language", "source"],
+        "type": "object"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "diagnostics": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": { "$ref": "#/$defs/nonEmptyString" },
+          "message": { "$ref": "#/$defs/nonEmptyString" },
+          "severity": { "enum": ["error", "warning", "info"] }
+        },
+        "required": ["code", "message", "severity"],
+        "type": "object"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "files": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "generated": { "type": "boolean" },
+          "git_state": { "enum": ["tracked", "untracked"] },
+          "kind": { "$ref": "#/$defs/nonEmptyString" },
+          "language": { "$ref": "#/$defs/nonEmptyString" },
+          "manual": { "type": "boolean" },
+          "module": { "$ref": "#/$defs/nonEmptyString" },
+          "path": { "$ref": "#/$defs/relativePath" }
+        },
+        "required": ["generated", "git_state", "kind", "manual", "module", "path"],
+        "allOf": [
+          {
+            "if": { "properties": { "generated": { "const": true } } },
+            "then": { "properties": { "manual": { "const": false } } },
+            "else": { "properties": { "manual": { "const": true } } }
+          }
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "generator": {
+      "additionalProperties": false,
+      "properties": {
+        "name": { "const": "tools/codebase_index.py" },
+        "version": { "const": "1.0.2" }
+      },
+      "required": ["name", "version"],
+      "type": "object"
+    },
+    "inputs": {
+      "additionalProperties": false,
+      "properties": {
+        "cmake_file_api": {
+          "items": { "$ref": "#/$defs/input" },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "compile_databases": {
+          "items": { "$ref": "#/$defs/input" },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": ["cmake_file_api", "compile_databases"],
+      "type": "object"
+    },
+    "modules": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "file_count": { "minimum": 0, "type": "integer" },
+          "files": {
+            "items": { "$ref": "#/$defs/relativePath" },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "generated_file_count": { "minimum": 0, "type": "integer" },
+          "kinds": {
+            "items": { "$ref": "#/$defs/nonEmptyString" },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "manual_file_count": { "minimum": 0, "type": "integer" },
+          "path": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "required": [
+          "file_count",
+          "files",
+          "generated_file_count",
+          "kinds",
+          "manual_file_count",
+          "path"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "relationships": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "from": { "$ref": "#/$defs/nonEmptyString" },
+          "to": { "$ref": "#/$defs/relativePath" },
+          "type": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "required": ["from", "to", "type"],
+        "type": "object"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "repository": {
+      "additionalProperties": false,
+      "properties": {
+        "file_count": { "minimum": 0, "type": "integer" },
+        "generated_file_count": { "minimum": 0, "type": "integer" },
+        "manual_file_count": { "minimum": 0, "type": "integer" },
+        "root": { "const": "." },
+        "tracked_file_count": { "minimum": 0, "type": "integer" },
+        "untracked_file_count": { "minimum": 0, "type": "integer" }
+      },
+      "required": [
+        "file_count",
+        "generated_file_count",
+        "manual_file_count",
+        "root",
+        "tracked_file_count",
+        "untracked_file_count"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": { "const": "furnace-hmi-codebase-index" },
+        "path": { "const": "tools/codebase-index.schema.json" },
+        "version": { "const": "1.0.1" }
+      },
+      "required": ["id", "path", "version"],
+      "type": "object"
+    }
+  },
+  "required": [
+    "boards",
+    "build_targets",
+    "compile_units",
+    "diagnostics",
+    "files",
+    "generator",
+    "inputs",
+    "modules",
+    "relationships",
+    "repository",
+    "schema"
+  ],
+  "title": "Furnace HMI V2 codebase index",
+  "type": "object",
+  "$defs": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "status": { "enum": ["loaded", "missing", "invalid"] }
+      },
+      "required": ["path", "status"],
+      "type": "object"
+    },
+    "nonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "relativePath": {
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:[\\\\/])(?![\\\\/]).+$",
+      "type": "string"
+    }
+  }
+}

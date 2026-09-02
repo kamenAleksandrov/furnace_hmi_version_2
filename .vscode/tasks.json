@@ -1,0 +1,244 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "zephyr: check local environment",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": ["tools/bootstrap_zephyr.py", "check"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "zephyr: prepare local workspace",
+      "type": "process",
+      "command": "python",
+      "args": ["tools/bootstrap_zephyr.py", "prepare"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "host: configure debug",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--preset", "host-debug"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "index: prepare CMake metadata",
+      "problemMatcher": []
+    },
+    {
+      "label": "host: build debug",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "--preset", "host-debug"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "host: configure debug",
+      "problemMatcher": ["$gcc", "$msCompile"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "host: test debug",
+      "type": "process",
+      "command": "ctest",
+      "args": ["--preset", "host-debug"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "host: build debug",
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "host: configure MSVC desktop debug",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--preset", "host-msvc-desktop-debug"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "index: prepare CMake metadata",
+      "problemMatcher": []
+    },
+    {
+      "label": "host: build MSVC desktop debug",
+      "type": "process",
+      "command": "cmake",
+      "args": ["--build", "--preset", "host-msvc-desktop-debug"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "host: configure MSVC desktop debug",
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "host: test MSVC desktop debug",
+      "type": "process",
+      "command": "ctest",
+      "args": ["--preset", "host-msvc-desktop-debug"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "host: build MSVC desktop debug",
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "zephyr: build qemu_x86 proof",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": [
+        "-m",
+        "west",
+        "build",
+        "--pristine=auto",
+        "--board",
+        "qemu_x86",
+        "--build-dir",
+        "${workspaceFolder}/build/zephyr-qemu_x86",
+        "${workspaceFolder}/app/zephyr",
+        "--",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/.deps/zephyr-workspace",
+        "env": {
+          "ZEPHYR_SDK_INSTALL_DIR": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1",
+          "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+          "QEMU_BIN_PATH": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1/hosttools/qemu",
+          "PATH": "${workspaceFolder}/.deps/tools/dtc-1.7.2/mingw64/bin;${env:PATH}"
+        }
+      },
+      "dependsOn": [
+        "zephyr: check local environment",
+        "index: prepare CMake metadata"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "zephyr: run qemu_x86 proof",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": [
+        "-m",
+        "west",
+        "build",
+        "--build-dir",
+        "${workspaceFolder}/build/zephyr-qemu_x86",
+        "--target",
+        "run"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/.deps/zephyr-workspace",
+        "env": {
+          "ZEPHYR_SDK_INSTALL_DIR": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1",
+          "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+          "QEMU_BIN_PATH": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1/hosttools/qemu",
+          "PATH": "${workspaceFolder}/.deps/tools/dtc-1.7.2/mingw64/bin;${env:PATH}"
+        }
+      },
+      "dependsOn": "zephyr: build qemu_x86 proof",
+      "problemMatcher": []
+    },
+    {
+      "label": "zephyr: test foundation on qemu_x86",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": [
+        "-m",
+        "west",
+        "twister",
+        "--testsuite-root",
+        "${workspaceFolder}/tests/zephyr/foundation",
+        "--platform",
+        "qemu_x86",
+        "--outdir",
+        "${workspaceFolder}/build/twister",
+        "--clobber-output",
+        "--inline-logs"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/.deps/zephyr-workspace",
+        "env": {
+          "ZEPHYR_SDK_INSTALL_DIR": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1",
+          "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+          "QEMU_BIN_PATH": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1/hosttools/qemu",
+          "PATH": "${workspaceFolder}/.deps/tools/dtc-1.7.2/mingw64/bin;${env:PATH}"
+        }
+      },
+      "dependsOn": "zephyr: check local environment",
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "zephyr: GCC static analysis qemu_x86",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": [
+        "-m",
+        "west",
+        "build",
+        "--pristine=always",
+        "--board",
+        "qemu_x86",
+        "--build-dir",
+        "${workspaceFolder}/build/zephyr-qemu_x86-gcc-sca",
+        "${workspaceFolder}/app/zephyr",
+        "--",
+        "-DZEPHYR_SCA_VARIANT=gcc"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/.deps/zephyr-workspace",
+        "env": {
+          "ZEPHYR_SDK_INSTALL_DIR": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1",
+          "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+          "QEMU_BIN_PATH": "${workspaceFolder}/.deps/zephyr-sdk-1.0.1/hosttools/qemu",
+          "PATH": "${workspaceFolder}/.deps/tools/dtc-1.7.2/mingw64/bin;${env:PATH}"
+        }
+      },
+      "dependsOn": "zephyr: check local environment",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "index: prepare CMake metadata",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": ["tools/codebase_index.py", "--prepare-cmake-file-api"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "index: generate",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": ["tools/codebase_index.py"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "index: check",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": ["tools/codebase_index.py", "--check"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

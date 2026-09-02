@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+
+manifest:
+  version: "1.2"
+
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      # Signed v4.4.0 release tag commit.
+      revision: 684c9e8f32e4373a21098559f748f06915f950c9
+      import:
+        name-blocklist:
+          - lvgl
+
+    # Keep the desktop foundation's required UI dependency directly
+    # updateable while preserving Zephyr 4.4.0's exact LVGL selection.
+    - name: lvgl
+      remote: zephyrproject-rtos
+      path: modules/lib/gui/lvgl
+      revision: 85aa60d18b3d5e5588d7b247abf90198f07c8a63
+
+  self:
+    path: furnace_hmi_version_2

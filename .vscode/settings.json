@@ -1,0 +1,17 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "cmake.configureOnOpen": false,
+  "cmake.useCMakePresets": "always",
+  "cmake.generator": "Ninja",
+  "C_Cpp.default.cStandard": "c17",
+  "files.associations": {
+    "*.conf": "properties",
+    "*.overlay": "dts",
+    "*.dts": "dts",
+    "*.dtsi": "dts"
+  },
+  "files.exclude": {
+    "**/.git": true,
+    "**/__pycache__": true
+  }
+}

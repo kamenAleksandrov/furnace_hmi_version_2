@@ -1,0 +1,15 @@
+{
+  "configurations": [
+    {
+      "name": "Host Debug",
+      "compileCommands": "${workspaceFolder}/build/host-debug/compile_commands.json",
+      "cStandard": "c17"
+    },
+    {
+      "name": "Zephyr qemu_x86",
+      "compileCommands": "${workspaceFolder}/build/zephyr-qemu_x86/compile_commands.json",
+      "cStandard": "c17"
+    }
+  ],
+  "version": 4
+}
