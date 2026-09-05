@@ -16,7 +16,7 @@ target_include_directories(
 )
 target_link_libraries(
   furnace_hmi_state_availability_view
-  PUBLIC lvgl::lvgl
+  PUBLIC lvgl::lvgl furnace_hmi::model
   PRIVATE furnace_hmi::ui_strings
 )
 target_compile_features(

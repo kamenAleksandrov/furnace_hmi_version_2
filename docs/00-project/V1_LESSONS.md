@@ -12,7 +12,7 @@ evidence, not a specification to reproduce V1.
 | Storage work can block Stop or the UI. | Separate priorities and bound GUI work; do not put blocking I/O on the critical interaction path. |
 | Queued is not accepted. | Distinguish transport, decode, queue, acceptance, state change, and completion. |
 | Manual mode modeled as a fake long program obscures its lifecycle. | Treat Manual as a first-class controller mode. |
-| Inferred stage intent can disagree with operator intent. | Move toward explicit RAMP/HOLD/COOL stage types; semantics remain open. |
+| Inferred stage intent can disagree with operator intent. | Move toward explicit HEATING/HOLD/COOL stage types; semantics remain open. |
 | Screen layout is a poor source of operational limits. | Obtain current-session capability metadata and validate authoritatively on the controller. |
 | HMI task time is not an authoritative service counter. | Keep monotonic operational counters on the Control CPU. |
 | Estimates can be mistaken for measurements. | Preserve engineering-value provenance and label estimates explicitly. |

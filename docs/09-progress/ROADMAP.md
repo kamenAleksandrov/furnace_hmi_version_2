@@ -4,7 +4,7 @@ The foundation follows this ordered gate. A later phase may be prepared in
 parallel, but it cannot claim completion before its prerequisites and evidence
 exist.
 
-| Phase | Outcome | Status on 2026-09-01 |
+| Phase | Outcome | Status on 2026-09-02 |
 | --- | --- | --- |
 | 1. Repository normalization | Inspect Git, normalize the Obsidian vault, add governance, establish documentation taxonomy | Complete |
 | 2. Authoritative documentation | Encode requirements/invariants, V1 lessons, ADRs, questions, roadmap, and status | Complete foundation baseline |
@@ -17,16 +17,15 @@ exist.
 | 9. Foundation review | Run required broad reviewers and fix confirmed issues | Complete; no remaining blocker |
 | 10. Foundation gate | Record files, environment changes, commands, results, risks, and questions, then stop | Complete; stopped before production work |
 | 11. First UI vertical slice | Add a reusable fail-closed state-availability view, keep diagnostics separate, verify it visually/headlessly, and provide a one-command desktop operator workflow | Complete; no furnace semantics or actions introduced |
+| 12. Host-only UI laboratory | Add deterministic semantic controller scenarios and an expanded no-scroll UI explorer that exercises shared model/presentation code without entering Zephyr | Current Home/Programs/Running workflow pass is built and headlessly verified, including quick-launch favourites/recents, HEATING/HOLD/COOL draft assistance, denser trajectory presentation, and active-run navigation containment. Manual 800 x 480 visual review and later controller-backed behavior remain pending |
 
 ## Next delivery gate
 
-The next step is an operator-workflow and information-architecture plan backed
-by a deterministic semantic simulator. It should select one useful read-only
-workflow before adding controls. Only the questions needed for that slice must
-be answered: the first operator workflow to model, any V1 screen/field evidence,
-and whether the 800 x 480 development viewport may remain the temporary design
-target. Production hardware, transport, wire format, and the full question
-register can remain deferred until their gates need them.
+The current step is the host-only UI laboratory plan in
+[UI_LAB_VERTICAL_SLICE_PLAN.md](UI_LAB_VERTICAL_SLICE_PLAN.md). It provides one
+useful host-only visual workflow before adding controller-backed controls. Production hardware,
+transport, wire format, and the full question register remain deferred until
+their gates need them.
 
 Any later command/control slice requires explicit domain semantics and review
 under [PLANS.md](../../PLANS.md), while preserving the

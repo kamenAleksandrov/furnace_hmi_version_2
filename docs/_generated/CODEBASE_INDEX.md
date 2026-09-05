@@ -9,14 +9,14 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 103 |
-| Git-tracked files | 2 |
-| Git-untracked files | 101 |
-| Manually maintained files | 102 |
+| Repository files | 132 |
+| Git-tracked files | 111 |
+| Git-untracked files | 21 |
+| Manually maintained files | 131 |
 | Generated files | 1 |
-| Modules | 26 |
-| Build targets | 105 |
-| Compile units | 9 |
+| Modules | 30 |
+| Build targets | 107 |
+| Compile units | 12 |
 | Boards | 1 |
 
 ## Inputs
@@ -41,38 +41,44 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `.codex/agents` | 6 | agent-configuration |
 | `.vscode` | 5 | configuration |
 | `app/hmi/foundation` | 3 | build, header, source |
-| `app/hmi/presentation` | 7 | build, header, source |
+| `app/hmi/model` | 4 | build, header, source |
+| `app/hmi/presentation` | 10 | build, header, source |
 | `app/zephyr` | 4 | build, configuration, source |
 | `docs` | 1 | documentation |
 | `docs/.obsidian` | 4 | documentation |
 | `docs/00-project` | 5 | documentation |
 | `docs/01-architecture` | 3 | documentation |
 | `docs/02-protocol` | 3 | documentation |
-| `docs/03-hmi` | 2 | documentation |
+| `docs/03-hmi` | 3 | documentation |
 | `docs/04-controller` | 1 | documentation |
 | `docs/05-platform` | 5 | documentation |
 | `docs/06-testing` | 3 | documentation |
 | `docs/07-decisions` | 11 | documentation |
 | `docs/08-pseudocode` | 1 | documentation |
-| `docs/09-progress` | 5 | documentation |
+| `docs/09-progress` | 6 | documentation |
 | `docs/_generated` | 2 | documentation |
+| `docs/images` | 8 | documentation |
 | `simulator/desktop` | 5 | build, header, source |
-| `tests/host` | 3 | test |
+| `simulator/semantic_controller` | 3 | build, header, source |
+| `simulator/ui_lab` | 4 | build, header, source |
+| `tests/host` | 4 | test |
 | `tests/zephyr` | 4 | test |
-| `tools` | 7 | test, tool |
+| `tools` | 11 | test, tool |
 
 ## Build Targets
 
 | Target | Type | Configuration | Repository sources | External sources |
 | --- | --- | --- | ---: | ---: |
 | `furnace_hmi_foundation` | STATIC_LIBRARY | `Debug` | 1 | 0 |
+| `furnace_hmi_model` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_desktop` | EXECUTABLE | `Debug` | 1 | 0 |
 | `lvgl` | STATIC_LIBRARY | `Debug` | 0 | 531 |
 | `furnace_hmi_state_availability_view` | STATIC_LIBRARY | `Debug` | 1 | 0 |
+| `furnace_hmi_dashboard_model_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_foundation_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_ui_strings_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
-| `app` | STATIC_LIBRARY | `default` | 3 | 0 |
+| `app` | STATIC_LIBRARY | `default` | 4 | 0 |
 | `offsets` | OBJECT_LIBRARY | `default` | 0 | 1 |
 | `arch__x86__core` | STATIC_LIBRARY | `default` | 0 | 19 |
 | `arch__common` | STATIC_LIBRARY | `default` | 0 | 1 |
@@ -181,109 +187,138 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Path | Kind | Module | Ownership | Git |
 | --- | --- | --- | --- | --- |
-| `.agents/skills/architecture-planning/SKILL.md` | agent-configuration | `.agents/skills/architecture-planning` | manual | untracked |
-| `.agents/skills/documentation-maintenance/SKILL.md` | agent-configuration | `.agents/skills/documentation-maintenance` | manual | untracked |
-| `.agents/skills/protocol-design/SKILL.md` | agent-configuration | `.agents/skills/protocol-design` | manual | untracked |
-| `.codex/agents/architect.toml` | agent-configuration | `.codex/agents` | manual | untracked |
-| `.codex/agents/decision-challenger.toml` | agent-configuration | `.codex/agents` | manual | untracked |
-| `.codex/agents/embedded-reviewer.toml` | agent-configuration | `.codex/agents` | manual | untracked |
-| `.codex/agents/error-auditor.toml` | agent-configuration | `.codex/agents` | manual | untracked |
-| `.codex/agents/protocol-reviewer.toml` | agent-configuration | `.codex/agents` | manual | untracked |
-| `.codex/agents/software-critic.toml` | agent-configuration | `.codex/agents` | manual | untracked |
-| `.editorconfig` | other | `.` | manual | untracked |
+| `.agents/skills/architecture-planning/SKILL.md` | agent-configuration | `.agents/skills/architecture-planning` | manual | tracked |
+| `.agents/skills/documentation-maintenance/SKILL.md` | agent-configuration | `.agents/skills/documentation-maintenance` | manual | tracked |
+| `.agents/skills/protocol-design/SKILL.md` | agent-configuration | `.agents/skills/protocol-design` | manual | tracked |
+| `.codex/agents/architect.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/decision-challenger.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/embedded-reviewer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/error-auditor.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/protocol-reviewer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/software-critic.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.editorconfig` | other | `.` | manual | tracked |
 | `.gitattributes` | other | `.` | manual | tracked |
-| `.gitignore` | other | `.` | manual | untracked |
-| `.vscode/c_cpp_properties.json` | configuration | `.vscode` | manual | untracked |
-| `.vscode/extensions.json` | configuration | `.vscode` | manual | untracked |
-| `.vscode/launch.json` | configuration | `.vscode` | manual | untracked |
-| `.vscode/settings.json` | configuration | `.vscode` | manual | untracked |
-| `.vscode/tasks.json` | configuration | `.vscode` | manual | untracked |
-| `AGENTS.md` | documentation | `.` | manual | untracked |
-| `CMakeLists.txt` | build | `.` | manual | untracked |
-| `CMakePresets.json` | configuration | `.` | manual | untracked |
+| `.gitignore` | other | `.` | manual | tracked |
+| `.vscode/c_cpp_properties.json` | configuration | `.vscode` | manual | tracked |
+| `.vscode/extensions.json` | configuration | `.vscode` | manual | tracked |
+| `.vscode/launch.json` | configuration | `.vscode` | manual | tracked |
+| `.vscode/settings.json` | configuration | `.vscode` | manual | tracked |
+| `.vscode/tasks.json` | configuration | `.vscode` | manual | tracked |
+| `AGENTS.md` | documentation | `.` | manual | tracked |
+| `CMakeLists.txt` | build | `.` | manual | tracked |
+| `CMakePresets.json` | configuration | `.` | manual | tracked |
 | `LICENSE` | documentation | `.` | manual | tracked |
-| `PLANS.md` | documentation | `.` | manual | untracked |
-| `README.md` | documentation | `.` | manual | untracked |
-| `app/hmi/foundation/CMakeLists.txt` | build | `app/hmi/foundation` | manual | untracked |
-| `app/hmi/foundation/include/furnace_hmi/foundation.h` | header | `app/hmi/foundation` | manual | untracked |
-| `app/hmi/foundation/src/foundation.c` | source | `app/hmi/foundation` | manual | untracked |
-| `app/hmi/presentation/state_availability/CMakeLists.txt` | build | `app/hmi/presentation` | manual | untracked |
-| `app/hmi/presentation/state_availability/include/furnace_hmi/state_availability.h` | header | `app/hmi/presentation` | manual | untracked |
-| `app/hmi/presentation/state_availability/include/furnace_hmi/state_availability_view.h` | header | `app/hmi/presentation` | manual | untracked |
-| `app/hmi/presentation/state_availability/src/state_availability_view.c` | source | `app/hmi/presentation` | manual | untracked |
-| `app/hmi/presentation/strings/CMakeLists.txt` | build | `app/hmi/presentation` | manual | untracked |
-| `app/hmi/presentation/strings/include/furnace_hmi/ui_strings.h` | header | `app/hmi/presentation` | manual | untracked |
-| `app/hmi/presentation/strings/src/ui_strings.c` | source | `app/hmi/presentation` | manual | untracked |
-| `app/zephyr/CMakeLists.txt` | build | `app/zephyr` | manual | untracked |
-| `app/zephyr/prj.conf` | build | `app/zephyr` | manual | untracked |
-| `app/zephyr/sample.yaml` | configuration | `app/zephyr` | manual | untracked |
-| `app/zephyr/src/main.c` | source | `app/zephyr` | manual | untracked |
-| `docs/.obsidian/app.json` | documentation | `docs/.obsidian` | manual | untracked |
-| `docs/.obsidian/appearance.json` | documentation | `docs/.obsidian` | manual | untracked |
-| `docs/.obsidian/core-plugins.json` | documentation | `docs/.obsidian` | manual | untracked |
-| `docs/.obsidian/graph.json` | documentation | `docs/.obsidian` | manual | untracked |
-| `docs/00-project/ASSUMPTIONS_AND_CONSTRAINTS.md` | documentation | `docs/00-project` | manual | untracked |
-| `docs/00-project/CHARTER.md` | documentation | `docs/00-project` | manual | untracked |
-| `docs/00-project/GLOSSARY.md` | documentation | `docs/00-project` | manual | untracked |
-| `docs/00-project/REQUIREMENTS.md` | documentation | `docs/00-project` | manual | untracked |
-| `docs/00-project/V1_LESSONS.md` | documentation | `docs/00-project` | manual | untracked |
-| `docs/01-architecture/BOUNDARIES_AND_INVARIANTS.md` | documentation | `docs/01-architecture` | manual | untracked |
-| `docs/01-architecture/STATE_OWNERSHIP.md` | documentation | `docs/01-architecture` | manual | untracked |
-| `docs/01-architecture/SYSTEM_CONTEXT.md` | documentation | `docs/01-architecture` | manual | untracked |
-| `docs/02-protocol/COMMAND_LIFECYCLE.md` | documentation | `docs/02-protocol` | manual | untracked |
-| `docs/02-protocol/LAYERING.md` | documentation | `docs/02-protocol` | manual | untracked |
-| `docs/02-protocol/PROTOCOL_REQUIREMENTS.md` | documentation | `docs/02-protocol` | manual | untracked |
-| `docs/03-hmi/HMI_ARCHITECTURE.md` | documentation | `docs/03-hmi` | manual | untracked |
-| `docs/03-hmi/UX_AND_DOMAIN_BASELINE.md` | documentation | `docs/03-hmi` | manual | untracked |
-| `docs/04-controller/CONTROLLER_INTERFACE_BOUNDARY.md` | documentation | `docs/04-controller` | manual | untracked |
-| `docs/05-platform/DESKTOP_SIMULATOR_STRATEGY.md` | documentation | `docs/05-platform` | manual | untracked |
-| `docs/05-platform/DEVELOPER_RUNBOOK.md` | documentation | `docs/05-platform` | manual | untracked |
-| `docs/05-platform/DEVELOPMENT_ENVIRONMENT.md` | documentation | `docs/05-platform` | manual | untracked |
-| `docs/05-platform/RUNTIME_EVALUATION.md` | documentation | `docs/05-platform` | manual | untracked |
-| `docs/05-platform/TRANSPORT_EVALUATION.md` | documentation | `docs/05-platform` | manual | untracked |
-| `docs/06-testing/REVIEW_POLICY.md` | documentation | `docs/06-testing` | manual | untracked |
-| `docs/06-testing/TEST_STRATEGY.md` | documentation | `docs/06-testing` | manual | untracked |
-| `docs/06-testing/TRACEABILITY.md` | documentation | `docs/06-testing` | manual | untracked |
-| `docs/07-decisions/0001-authority-boundary.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/0002-zephyr-4-4-0.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/0003-protocol-layering.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/0004-desktop-simulator.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/0005-lvgl-single-owner.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/0006-transport-selection.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/0007-serialization-and-framing.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/0008-memory-policy.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/0009-protocol-source-sharing.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/ADR_TEMPLATE.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/07-decisions/README.md` | documentation | `docs/07-decisions` | manual | untracked |
-| `docs/08-pseudocode/README.md` | documentation | `docs/08-pseudocode` | manual | untracked |
-| `docs/09-progress/OPEN_QUESTIONS.md` | documentation | `docs/09-progress` | manual | untracked |
-| `docs/09-progress/ROADMAP.md` | documentation | `docs/09-progress` | manual | untracked |
-| `docs/09-progress/SESSION_LOG.md` | documentation | `docs/09-progress` | manual | untracked |
-| `docs/09-progress/STATUS.md` | documentation | `docs/09-progress` | manual | untracked |
-| `docs/09-progress/UI_VERTICAL_SLICE_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
-| `docs/INDEX.md` | documentation | `docs` | manual | untracked |
-| `docs/_generated/CODEBASE_INDEX.md` | documentation | `docs/_generated` | generated | untracked |
-| `docs/_generated/README.md` | documentation | `docs/_generated` | manual | untracked |
-| `simulator/desktop/CMakeLists.txt` | build | `simulator/desktop` | manual | untracked |
-| `simulator/desktop/cmake/ResolveLvgl.cmake` | build | `simulator/desktop` | manual | untracked |
-| `simulator/desktop/cmake/ResolveSDL2.cmake` | build | `simulator/desktop` | manual | untracked |
-| `simulator/desktop/lv_conf.h` | header | `simulator/desktop` | manual | untracked |
-| `simulator/desktop/src/main.c` | source | `simulator/desktop` | manual | untracked |
-| `tests/host/CMakeLists.txt` | test | `tests/host` | manual | untracked |
-| `tests/host/foundation_smoke.c` | test | `tests/host` | manual | untracked |
-| `tests/host/ui_strings_smoke.c` | test | `tests/host` | manual | untracked |
-| `tests/zephyr/foundation/CMakeLists.txt` | test | `tests/zephyr` | manual | untracked |
-| `tests/zephyr/foundation/prj.conf` | test | `tests/zephyr` | manual | untracked |
-| `tests/zephyr/foundation/src/main.c` | test | `tests/zephyr` | manual | untracked |
-| `tests/zephyr/foundation/testcase.yaml` | test | `tests/zephyr` | manual | untracked |
-| `tools/bootstrap_zephyr.py` | tool | `tools` | manual | untracked |
-| `tools/codebase-index.schema.json` | tool | `tools` | manual | untracked |
-| `tools/codebase_index.py` | tool | `tools` | manual | untracked |
-| `tools/run_desktop_ui.py` | tool | `tools` | manual | untracked |
-| `tools/tests/test_bootstrap_zephyr.py` | test | `tools` | manual | untracked |
-| `tools/tests/test_codebase_index.py` | test | `tools` | manual | untracked |
-| `tools/tests/test_run_desktop_ui.py` | test | `tools` | manual | untracked |
-| `west.yml` | build | `.` | manual | untracked |
+| `PLANS.md` | documentation | `.` | manual | tracked |
+| `README.md` | documentation | `.` | manual | tracked |
+| `app/hmi/foundation/CMakeLists.txt` | build | `app/hmi/foundation` | manual | tracked |
+| `app/hmi/foundation/include/furnace_hmi/foundation.h` | header | `app/hmi/foundation` | manual | tracked |
+| `app/hmi/foundation/src/foundation.c` | source | `app/hmi/foundation` | manual | tracked |
+| `app/hmi/model/CMakeLists.txt` | build | `app/hmi/model` | manual | untracked |
+| `app/hmi/model/include/furnace_hmi/dashboard_model.h` | header | `app/hmi/model` | manual | untracked |
+| `app/hmi/model/include/furnace_hmi/hmi_state_availability.h` | header | `app/hmi/model` | manual | untracked |
+| `app/hmi/model/src/dashboard_model.c` | source | `app/hmi/model` | manual | untracked |
+| `app/hmi/presentation/dashboard/CMakeLists.txt` | build | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/dashboard/include/furnace_hmi/dashboard_view.h` | header | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/dashboard/src/dashboard_view.c` | source | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/state_availability/CMakeLists.txt` | build | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/state_availability/include/furnace_hmi/state_availability.h` | header | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/state_availability/include/furnace_hmi/state_availability_view.h` | header | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/state_availability/src/state_availability_view.c` | source | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/strings/CMakeLists.txt` | build | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/strings/include/furnace_hmi/ui_strings.h` | header | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/strings/src/ui_strings.c` | source | `app/hmi/presentation` | manual | tracked |
+| `app/zephyr/CMakeLists.txt` | build | `app/zephyr` | manual | tracked |
+| `app/zephyr/prj.conf` | build | `app/zephyr` | manual | tracked |
+| `app/zephyr/sample.yaml` | configuration | `app/zephyr` | manual | tracked |
+| `app/zephyr/src/main.c` | source | `app/zephyr` | manual | tracked |
+| `docs/.obsidian/app.json` | documentation | `docs/.obsidian` | manual | tracked |
+| `docs/.obsidian/appearance.json` | documentation | `docs/.obsidian` | manual | tracked |
+| `docs/.obsidian/core-plugins.json` | documentation | `docs/.obsidian` | manual | tracked |
+| `docs/.obsidian/graph.json` | documentation | `docs/.obsidian` | manual | tracked |
+| `docs/00-project/ASSUMPTIONS_AND_CONSTRAINTS.md` | documentation | `docs/00-project` | manual | tracked |
+| `docs/00-project/CHARTER.md` | documentation | `docs/00-project` | manual | tracked |
+| `docs/00-project/GLOSSARY.md` | documentation | `docs/00-project` | manual | tracked |
+| `docs/00-project/REQUIREMENTS.md` | documentation | `docs/00-project` | manual | tracked |
+| `docs/00-project/V1_LESSONS.md` | documentation | `docs/00-project` | manual | tracked |
+| `docs/01-architecture/BOUNDARIES_AND_INVARIANTS.md` | documentation | `docs/01-architecture` | manual | tracked |
+| `docs/01-architecture/STATE_OWNERSHIP.md` | documentation | `docs/01-architecture` | manual | tracked |
+| `docs/01-architecture/SYSTEM_CONTEXT.md` | documentation | `docs/01-architecture` | manual | tracked |
+| `docs/02-protocol/COMMAND_LIFECYCLE.md` | documentation | `docs/02-protocol` | manual | tracked |
+| `docs/02-protocol/LAYERING.md` | documentation | `docs/02-protocol` | manual | tracked |
+| `docs/02-protocol/PROTOCOL_REQUIREMENTS.md` | documentation | `docs/02-protocol` | manual | tracked |
+| `docs/03-hmi/HMI_ARCHITECTURE.md` | documentation | `docs/03-hmi` | manual | tracked |
+| `docs/03-hmi/PROGRAM_AND_STARTUP_MODEL.md` | documentation | `docs/03-hmi` | manual | untracked |
+| `docs/03-hmi/UX_AND_DOMAIN_BASELINE.md` | documentation | `docs/03-hmi` | manual | tracked |
+| `docs/04-controller/CONTROLLER_INTERFACE_BOUNDARY.md` | documentation | `docs/04-controller` | manual | tracked |
+| `docs/05-platform/DESKTOP_SIMULATOR_STRATEGY.md` | documentation | `docs/05-platform` | manual | tracked |
+| `docs/05-platform/DEVELOPER_RUNBOOK.md` | documentation | `docs/05-platform` | manual | tracked |
+| `docs/05-platform/DEVELOPMENT_ENVIRONMENT.md` | documentation | `docs/05-platform` | manual | tracked |
+| `docs/05-platform/RUNTIME_EVALUATION.md` | documentation | `docs/05-platform` | manual | tracked |
+| `docs/05-platform/TRANSPORT_EVALUATION.md` | documentation | `docs/05-platform` | manual | tracked |
+| `docs/06-testing/REVIEW_POLICY.md` | documentation | `docs/06-testing` | manual | tracked |
+| `docs/06-testing/TEST_STRATEGY.md` | documentation | `docs/06-testing` | manual | tracked |
+| `docs/06-testing/TRACEABILITY.md` | documentation | `docs/06-testing` | manual | tracked |
+| `docs/07-decisions/0001-authority-boundary.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0002-zephyr-4-4-0.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0003-protocol-layering.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0004-desktop-simulator.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0005-lvgl-single-owner.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0006-transport-selection.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0007-serialization-and-framing.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0008-memory-policy.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0009-protocol-source-sharing.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/ADR_TEMPLATE.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/README.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/08-pseudocode/README.md` | documentation | `docs/08-pseudocode` | manual | tracked |
+| `docs/09-progress/OPEN_QUESTIONS.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/ROADMAP.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/SESSION_LOG.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/STATUS.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/UI_LAB_VERTICAL_SLICE_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
+| `docs/09-progress/UI_VERTICAL_SLICE_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/INDEX.md` | documentation | `docs` | manual | tracked |
+| `docs/_generated/CODEBASE_INDEX.md` | documentation | `docs/_generated` | generated | tracked |
+| `docs/_generated/README.md` | documentation | `docs/_generated` | manual | tracked |
+| `docs/images/concept/Screenshot_20260901-172703.png` | documentation | `docs/images` | manual | tracked |
+| `docs/images/concept/Screenshot_20260901-172716.png` | documentation | `docs/images` | manual | tracked |
+| `docs/images/concept/Screenshot_20260901-172742.png` | documentation | `docs/images` | manual | tracked |
+| `docs/images/concept/Screenshot_20260901-172800.png` | documentation | `docs/images` | manual | tracked |
+| `docs/images/concept/Screenshot_20260901-172814.png` | documentation | `docs/images` | manual | tracked |
+| `docs/images/concept/Screenshot_20260901-172843.png` | documentation | `docs/images` | manual | tracked |
+| `docs/images/concept/Screenshot_20260901-173108.png` | documentation | `docs/images` | manual | tracked |
+| `docs/images/concept/Screenshot_20260901-173125.png` | documentation | `docs/images` | manual | tracked |
+| `simulator/desktop/CMakeLists.txt` | build | `simulator/desktop` | manual | tracked |
+| `simulator/desktop/cmake/ResolveLvgl.cmake` | build | `simulator/desktop` | manual | tracked |
+| `simulator/desktop/cmake/ResolveSDL2.cmake` | build | `simulator/desktop` | manual | tracked |
+| `simulator/desktop/lv_conf.h` | header | `simulator/desktop` | manual | tracked |
+| `simulator/desktop/src/main.c` | source | `simulator/desktop` | manual | tracked |
+| `simulator/semantic_controller/CMakeLists.txt` | build | `simulator/semantic_controller` | manual | untracked |
+| `simulator/semantic_controller/include/furnace_hmi/simulated_controller.h` | header | `simulator/semantic_controller` | manual | untracked |
+| `simulator/semantic_controller/src/simulated_controller.c` | source | `simulator/semantic_controller` | manual | untracked |
+| `simulator/ui_lab/CMakeLists.txt` | build | `simulator/ui_lab` | manual | untracked |
+| `simulator/ui_lab/src/main.c` | source | `simulator/ui_lab` | manual | untracked |
+| `simulator/ui_lab/src/ui_lab_explorer.c` | source | `simulator/ui_lab` | manual | untracked |
+| `simulator/ui_lab/src/ui_lab_explorer.h` | header | `simulator/ui_lab` | manual | untracked |
+| `tests/host/CMakeLists.txt` | test | `tests/host` | manual | tracked |
+| `tests/host/dashboard_model_smoke.c` | test | `tests/host` | manual | untracked |
+| `tests/host/foundation_smoke.c` | test | `tests/host` | manual | tracked |
+| `tests/host/ui_strings_smoke.c` | test | `tests/host` | manual | tracked |
+| `tests/zephyr/foundation/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/foundation/prj.conf` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/foundation/src/main.c` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/foundation/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
+| `tools/bootstrap_zephyr.py` | tool | `tools` | manual | tracked |
+| `tools/codebase-index.schema.json` | tool | `tools` | manual | tracked |
+| `tools/codebase_index.py` | tool | `tools` | manual | tracked |
+| `tools/run_desktop_ui.py` | tool | `tools` | manual | tracked |
+| `tools/run_foundation.py` | tool | `tools` | manual | untracked |
+| `tools/run_ui_lab.py` | tool | `tools` | manual | untracked |
+| `tools/tests/test_bootstrap_zephyr.py` | test | `tools` | manual | tracked |
+| `tools/tests/test_codebase_index.py` | test | `tools` | manual | tracked |
+| `tools/tests/test_run_desktop_ui.py` | test | `tools` | manual | tracked |
+| `tools/tests/test_run_foundation.py` | test | `tools` | manual | untracked |
+| `tools/tests/test_run_ui_lab.py` | test | `tools` | manual | untracked |
+| `west.yml` | build | `.` | manual | tracked |
 
 ## Diagnostics
 

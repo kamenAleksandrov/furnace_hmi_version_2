@@ -45,6 +45,16 @@ The desktop and embedded builds should eventually reuse these areas. Platform
 adapters and entry points differ; furnace semantics must not be duplicated for
 the simulator.
 
+## Host-only UI laboratory
+
+The host-only UI laboratory composes a deterministic semantic controller with
+the shared model and presentation. It supplies snapshots, graph samples,
+validity changes, session changes, and later request outcomes without writing
+LVGL objects directly. Its executable, fixtures, and development controls are
+host-only; the Zephyr composition does not link them. A visible simulation
+marker and a separate build preset prevent synthetic observations from being
+mistaken for device data.
+
 ## Implemented first presentation slice
 
 The first reusable LVGL component is the read-only state-availability view

@@ -11,6 +11,7 @@
 | Run Sessions/history | Control CPU | Immutable view; create a new draft to reuse |
 | Operational settings and limits | Control CPU | Request value/range/writability metadata; submit changes |
 | Runtime/service counters | Control CPU | Display authoritative monotonic values and selected derivations |
+| Service-period condition, one-time acknowledgement, and maintenance record | Control CPU | Display current session-bound condition and later Device/maintenance record; collect acknowledgement intent only; never issue, record, suppress, authorize, or bypass locally |
 | Clock/date | Control CPU | Display controller time |
 | Navigation, focus, dialogs, transient forms | HMI CPU | Local state |
 | Draft edit state | HMI CPU until submitted | Never imply persistence or acceptance before controller response |

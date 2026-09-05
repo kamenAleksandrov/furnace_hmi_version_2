@@ -71,6 +71,27 @@
         "FURNACE_HMI_LVGL_SOURCE_DIR": "${sourceDir}/.deps/zephyr-workspace/modules/lib/gui/lvgl",
         "SDL2_DIR": "${sourceDir}/.deps/tools/sdl2-msvc-2.32.10/SDL2-2.32.10/cmake"
       }
+    },
+    {
+      "name": "host-msvc-ui-lab-debug",
+      "displayName": "Host-only semantic UI laboratory (Debug)",
+      "description": "Windows/MSVC desktop UI lab with deterministic simulated controller scenarios",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/host-msvc-ui-lab-debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "FURNACE_HMI_BUILD_DESKTOP": "OFF",
+        "FURNACE_HMI_BUILD_UI_LAB": "ON",
+        "FURNACE_HMI_BUILD_HOST_TESTS": "ON",
+        "FURNACE_HMI_LVGL_SOURCE_DIR": "${sourceDir}/.deps/zephyr-workspace/modules/lib/gui/lvgl",
+        "SDL2_DIR": "${sourceDir}/.deps/tools/sdl2-msvc-2.32.10/SDL2-2.32.10/cmake"
+      }
     }
   ],
   "buildPresets": [
@@ -90,6 +111,11 @@
     {
       "name": "host-msvc-desktop-debug",
       "configurePreset": "host-msvc-desktop-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "host-msvc-ui-lab-debug",
+      "configurePreset": "host-msvc-ui-lab-debug",
       "configuration": "Debug"
     }
   ],
@@ -131,6 +157,18 @@
     {
       "name": "host-msvc-desktop-debug",
       "configurePreset": "host-msvc-desktop-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
+    {
+      "name": "host-msvc-ui-lab-debug",
+      "configurePreset": "host-msvc-ui-lab-debug",
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true

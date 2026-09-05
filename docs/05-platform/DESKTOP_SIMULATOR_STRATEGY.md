@@ -31,6 +31,13 @@ production display selection. The executable modes are:
   bounds checks;
 - `--smoke-test`: the original SDL pointer/text input diagnostic.
 
+The host-only semantic UI laboratory is built by the separate
+`host-msvc-ui-lab-debug` preset and launched with `tools/run_ui_lab.py`. It is a
+distinct executable from the foundation proof, shows an explicit simulation
+marker, and can switch deterministic scenarios with keys 1–8. Simulator code
+and fixtures remain outside the Zephyr composition; this target is for visual
+and HMI-behavior experimentation only.
+
 ## Planned simulation levels
 
 1. A semantic simulated controller supplies state and request outcomes for fast

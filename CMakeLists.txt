@@ -25,10 +25,12 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 option(FURNACE_HMI_BUILD_DESKTOP "Build the desktop LVGL proof application" ON)
 option(FURNACE_HMI_BUILD_HOST_TESTS "Build portable host-side tests" ON)
+option(FURNACE_HMI_BUILD_UI_LAB "Build the host-only semantic UI laboratory" OFF)
 
 include(CTest)
 
 add_subdirectory(app/hmi/foundation)
+add_subdirectory(app/hmi/model)
 add_subdirectory(app/hmi/presentation/strings)
 
 if(FURNACE_HMI_BUILD_DESKTOP)
@@ -36,6 +38,13 @@ if(FURNACE_HMI_BUILD_DESKTOP)
     message(FATAL_ERROR "The desktop proof target is not present in simulator/desktop")
   endif()
   add_subdirectory(simulator/desktop)
+endif()
+
+if(FURNACE_HMI_BUILD_UI_LAB)
+  if(NOT WIN32)
+    message(FATAL_ERROR "The UI laboratory currently requires the Windows SDL host path.")
+  endif()
+  add_subdirectory(simulator/ui_lab)
 endif()
 
 if(FURNACE_HMI_BUILD_HOST_TESTS AND BUILD_TESTING)

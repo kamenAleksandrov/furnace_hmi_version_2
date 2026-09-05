@@ -1,7 +1,7 @@
 # Protocol requirements
 
 The protocol is not implemented and no wire schema is approved. The normative
-constraints are `PROTO-001` through `PROTO-009` in the
+constraints are `PROTO-001` through `PROTO-011` in the
 [requirements register](../00-project/REQUIREMENTS.md#protocol-requirements).
 This document frames the later design work without selecting serialization,
 framing, identifiers, packet sizes, or UART parameters.
@@ -20,6 +20,12 @@ The eventual protocol must let the HMI:
 - transfer larger program/history/diagnostic data without impairing important
   controller work;
 - run over production and in-memory simulator transports.
+- present a session-bound controller service condition and, when authorized by
+  controller policy, submit a correlated acknowledgement intent without
+  confusing it with permission to execute a run;
+- obtain current-session program-authoring capability metadata before offering
+  stage-type/field/range assistance, then submit drafts for authoritative
+  validation.
 
 ## State recovery baseline
 
@@ -27,6 +33,20 @@ The design shall investigate controller boot/session identity, monotonic state
 revision, run and program identity/revision, mode, phase, temperature validity,
 setpoint, demand, faults, readiness, capabilities, and setting metadata. This
 is a list of required concepts to evaluate, not a message definition.
+
+For service-period preflight, investigate a stable controller gate/reason plus
+the counter, due/limit, forecast values, a one-time acknowledgement event
+identity, and recorded-acknowledgement visibility necessary for the HMI to
+explain a warning. The current snapshot is presentation evidence only; a
+confirmation must still be a controller-validated request and can be rejected
+if policy or state changes. The HMI must not synthesize a one-time event from
+raw counters or regard dismissal as acknowledgement.
+
+Program-authoring capability metadata must state which stage kinds and fields
+are currently permitted, their bounds/steps, and the available cooling modes.
+It is session-scoped observation, not a substitute for validation. A submitted
+draft needs a correlated accepted/rejected result with stable reasons suitable
+for a specific field or cross-field relationship.
 
 Reconnect follows this semantic sequence:
 

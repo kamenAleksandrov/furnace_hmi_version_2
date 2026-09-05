@@ -27,15 +27,26 @@ if(NOT TARGET furnace_hmi_ui_strings)
   )
 endif()
 
+if(NOT TARGET furnace_hmi_model)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/model"
+    "${CMAKE_CURRENT_BINARY_DIR}/model"
+  )
+endif()
+
 add_executable(furnace_hmi_foundation_smoke foundation_smoke.c)
 target_link_libraries(furnace_hmi_foundation_smoke PRIVATE furnace_hmi::foundation)
 
 add_executable(furnace_hmi_ui_strings_smoke ui_strings_smoke.c)
 target_link_libraries(furnace_hmi_ui_strings_smoke PRIVATE furnace_hmi::ui_strings)
 
+add_executable(furnace_hmi_dashboard_model_smoke dashboard_model_smoke.c)
+target_link_libraries(furnace_hmi_dashboard_model_smoke PRIVATE furnace_hmi::model)
+
 if(MSVC)
   target_compile_options(furnace_hmi_foundation_smoke PRIVATE /W4 /WX /permissive-)
   target_compile_options(furnace_hmi_ui_strings_smoke PRIVATE /W4 /WX /permissive-)
+  target_compile_options(furnace_hmi_dashboard_model_smoke PRIVATE /W4 /WX /permissive-)
 else()
   target_compile_options(
     furnace_hmi_foundation_smoke PRIVATE -Wall -Wextra -Wpedantic -Werror
@@ -43,10 +54,14 @@ else()
   target_compile_options(
     furnace_hmi_ui_strings_smoke PRIVATE -Wall -Wextra -Wpedantic -Werror
   )
+  target_compile_options(
+    furnace_hmi_dashboard_model_smoke PRIVATE -Wall -Wextra -Wpedantic -Werror
+  )
 endif()
 
 add_test(NAME host.foundation_probe COMMAND furnace_hmi_foundation_smoke)
 add_test(NAME host.ui_strings_catalog COMMAND furnace_hmi_ui_strings_smoke)
+add_test(NAME host.dashboard_model COMMAND furnace_hmi_dashboard_model_smoke)
 add_test(
   NAME tools.codebase_index
   COMMAND
@@ -74,10 +89,30 @@ add_test(
     -p test_run_desktop_ui.py
     -v
 )
+add_test(
+  NAME tools.ui_lab_workflow
+  COMMAND
+    "${Python3_EXECUTABLE}"
+    -m unittest discover
+    -s tools/tests
+    -p test_run_ui_lab.py
+    -v
+)
+add_test(
+  NAME tools.foundation_workflow
+  COMMAND
+    "${Python3_EXECUTABLE}"
+    -m unittest discover
+    -s tools/tests
+    -p test_run_foundation.py
+    -v
+)
 set_tests_properties(
   tools.codebase_index
   tools.bootstrap_zephyr
   tools.desktop_ui
+  tools.ui_lab_workflow
+  tools.foundation_workflow
   PROPERTIES
     WORKING_DIRECTORY "${FURNACE_HMI_REPOSITORY_ROOT}"
     TIMEOUT 30

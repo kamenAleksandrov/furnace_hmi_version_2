@@ -13,5 +13,6 @@
   "files.exclude": {
     "**/.git": true,
     "**/__pycache__": true
-  }
+  },
+  "idf.currentSetup": "C:\\Users\\nemak\\esp\\v5.5.1\\esp-idf"
 }

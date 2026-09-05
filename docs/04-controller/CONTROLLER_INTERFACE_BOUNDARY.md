@@ -42,7 +42,18 @@ For controller-owned settings, the future interface should expose value,
 writable/read-only state, range, step/precision, capability state, and a reason
 for read-only state where relevant. The controller validates submitted changes
 again. Operational counters are appropriately sized monotonic controller
-values; an HMI task clock cannot define service time.
+values; an HMI task clock cannot define service time. The Control CPU also
+evaluates whether a proposed run is permitted, blocked, or requires an explicit
+service-period acknowledgement. It owns the one-time warning/re-arm policy,
+records an accepted acknowledgement for later Device/maintenance inspection,
+exposes current-session condition/display inputs, and validates any
+acknowledgement request again. The HMI dialog is an operator-intent surface
+only; it cannot waive service policy or start a run by itself.
+
+For program authoring, the Control CPU exposes session-scoped stage-kind,
+field-applicability, range, increment, and cooling-mode metadata. It validates
+all submitted local drafts, assigns accepted IDs/revisions, and reports stable
+field or cross-field rejection reasons.
 
 ## Safety statement
 

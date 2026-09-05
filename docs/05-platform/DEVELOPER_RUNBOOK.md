@@ -47,6 +47,68 @@ Zephyr build, Twister, static analysis, the other host compiler presets, or the
 codebase index refresh. Use their dedicated sections below when a change
 requires that broader evidence.
 
+For a single command that runs the four host compiler/test presets without
+opening a window:
+
+```powershell
+python tools\run_foundation.py host
+```
+
+## Host-only semantic UI laboratory
+
+The UI laboratory is a separate host executable. It links a deterministic
+simulated controller to the shared HMI model and LVGL presentation; its sources
+and synthetic data are not part of the Zephyr image. The window always carries
+an explicit `SIMULATION - NOT DEVICE DATA` marker. This is the recommended
+environment for trying layouts with running programs, graphs, statistics,
+faults, stale state, and disconnected state before real hardware exists.
+
+The expanded explorer uses a dark neutral theme and carries a distinct machine
+state accent across every page (running amber, paused violet, Manual teal,
+fault red). Click/tap the four bottom destinations. Programs use short pages
+and Details rather than scrolling; the stage draft editor uses explicit +/-
+buttons, never drag gestures. Press `H`, `P`, `D`, or `S` for Home, Programs,
+Device, or Settings; press `I` for the synthetic service-warning dialog. All
+program data, edits, and confirmations are lab previews. In particular,
+acknowledging the service dialog does not contact a controller or waive any
+maintenance policy.
+
+Build, test, and open the default running-program scenario:
+
+```powershell
+python tools\run_ui_lab.py
+```
+
+Select another deterministic scenario:
+
+```powershell
+python tools\run_ui_lab.py --scenario disconnected
+python tools\run_ui_lab.py --scenario idle
+python tools\run_ui_lab.py --scenario manual
+python tools\run_ui_lab.py --scenario paused
+python tools\run_ui_lab.py --scenario fault
+python tools\run_ui_lab.py --scenario stale
+python tools\run_ui_lab.py --scenario running-overrun
+```
+
+Use `check` to build and test without opening a window:
+
+```powershell
+python tools\run_ui_lab.py check --scenario running-normal
+```
+
+The same check can be selected through the all-in-one workflow helper:
+
+```powershell
+python tools\run_foundation.py ui-check --scenario running-normal
+```
+
+While the laboratory is open, keys `1` through `8` switch between the same
+scenarios. The first dashboard is intentionally read-only; simulated values
+exercise presentation and recovery states, not controller safety or process
+control. The current stage values and planned trajectory are illustrative until
+HEATING/HOLD/COOL semantics are accepted.
+
 In VS Code, open **Run and Debug**, select
 `Desktop MSVC: debug UI`, set a source breakpoint in
 `simulator/desktop/src/main.c`, and press **F5**. Its pre-launch task configures
@@ -234,6 +296,31 @@ ever disagree, treat that as documentation drift and fix both in the same
 change.
 
 ## Full local foundation check
+
+The complete non-graphical sequence can be delegated to one project-local
+script. It performs host verification, the UI-lab smoke check, the Zephyr
+qemu_x86 build/Twister/GCC analysis, Python tooling tests, index regeneration,
+and the generated-index/whitespace checks. It never downloads dependencies or
+flashes hardware:
+
+```powershell
+python tools\run_foundation.py all
+```
+
+The individual actions are useful when iterating:
+
+```powershell
+python tools\run_foundation.py host
+python tools\run_foundation.py ui-check --scenario fault
+python tools\run_foundation.py zephyr
+python tools\run_foundation.py tooling
+python tools\run_foundation.py ui --scenario running-normal
+```
+
+The final `ui` action is the only one that opens a visible window and waits for
+you to close it. The script requires the project `.venv` for UI-lab, Zephyr,
+and tooling actions; prepare it first with `python tools\bootstrap_zephyr.py
+prepare` on a new checkout.
 
 This is the practical pre-review sequence after a cross-cutting change:
 

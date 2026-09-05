@@ -12,6 +12,7 @@ browser and ordinary editors.
 - [Developer command runbook](05-platform/DEVELOPER_RUNBOOK.md)
 - [Review policy](06-testing/REVIEW_POLICY.md)
 - [Current status](09-progress/STATUS.md)
+- [Host-only UI laboratory plan](09-progress/UI_LAB_VERTICAL_SLICE_PLAN.md)
 - [Open questions](09-progress/OPEN_QUESTIONS.md)
 - [Decision records](07-decisions/README.md)
 
@@ -22,7 +23,7 @@ browser and ordinary editors.
 | `00-project` | Scope, terminology, requirements, constraints, V1 evidence | [Charter](00-project/CHARTER.md) |
 | `01-architecture` | System context, authority boundaries, state ownership | [System context](01-architecture/SYSTEM_CONTEXT.md) |
 | `02-protocol` | Protocol requirements and lifecycle principles; no wire schema yet | [Protocol requirements](02-protocol/PROTOCOL_REQUIREMENTS.md) |
-| `03-hmi` | Portable HMI architecture and operator-experience baseline | [HMI architecture](03-hmi/HMI_ARCHITECTURE.md) |
+| `03-hmi` | Portable HMI architecture, operator experience, and program/startup model | [HMI architecture](03-hmi/HMI_ARCHITECTURE.md), [program and startup model](03-hmi/PROGRAM_AND_STARTUP_MODEL.md) |
 | `04-controller` | Software-facing Control CPU contract boundary | [Controller interface boundary](04-controller/CONTROLLER_INTERFACE_BOUNDARY.md) |
 | `05-platform` | Zephyr, target, transport, and simulator strategy | [Developer runbook](05-platform/DEVELOPER_RUNBOOK.md), [development environment](05-platform/DEVELOPMENT_ENVIRONMENT.md), and [runtime evaluation](05-platform/RUNTIME_EVALUATION.md) |
 | `06-testing` | Verification strategy, review policy, and requirement traceability | [Test strategy](06-testing/TEST_STRATEGY.md) and [review policy](06-testing/REVIEW_POLICY.md) |

@@ -27,6 +27,10 @@
 #define LV_USE_BUTTON 1
 #define LV_USE_LABEL 1
 #define LV_USE_TEXTAREA 1
+#define LV_USE_CHART 1
+#define LV_FONT_MONTSERRAT_14 1
+#define LV_FONT_MONTSERRAT_16 1
+#define LV_FONT_MONTSERRAT_20 1
 #define LV_FONT_MONTSERRAT_24 1
 
 #endif /* LV_CONF_H */

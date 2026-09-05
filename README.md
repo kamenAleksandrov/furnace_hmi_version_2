@@ -60,6 +60,22 @@ ctest --preset host-msvc-desktop-debug
 
 Then select `Desktop MSVC: debug UI` in VS Code and press F5.
 
+For experimental screens and synthetic furnace observations, use the separate
+host-only UI laboratory. It cannot be included in a Zephyr image:
+
+```powershell
+python tools\run_ui_lab.py
+python tools\run_ui_lab.py --scenario fault
+python tools\run_ui_lab.py --scenario running-overrun
+python tools\run_ui_lab.py check --scenario running-normal
+```
+
+The lab window is marked `SIMULATION - NOT DEVICE DATA`; keys `1` through `8`
+switch scenarios while it is open. See the [UI-lab vertical-slice plan](docs/09-progress/UI_LAB_VERTICAL_SLICE_PLAN.md)
+and [developer runbook](docs/05-platform/DEVELOPER_RUNBOOK.md). For the full
+non-graphical verification sequence, run `python tools\run_foundation.py all`.
+for its boundary and current non-goals.
+
 Build and test Zephyr through the project tasks in `.vscode/tasks.json`, or
 use the exact environment and west commands in the
 [development-environment guide](docs/05-platform/DEVELOPMENT_ENVIRONMENT.md).
@@ -69,6 +85,3 @@ After both canonical builds, regenerate and verify navigation metadata:
 .\.venv\Scripts\python.exe tools\codebase_index.py
 .\.venv\Scripts\python.exe tools\codebase_index.py --check
 ```
-Or run:
-- python tools\run_desktop_ui.py - It configures the MSVC build, compiles it, runs all relevant tests, and launches the LVGL/SDL window. Close the window to finish the script.
-- python tools\run_desktop_ui.py check - for build-and-test without opening the UI.
