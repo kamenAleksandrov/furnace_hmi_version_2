@@ -64,6 +64,17 @@ typedef enum {
 } furnace_hmi_run_state_t;
 
 /**
+ * Controller-reported phase of an active Program run. Automatic cooling follows
+ * curing and is controller-owned; NONE is the safe default when unknown.
+ */
+typedef enum {
+    FURNACE_HMI_RUN_PHASE_NONE = 0,
+    FURNACE_HMI_RUN_PHASE_CURING,
+    FURNACE_HMI_RUN_PHASE_COOLING,
+    FURNACE_HMI_RUN_PHASE_COUNT,
+} furnace_hmi_run_phase_t;
+
+/**
  * Controller-reported result of evaluating a proposed run against its
  * maintenance/service policy. The HMI can explain this observation and can
  * later submit an acknowledgement request, but it never authorizes a run.
@@ -81,6 +92,8 @@ typedef struct {
     int32_t planned_temperature_c;
     int32_t measured_temperature_c;
     furnace_hmi_value_validity_t measured_validity;
+    /** The planned value belongs to the estimated automatic-cooling forecast. */
+    bool planned_cooling;
 } furnace_hmi_graph_sample_t;
 
 /**
@@ -97,6 +110,7 @@ typedef struct {
     uint32_t state_revision;
     furnace_hmi_machine_mode_t mode;
     furnace_hmi_run_state_t run_state;
+    furnace_hmi_run_phase_t run_phase;
 
     uint32_t program_id;
     uint32_t program_revision;
@@ -110,6 +124,10 @@ typedef struct {
     furnace_hmi_i32_value_t target_delta_c_per_minute;
     furnace_hmi_i32_value_t elapsed_seconds;
     furnace_hmi_i32_value_t remaining_seconds;
+    /** Time since automatic cooling began; unavailable outside cooling. */
+    furnace_hmi_i32_value_t cooling_elapsed_seconds;
+    /** Estimated cooling time left; an estimate never determines completion. */
+    furnace_hmi_i32_value_t cooling_remaining_seconds;
     furnace_hmi_i32_value_t heater_demand_percent;
     furnace_hmi_i32_value_t estimated_power_kw_x100;
     furnace_hmi_i32_value_t fan_rpm;

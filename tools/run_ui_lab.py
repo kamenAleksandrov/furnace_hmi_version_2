@@ -32,6 +32,7 @@ SCENARIOS = (
     "fault",
     "stale",
     "running-overrun",
+    "cooling",
 )
 
 

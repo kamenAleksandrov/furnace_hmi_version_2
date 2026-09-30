@@ -9,12 +9,12 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 132 |
-| Git-tracked files | 111 |
-| Git-untracked files | 21 |
-| Manually maintained files | 131 |
+| Repository files | 208 |
+| Git-tracked files | 132 |
+| Git-untracked files | 76 |
+| Manually maintained files | 207 |
 | Generated files | 1 |
-| Modules | 30 |
+| Modules | 31 |
 | Build targets | 107 |
 | Compile units | 12 |
 | Boards | 1 |
@@ -38,32 +38,33 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `.agents/skills/architecture-planning` | 1 | agent-configuration |
 | `.agents/skills/documentation-maintenance` | 1 | agent-configuration |
 | `.agents/skills/protocol-design` | 1 | agent-configuration |
+| `.agents/skills/ui-parity` | 1 | agent-configuration |
 | `.codex/agents` | 6 | agent-configuration |
 | `.vscode` | 5 | configuration |
 | `app/hmi/foundation` | 3 | build, header, source |
 | `app/hmi/model` | 4 | build, header, source |
-| `app/hmi/presentation` | 10 | build, header, source |
+| `app/hmi/presentation` | 44 | build, documentation, header, other, source |
 | `app/zephyr` | 4 | build, configuration, source |
 | `docs` | 1 | documentation |
 | `docs/.obsidian` | 4 | documentation |
 | `docs/00-project` | 5 | documentation |
 | `docs/01-architecture` | 3 | documentation |
 | `docs/02-protocol` | 3 | documentation |
-| `docs/03-hmi` | 3 | documentation |
+| `docs/03-hmi` | 7 | documentation |
 | `docs/04-controller` | 1 | documentation |
 | `docs/05-platform` | 5 | documentation |
 | `docs/06-testing` | 3 | documentation |
-| `docs/07-decisions` | 11 | documentation |
+| `docs/07-decisions` | 13 | documentation |
 | `docs/08-pseudocode` | 1 | documentation |
-| `docs/09-progress` | 6 | documentation |
+| `docs/09-progress` | 18 | documentation |
 | `docs/_generated` | 2 | documentation |
-| `docs/images` | 8 | documentation |
+| `docs/images` | 27 | documentation |
 | `simulator/desktop` | 5 | build, header, source |
 | `simulator/semantic_controller` | 3 | build, header, source |
-| `simulator/ui_lab` | 4 | build, header, source |
+| `simulator/ui_lab` | 5 | build, documentation, header, source |
 | `tests/host` | 4 | test |
 | `tests/zephyr` | 4 | test |
-| `tools` | 11 | test, tool |
+| `tools` | 14 | test, tool |
 
 ## Build Targets
 
@@ -190,6 +191,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `.agents/skills/architecture-planning/SKILL.md` | agent-configuration | `.agents/skills/architecture-planning` | manual | tracked |
 | `.agents/skills/documentation-maintenance/SKILL.md` | agent-configuration | `.agents/skills/documentation-maintenance` | manual | tracked |
 | `.agents/skills/protocol-design/SKILL.md` | agent-configuration | `.agents/skills/protocol-design` | manual | tracked |
+| `.agents/skills/ui-parity/SKILL.md` | agent-configuration | `.agents/skills/ui-parity` | manual | untracked |
 | `.codex/agents/architect.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/decision-challenger.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/embedded-reviewer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
@@ -213,13 +215,47 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/foundation/CMakeLists.txt` | build | `app/hmi/foundation` | manual | tracked |
 | `app/hmi/foundation/include/furnace_hmi/foundation.h` | header | `app/hmi/foundation` | manual | tracked |
 | `app/hmi/foundation/src/foundation.c` | source | `app/hmi/foundation` | manual | tracked |
-| `app/hmi/model/CMakeLists.txt` | build | `app/hmi/model` | manual | untracked |
-| `app/hmi/model/include/furnace_hmi/dashboard_model.h` | header | `app/hmi/model` | manual | untracked |
-| `app/hmi/model/include/furnace_hmi/hmi_state_availability.h` | header | `app/hmi/model` | manual | untracked |
-| `app/hmi/model/src/dashboard_model.c` | source | `app/hmi/model` | manual | untracked |
-| `app/hmi/presentation/dashboard/CMakeLists.txt` | build | `app/hmi/presentation` | manual | untracked |
-| `app/hmi/presentation/dashboard/include/furnace_hmi/dashboard_view.h` | header | `app/hmi/presentation` | manual | untracked |
-| `app/hmi/presentation/dashboard/src/dashboard_view.c` | source | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/model/CMakeLists.txt` | build | `app/hmi/model` | manual | tracked |
+| `app/hmi/model/include/furnace_hmi/dashboard_model.h` | header | `app/hmi/model` | manual | tracked |
+| `app/hmi/model/include/furnace_hmi/hmi_state_availability.h` | header | `app/hmi/model` | manual | tracked |
+| `app/hmi/model/src/dashboard_model.c` | source | `app/hmi/model` | manual | tracked |
+| `app/hmi/presentation/dashboard/CMakeLists.txt` | build | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/dashboard/include/furnace_hmi/dashboard_view.h` | header | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/dashboard/src/dashboard_view.c` | source | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/icons/README.md` | documentation | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/arrow-left.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/arrow-right.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/backspace.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/chart.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/check-circle.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/check.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/chevron-left.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/chevron-right.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/clock.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/close.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/furnace.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/gauge.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/history.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/home.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/info.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/list.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/minus.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/pause.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/pencil.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/play.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/plus.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/program.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/shift.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/signal.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/sliders.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/split.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/star-filled.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/star.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/stop.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/sun.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/trash.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/warning.svg` | other | `app/hmi/presentation` | manual | untracked |
+| `app/hmi/presentation/icons/svg/wrench.svg` | other | `app/hmi/presentation` | manual | untracked |
 | `app/hmi/presentation/state_availability/CMakeLists.txt` | build | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/state_availability/include/furnace_hmi/state_availability.h` | header | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/state_availability/include/furnace_hmi/state_availability_view.h` | header | `app/hmi/presentation` | manual | tracked |
@@ -246,8 +282,12 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/02-protocol/COMMAND_LIFECYCLE.md` | documentation | `docs/02-protocol` | manual | tracked |
 | `docs/02-protocol/LAYERING.md` | documentation | `docs/02-protocol` | manual | tracked |
 | `docs/02-protocol/PROTOCOL_REQUIREMENTS.md` | documentation | `docs/02-protocol` | manual | tracked |
+| `docs/03-hmi/DEVICE_SCREEN_PROPOSAL.md` | documentation | `docs/03-hmi` | manual | untracked |
 | `docs/03-hmi/HMI_ARCHITECTURE.md` | documentation | `docs/03-hmi` | manual | tracked |
-| `docs/03-hmi/PROGRAM_AND_STARTUP_MODEL.md` | documentation | `docs/03-hmi` | manual | untracked |
+| `docs/03-hmi/OPERATOR_WORKFLOW_SCREEN_CONCEPTS.md` | documentation | `docs/03-hmi` | manual | untracked |
+| `docs/03-hmi/PROGRAMS_STYLE_PROPOSAL.md` | documentation | `docs/03-hmi` | manual | untracked |
+| `docs/03-hmi/PROGRAM_AND_STARTUP_MODEL.md` | documentation | `docs/03-hmi` | manual | tracked |
+| `docs/03-hmi/SETTINGS_SCREEN_PROPOSAL.md` | documentation | `docs/03-hmi` | manual | untracked |
 | `docs/03-hmi/UX_AND_DOMAIN_BASELINE.md` | documentation | `docs/03-hmi` | manual | tracked |
 | `docs/04-controller/CONTROLLER_INTERFACE_BOUNDARY.md` | documentation | `docs/04-controller` | manual | tracked |
 | `docs/05-platform/DESKTOP_SIMULATOR_STRATEGY.md` | documentation | `docs/05-platform` | manual | tracked |
@@ -267,15 +307,29 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/07-decisions/0007-serialization-and-framing.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/0008-memory-policy.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/0009-protocol-source-sharing.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0010-maintenance-request-workflows.md` | documentation | `docs/07-decisions` | manual | untracked |
+| `docs/07-decisions/0011-component-service-catalogue.md` | documentation | `docs/07-decisions` | manual | untracked |
 | `docs/07-decisions/ADR_TEMPLATE.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/README.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/08-pseudocode/README.md` | documentation | `docs/08-pseudocode` | manual | tracked |
+| `docs/09-progress/CONTROLLER_INTEGRATION_BACKLOG.md` | documentation | `docs/09-progress` | manual | untracked |
+| `docs/09-progress/DEVICE_IMPLEMENTATION_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
+| `docs/09-progress/GRAPHITE_UI_COMPLETION_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
+| `docs/09-progress/GRAPHITE_UI_VERIFICATION.md` | documentation | `docs/09-progress` | manual | untracked |
+| `docs/09-progress/HMI_WEB_DEMO.md` | documentation | `docs/09-progress` | manual | untracked |
+| `docs/09-progress/HOME_RUNNING_DEMO_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
 | `docs/09-progress/OPEN_QUESTIONS.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/OPERATOR_WORKFLOW_IMPLEMENTATION_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
+| `docs/09-progress/PROGRAMS_STYLE_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
 | `docs/09-progress/ROADMAP.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/RUNNING_READINGS_REFINEMENT_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
 | `docs/09-progress/SESSION_LOG.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/SETTINGS_IMPLEMENTATION_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
 | `docs/09-progress/STATUS.md` | documentation | `docs/09-progress` | manual | tracked |
-| `docs/09-progress/UI_LAB_VERTICAL_SLICE_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
+| `docs/09-progress/TOUCH_KEYBOARD_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
+| `docs/09-progress/UI_LAB_VERTICAL_SLICE_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/UI_VERTICAL_SLICE_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/WEB_DEMO_CLIENT_BUILD_PLAN.md` | documentation | `docs/09-progress` | manual | untracked |
 | `docs/INDEX.md` | documentation | `docs` | manual | tracked |
 | `docs/_generated/CODEBASE_INDEX.md` | documentation | `docs/_generated` | generated | tracked |
 | `docs/_generated/README.md` | documentation | `docs/_generated` | manual | tracked |
@@ -287,20 +341,40 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/images/concept/Screenshot_20260901-172843.png` | documentation | `docs/images` | manual | tracked |
 | `docs/images/concept/Screenshot_20260901-173108.png` | documentation | `docs/images` | manual | tracked |
 | `docs/images/concept/Screenshot_20260901-173125.png` | documentation | `docs/images` | manual | tracked |
+| `docs/images/theme/device-component-concept-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/device-overview-concept-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/graphite-editor-800x640.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/graphite-home-800x640.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/graphite-running-800x640.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/graphite-running-concept.svg` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/hmi-web-demo.html` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/home-demo-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/numeric-keypad-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/program-detail-concept-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/program-stages-concept-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/programs-concept-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/running-demo-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/running-elapsed-time-native-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/running-time-browser-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/running-time-native-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/running-time-unknown-time-native-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/stage-editor-demo-800x480.png` | documentation | `docs/images` | manual | untracked |
+| `docs/images/theme/text-keyboard-800x480.png` | documentation | `docs/images` | manual | untracked |
 | `simulator/desktop/CMakeLists.txt` | build | `simulator/desktop` | manual | tracked |
 | `simulator/desktop/cmake/ResolveLvgl.cmake` | build | `simulator/desktop` | manual | tracked |
 | `simulator/desktop/cmake/ResolveSDL2.cmake` | build | `simulator/desktop` | manual | tracked |
 | `simulator/desktop/lv_conf.h` | header | `simulator/desktop` | manual | tracked |
 | `simulator/desktop/src/main.c` | source | `simulator/desktop` | manual | tracked |
-| `simulator/semantic_controller/CMakeLists.txt` | build | `simulator/semantic_controller` | manual | untracked |
-| `simulator/semantic_controller/include/furnace_hmi/simulated_controller.h` | header | `simulator/semantic_controller` | manual | untracked |
-| `simulator/semantic_controller/src/simulated_controller.c` | source | `simulator/semantic_controller` | manual | untracked |
-| `simulator/ui_lab/CMakeLists.txt` | build | `simulator/ui_lab` | manual | untracked |
-| `simulator/ui_lab/src/main.c` | source | `simulator/ui_lab` | manual | untracked |
-| `simulator/ui_lab/src/ui_lab_explorer.c` | source | `simulator/ui_lab` | manual | untracked |
-| `simulator/ui_lab/src/ui_lab_explorer.h` | header | `simulator/ui_lab` | manual | untracked |
+| `simulator/semantic_controller/CMakeLists.txt` | build | `simulator/semantic_controller` | manual | tracked |
+| `simulator/semantic_controller/include/furnace_hmi/simulated_controller.h` | header | `simulator/semantic_controller` | manual | tracked |
+| `simulator/semantic_controller/src/simulated_controller.c` | source | `simulator/semantic_controller` | manual | tracked |
+| `simulator/ui_lab/CMakeLists.txt` | build | `simulator/ui_lab` | manual | tracked |
+| `simulator/ui_lab/data/device_service_catalogue.txt` | documentation | `simulator/ui_lab` | manual | untracked |
+| `simulator/ui_lab/src/main.c` | source | `simulator/ui_lab` | manual | tracked |
+| `simulator/ui_lab/src/ui_lab_explorer.c` | source | `simulator/ui_lab` | manual | tracked |
+| `simulator/ui_lab/src/ui_lab_explorer.h` | header | `simulator/ui_lab` | manual | tracked |
 | `tests/host/CMakeLists.txt` | test | `tests/host` | manual | tracked |
-| `tests/host/dashboard_model_smoke.c` | test | `tests/host` | manual | untracked |
+| `tests/host/dashboard_model_smoke.c` | test | `tests/host` | manual | tracked |
 | `tests/host/foundation_smoke.c` | test | `tests/host` | manual | tracked |
 | `tests/host/ui_strings_smoke.c` | test | `tests/host` | manual | tracked |
 | `tests/zephyr/foundation/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
@@ -308,16 +382,19 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/zephyr/foundation/src/main.c` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
 | `tools/bootstrap_zephyr.py` | tool | `tools` | manual | tracked |
+| `tools/build_icon_sprite.py` | tool | `tools` | manual | untracked |
 | `tools/codebase-index.schema.json` | tool | `tools` | manual | tracked |
 | `tools/codebase_index.py` | tool | `tools` | manual | tracked |
+| `tools/hmi_web_demo_p1_smoke.cjs` | tool | `tools` | manual | untracked |
+| `tools/review_ui_lab.py` | tool | `tools` | manual | untracked |
 | `tools/run_desktop_ui.py` | tool | `tools` | manual | tracked |
-| `tools/run_foundation.py` | tool | `tools` | manual | untracked |
-| `tools/run_ui_lab.py` | tool | `tools` | manual | untracked |
+| `tools/run_foundation.py` | tool | `tools` | manual | tracked |
+| `tools/run_ui_lab.py` | tool | `tools` | manual | tracked |
 | `tools/tests/test_bootstrap_zephyr.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_codebase_index.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_desktop_ui.py` | test | `tools` | manual | tracked |
-| `tools/tests/test_run_foundation.py` | test | `tools` | manual | untracked |
-| `tools/tests/test_run_ui_lab.py` | test | `tools` | manual | untracked |
+| `tools/tests/test_run_foundation.py` | test | `tools` | manual | tracked |
+| `tools/tests/test_run_ui_lab.py` | test | `tools` | manual | tracked |
 | `west.yml` | build | `.` | manual | tracked |
 
 ## Diagnostics

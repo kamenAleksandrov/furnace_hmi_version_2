@@ -196,7 +196,8 @@ def parser() -> argparse.ArgumentParser:
     )
     argument_parser.add_argument(
         "--scenario",
-        choices=("disconnected", "idle", "running-normal", "manual", "paused", "fault", "stale"),
+        choices=("disconnected", "idle", "running-normal", "manual", "paused", "fault", "stale",
+                 "running-overrun", "cooling"),
         default="running-normal",
         help="UI-lab scenario for `ui` or `ui-check`",
     )

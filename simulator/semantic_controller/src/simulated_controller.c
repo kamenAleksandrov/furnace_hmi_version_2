@@ -44,6 +44,7 @@ const char *furnace_hmi_sim_scenario_name(furnace_hmi_sim_scenario_t scenario)
         [FURNACE_HMI_SIM_SCENARIO_FAULT] = "fault",
         [FURNACE_HMI_SIM_SCENARIO_STALE] = "stale",
         [FURNACE_HMI_SIM_SCENARIO_RUNNING_OVERRUN] = "running-overrun",
+        [FURNACE_HMI_SIM_SCENARIO_COOLING] = "cooling",
     };
 
     if (scenario >= FURNACE_HMI_SIM_SCENARIO_COUNT) {
@@ -72,17 +73,21 @@ bool furnace_hmi_sim_scenario_from_name(
     return false;
 }
 
+#define SIM_CURING_END_SECONDS (68U * 60U)
+
 static void fill_graph(
     furnace_hmi_dashboard_state_t *state,
     furnace_hmi_value_validity_t measured_validity
 )
 {
-    static const uint32_t stage_times[] = { 0U, 8U * 60U, 20U * 60U, 44U * 60U, 59U * 60U, 64U * 60U };
-    static const int32_t stage_temperatures[] = { 25, 180, 180, 850, 850, 250 };
+    static const uint32_t stage_times[] = { 0U, 3U * 60U, 15U * 60U, 57U * 60U, 68U * 60U, 103U * 60U };
+    static const int32_t stage_temperatures[] = { 25, 34, 34, 160, 160, 47 };
     state->graph_sample_count = FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS;
     for (size_t index = 0; index < state->graph_sample_count; ++index) {
-        const uint32_t elapsed = (uint32_t)index * stage_times[5] /
-            (uint32_t)(state->graph_sample_count - 1U);
+        const size_t section = index / 6U < 4U ? index / 6U : 4U;
+        const uint32_t steps = section == 4U ? 7U : 6U;
+        const uint32_t elapsed = stage_times[section] +
+            (stage_times[section + 1U] - stage_times[section]) * (uint32_t)(index - section * 6U) / steps;
         size_t stage_index = 0U;
         while (stage_index + 1U < sizeof(stage_times) / sizeof(stage_times[0]) &&
                elapsed > stage_times[stage_index + 1U]) {
@@ -94,7 +99,9 @@ static void fill_graph(
         const int32_t last_temperature = stage_temperatures[stage_index + 1U];
         const int32_t planned = first_temperature + (last_temperature - first_temperature) *
             (int32_t)(elapsed - first_time) / (int32_t)(last_time - first_time);
-        const int32_t measured = planned - 22 + (int32_t)((index % 4U) * 7U);
+        const int32_t measured = state->elapsed_seconds.value > 0
+            ? 25 + (int32_t)((int64_t)(state->current_temperature_c.value - 25) * elapsed / state->elapsed_seconds.value)
+            : state->current_temperature_c.value;
         const furnace_hmi_value_validity_t sample_validity =
             measured_validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT &&
             state->elapsed_seconds.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT &&
@@ -107,7 +114,20 @@ static void fill_graph(
             .planned_temperature_c = planned,
             .measured_temperature_c = measured,
             .measured_validity = sample_validity,
+            .planned_cooling = elapsed > SIM_CURING_END_SECONDS,
         };
+    }
+}
+
+/* Measured trace follows the plan closely up to the observed run time. */
+static void track_planned_measurements(furnace_hmi_dashboard_state_t *state, uint32_t until_seconds)
+{
+    for (size_t index = 0; index < state->graph_sample_count; ++index) {
+        furnace_hmi_graph_sample_t *sample = &state->graph_samples[index];
+        sample->measured_temperature_c = sample->planned_temperature_c - 3;
+        sample->measured_validity = sample->elapsed_seconds <= until_seconds
+            ? FURNACE_HMI_VALUE_VALIDITY_CURRENT
+            : FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
     }
 }
 
@@ -118,6 +138,7 @@ static void fill_current_common(furnace_hmi_dashboard_state_t *state)
     state->state_revision = 42U;
     state->mode = FURNACE_HMI_MACHINE_MODE_PROGRAM;
     state->run_state = FURNACE_HMI_RUN_STATE_RUNNING;
+    state->run_phase = FURNACE_HMI_RUN_PHASE_CURING;
     state->program_id = 101U;
     state->program_revision = 3U;
     (void)snprintf(
@@ -127,31 +148,31 @@ static void fill_current_common(furnace_hmi_dashboard_state_t *state)
         "Ceramic test program"
     );
     state->stage_index = 2U;
-    state->stage_count = 5U;
-    (void)snprintf(state->stage_name, sizeof(state->stage_name), "%s", "Heating to 850 C");
+    state->stage_count = 4U;
+    (void)snprintf(state->stage_name, sizeof(state->stage_name), "%s", "Heating to 160 C");
 
     state->current_temperature_c = i32_value(
-        642,
+        120,
         FURNACE_HMI_VALUE_PROVENANCE_MEASURED,
         FURNACE_HMI_VALUE_VALIDITY_CURRENT
     );
     state->target_temperature_c = i32_value(
-        850,
+        160,
         FURNACE_HMI_VALUE_PROVENANCE_COMMANDED,
         FURNACE_HMI_VALUE_VALIDITY_CURRENT
     );
     state->target_delta_c_per_minute = i32_value(
-        35,
+        2,
         FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED,
         FURNACE_HMI_VALUE_VALIDITY_CURRENT
     );
     state->elapsed_seconds = i32_value(
-        26 * 60,
+        42 * 60,
         FURNACE_HMI_VALUE_PROVENANCE_MEASURED,
         FURNACE_HMI_VALUE_VALIDITY_CURRENT
     );
     state->remaining_seconds = i32_value(
-        38 * 60,
+        26 * 60,
         FURNACE_HMI_VALUE_PROVENANCE_CALCULATED,
         FURNACE_HMI_VALUE_VALIDITY_CURRENT
     );
@@ -285,6 +306,7 @@ void furnace_hmi_simulator_set_scenario(
         fill_current_common(&simulator->state);
         simulator->state.run_state = FURNACE_HMI_RUN_STATE_PAUSED;
         simulator->state.heater_demand_percent.value = 0;
+        simulator->state.estimated_power_kw_x100.value = 0;
         simulator->state.fan_running.value = false;
         fill_graph(&simulator->state, FURNACE_HMI_VALUE_VALIDITY_CURRENT);
         break;
@@ -292,6 +314,8 @@ void furnace_hmi_simulator_set_scenario(
     case FURNACE_HMI_SIM_SCENARIO_FAULT:
         fill_current_common(&simulator->state);
         simulator->state.run_state = FURNACE_HMI_RUN_STATE_FAULT;
+        simulator->state.heater_demand_percent.value = 0;
+        simulator->state.estimated_power_kw_x100.value = 0;
         simulator->state.door_closed.value = false;
         simulator->state.fan_running.value = false;
         (void)snprintf(
@@ -315,14 +339,40 @@ void furnace_hmi_simulator_set_scenario(
 
     case FURNACE_HMI_SIM_SCENARIO_RUNNING_OVERRUN:
         fill_current_common(&simulator->state);
-        fill_graph(&simulator->state, FURNACE_HMI_VALUE_VALIDITY_CURRENT);
         simulator->state.elapsed_seconds.value = 70 * 60;
         simulator->state.remaining_seconds.value = 0;
-        simulator->state.current_temperature_c.value = 1120;
+        simulator->state.current_temperature_c.value = 190;
+        fill_graph(&simulator->state, FURNACE_HMI_VALUE_VALIDITY_CURRENT);
         simulator->state.graph_samples[simulator->state.graph_sample_count - 1U]
-            .measured_temperature_c = 1140;
+            .measured_temperature_c = 195;
         (void)snprintf(simulator->state.stage_name, sizeof(simulator->state.stage_name), "%s",
-                       "Observed run beyond planned range");
+                       "Heating / observed overrun");
+        break;
+
+    case FURNACE_HMI_SIM_SCENARIO_COOLING:
+        fill_current_common(&simulator->state);
+        simulator->state.run_phase = FURNACE_HMI_RUN_PHASE_COOLING;
+        simulator->state.stage_index = simulator->state.stage_count;
+        (void)snprintf(simulator->state.stage_name, sizeof(simulator->state.stage_name), "%s",
+                       "Automatic cooling");
+        simulator->state.elapsed_seconds.value = (int32_t)SIM_CURING_END_SECONDS;
+        simulator->state.remaining_seconds.value = 0;
+        simulator->state.cooling_elapsed_seconds = i32_value(
+            17 * 60,
+            FURNACE_HMI_VALUE_PROVENANCE_MEASURED,
+            FURNACE_HMI_VALUE_VALIDITY_CURRENT
+        );
+        simulator->state.cooling_remaining_seconds = i32_value(
+            25 * 60,
+            FURNACE_HMI_VALUE_PROVENANCE_ESTIMATED,
+            FURNACE_HMI_VALUE_VALIDITY_CURRENT
+        );
+        simulator->state.current_temperature_c.value = 102;
+        simulator->state.target_temperature_c.value = 30;
+        simulator->state.heater_demand_percent.value = 0;
+        simulator->state.estimated_power_kw_x100.value = 0;
+        fill_graph(&simulator->state, FURNACE_HMI_VALUE_VALIDITY_CURRENT);
+        track_planned_measurements(&simulator->state, SIM_CURING_END_SECONDS + 17U * 60U);
         break;
 
     case FURNACE_HMI_SIM_SCENARIO_COUNT:
@@ -358,13 +408,29 @@ void furnace_hmi_simulator_tick(
         return;
     }
 
+    if (state->run_phase == FURNACE_HMI_RUN_PHASE_COOLING) {
+        /* Curing time is frozen; cooling advances and the estimate counts down. */
+        state->cooling_elapsed_seconds.value += (int32_t)elapsed_seconds;
+        state->cooling_remaining_seconds.value =
+            state->cooling_remaining_seconds.value > (int32_t)elapsed_seconds
+                ? state->cooling_remaining_seconds.value - (int32_t)elapsed_seconds : 0;
+        const int32_t drop = (int32_t)(elapsed_seconds / 30U);
+        state->current_temperature_c.value =
+            state->current_temperature_c.value - drop > state->target_temperature_c.value
+                ? state->current_temperature_c.value - drop : state->target_temperature_c.value;
+        track_planned_measurements(state, (uint32_t)state->elapsed_seconds.value +
+                                              (uint32_t)state->cooling_elapsed_seconds.value);
+        state->state_revision += 1U;
+        return;
+    }
+
     state->elapsed_seconds.value += (int32_t)elapsed_seconds;
     if (state->remaining_seconds.value > (int32_t)elapsed_seconds) {
         state->remaining_seconds.value -= (int32_t)elapsed_seconds;
     }
 
-    const int32_t rise = (int32_t)(simulator->virtual_elapsed_seconds * 2U);
-    const int32_t current = 642 + rise;
+    const int32_t rise = (int32_t)(simulator->virtual_elapsed_seconds / 30U);
+    const int32_t current = 120 + rise;
     state->current_temperature_c.value = current > state->target_temperature_c.value
         ? state->target_temperature_c.value
         : current;

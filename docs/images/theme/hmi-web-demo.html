@@ -1,0 +1,1149 @@
+<!doctype html>
+<html lang='en' id='soft' data-side='straight' data-corners='square' data-nav='steel'>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Furnace HMI Web Demo</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101315;color:#f1f3f2;font:16px system-ui,sans-serif;display:grid;justify-content:center;padding:24px;gap:16px}button,input,select{font:inherit;color:inherit}button,select{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #b7d9ec;outline-offset:2px}button{border:1px solid #414b51;background:#30383d;border-radius:6px;min-height:48px;padding:8px 16px}button:disabled{cursor:default;opacity:.55}.screen{width:800px;height:480px;background:#171b1e;padding:0 12px 12px;display:flex;flex-direction:column;border-radius:6px;overflow:hidden}.sim{height:24px;font-size:11px;letter-spacing:1.5px;color:#bbc3c7;text-align:center;padding:4px}.header{border-top:3px solid #718ea1;border-bottom:1px solid #3a444a;height:56px;display:flex;align-items:center;gap:20px;flex-shrink:0}.header h1{font-size:24px;font-weight:600;margin:0;flex:1}.pill{font-size:13px;border:1px solid #718ea1;border-radius:16px;padding:5px 12px;color:#b8cbd6}.header .note{font-size:14px;color:#bbc3c7}.body{display:flex;gap:16px;flex:1;min-height:0;padding:12px 0}.rail{width:184px;flex-shrink:0;display:flex;flex-direction:column;gap:8px}.rail button{text-align:left;font-size:14px;background:transparent;border-color:transparent}.rail button.active{background:#285d7a;border-color:#467a98}.content{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}.content h2{font-size:20px;margin:0}.subtitle{color:#bbc3c7;font-size:13px;margin:0;min-height:18px}.rows{display:flex;flex-direction:column;gap:6px}.row{height:52px;min-height:52px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#242a2e;border-radius:6px;padding:0 10px}.row .label{font-size:15px}.value{border:0;background:transparent;min-width:120px;text-align:right;padding:4px 6px}.row small{display:block;font-size:11px;color:#bbc3c7}.actions{display:flex;align-items:center;gap:8px;margin-top:auto}.actions .status{flex:1;color:#bbc3c7;font-size:12px}.primary{background:#285d7a;border-color:#467a98}.nav{height:56px;display:flex;background:#242a2e;border-radius:6px;flex-shrink:0;overflow:hidden}.nav span{flex:1;display:grid;place-content:center;font-size:15px;color:#bbc3c7}.nav .selected{background:#285d7a;color:#f1f3f2;box-shadow:inset 0 2px #6593ad}.outside{max-width:800px;color:#bbc3c7;font-size:14px;line-height:1.5}.outside p{margin:0 0 10px}.outside select{background:#242a2e;padding:8px;border:1px solid #414b51;border-radius:6px}.outside label{margin-right:16px}dialog{color:#f1f3f2;background:#242a2e;border:1px solid #59666e;border-radius:6px;width:430px;padding:24px}dialog::backdrop{background:#000a}dialog h2{margin:0 0 12px;font-size:22px}dialog p{color:#bbc3c7;font-size:14px;line-height:1.5}dialog input{width:100%;background:#171b1e;border:1px solid #71818b;border-radius:6px;min-height:48px;padding:10px;margin:8px 0 16px}dialog footer{display:flex;justify-content:flex-end;gap:8px}a{color:#a4cde3}
+.maintenance .row{height:48px;min-height:48px}.danger{color:#ffc2b9;border-color:#91534c;background:#4d302e}.warning{color:#efc18b}dialog footer{flex-wrap:wrap}
+
+.nav button{flex:1;border:0;border-radius:0;background:transparent;color:#bbc3c7}.nav button.selected{color:#f1f3f2}.header .note{border:0;background:transparent;padding:0 8px}.device-toolbar{display:flex;align-items:center;gap:6px;min-height:48px}.device-toolbar h2{flex:1;font-size:19px}.device-toolbar button{font-size:13px;padding:6px 10px}.device-toolbar .chosen{background:#285d7a;border-color:#467a98}.device-list{display:flex;flex-direction:column;gap:6px}.device-row{width:100%;min-height:52px;height:52px;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#242a2e;border:1px solid #30383d;padding:6px 10px}.device-row strong{font-size:14px;font-weight:500}.device-row small{display:block;color:#bbc3c7;font-size:11px;line-height:16px}.device-row .tag{font-size:12px;white-space:nowrap;text-align:right}.tone-due,.tone-soon{color:#efc18b}.tone-fault{color:#ffc2b9}.tone-ok{color:#b6d5c4}.tone-unknown{color:#bbc3c7}.device-footer{display:flex;align-items:center;gap:8px;margin-top:auto;min-height:48px}.device-footer span{flex:1;font-size:12px;color:#bbc3c7}.device-footer button{font-size:13px;padding:6px 12px}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.metric{background:#242a2e;border-radius:6px;padding:10px 8px}.metric strong{font-size:24px;display:block;font-weight:500}.metric span{font-size:12px;color:#bbc3c7;display:block}.metric small{font-size:10px;color:#bbc3c7}.device-empty{background:#242a2e;border-radius:6px;padding:18px;line-height:1.5;color:#bbc3c7}.validity{font-size:12px;color:#bbc3c7;margin:0}.device-detail-title{font-size:17px!important}.screen[data-validity="stale"] .header{border-top-color:#b89b70}.screen[data-validity="fault"] .header{border-top-color:#bf6f65}
+
+.program-toolbar{display:flex;align-items:center;gap:8px;height:48px;min-height:48px}.program-toolbar h2{flex:1;min-width:0;font-size:20px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.program-toolbar .page-label{flex:1;text-align:right;font-size:13px;color:#bbc3c7;padding-right:8px}.program-toolbar button{padding:8px 14px}.program-toolbar .icon-action{width:48px;min-width:48px;padding:6px;font-size:23px}.program-toolbar .delete-action{color:#ffc2b9;background:#4d302e;border-color:#78504b;font-size:14px}.program-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:8px;flex:1;min-height:0}.program-card{background:#242a2e;border:1px solid #3b454b;text-align:left;padding:10px 12px;display:flex;flex-direction:column;justify-content:center;gap:8px;min-height:0}.program-card:hover,.stage-card:hover{background:#2c3439;border-color:#6e8b9c}.program-card .program-name{font-size:20px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.program-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:14px;color:#bbc3c7;border-top:1px solid #39434a;padding-top:7px}.program-summary span+span{border-left:1px solid #465158;padding-left:12px}.program-summary span:last-child{text-align:right}.program-detail-columns{display:grid;grid-template-columns:minmax(0,56fr) minmax(0,44fr);gap:8px;flex:1;min-height:0}.program-graph{background:#20272b;border:1px solid #3b454b;min-height:0;display:flex;flex-direction:column;padding:8px}.program-graph-label{display:flex;justify-content:space-between;font-size:13px;color:#bbc3c7;flex-shrink:0;height:20px}.program-graph svg{width:100%;height:100%;min-height:0;overflow:visible;flex:1}.program-facts{background:#242a2e;border-radius:6px;padding:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:1fr 1fr 1fr;gap:8px;min-height:0}.program-fact{min-width:0;display:flex;flex-direction:column;justify-content:center}.program-fact span{font-size:13px;color:#bbc3c7}.program-fact strong{font-size:22px;font-weight:500}.program-fact.material{grid-column:1/-1;border-top:1px solid #3b454b;padding-top:6px}.program-fact.material strong{font-size:18px}.program-actions{display:flex;gap:8px;height:48px;min-height:48px}.program-actions button{flex:1}.stage-action{background:transparent;border:2px solid #b87922;color:#f1f3f2}.stage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:8px;flex:1;min-height:0}.stage-card{background:#242a2e;border:1px solid #3b454b;padding:7px 10px;text-align:left;display:flex;flex-direction:column;gap:3px;justify-content:center;min-height:0}.stage-top{display:flex;justify-content:space-between;align-items:center;gap:6px}.stage-top strong{font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.stage-number{border:1px solid currentColor;border-radius:4px;min-width:24px;text-align:center;font-size:14px;line-height:22px}.stage-meta{font-size:12px}.stage-target{display:flex;align-items:baseline;justify-content:space-between;gap:4px;color:#f1f3f2}.stage-target strong{font-size:20px;font-weight:500}.stage-target small{font-size:12px;color:#bbc3c7}.stage-heating{color:#e8a04b}.stage-hold{color:#a77bd1}.stage-cooling{color:#42b6a3}.graph-node{cursor:pointer}.graph-node:focus{outline:none;stroke:#f1f3f2;stroke-width:3}.program-favourite{color:#e8a04b!important;border-color:#9e8458!important}
+
+.home-layout{display:grid;grid-template-columns:25% minmax(0,1fr);gap:12px;flex:1;min-height:0}.quick-launch{background:#242a2e;padding:12px;border-radius:6px;display:flex;flex-direction:column;gap:6px;min-height:0}.quick-launch h2{font-size:20px}.quick-launch small{color:#bbc3c7;font-size:12px}.quick-launch button{font-size:14px;padding:6px 10px}.quick-launch .choose{margin-top:auto}.home-overview{display:flex;flex-direction:column;gap:8px;min-height:0}.home-readings{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:#242a2e;padding:12px;border-radius:6px}.home-readings small{display:block;color:#bbc3c7;font-size:13px}.home-readings strong{font-size:23px;font-weight:500}.home-readings .current strong{font-size:36px}.furnace-panel{background:#242a2e;border-radius:6px;flex:1;min-height:0;display:flex;align-items:center;gap:16px;padding:8px 16px}.furnace-panel svg{width:58%;height:100%;min-height:0}.furnace-status{display:flex;flex-direction:column;gap:10px}.furnace-status small{display:block;color:#bbc3c7;font-size:13px}.furnace-status strong{font-size:19px;font-weight:500}.run-title{display:flex;justify-content:space-between;align-items:center;min-height:28px;gap:12px}.run-title h2{font-size:20px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.run-title span{color:#e8a04b;font-size:14px;white-space:nowrap}.run-visuals{display:flex;flex:1;min-height:0;gap:8px}.run-visuals>.program-graph{flex:1;min-width:0}.run-visuals>.furnace-panel{flex:1;min-width:0}.run-readings{display:flex;justify-content:space-between;gap:8px;padding:4px 0;min-height:36px;font-size:13px;color:#bbc3c7}.run-readings span+span{border-left:1px solid #414b51;padding-left:10px}.run-controls{display:flex;gap:8px;min-height:56px}.run-controls button{min-height:56px}.run-controls .selectors{display:flex;flex:1;gap:0}.selectors button{flex:1;background:transparent;border:0;border-radius:0}.selectors .selected{color:#9cc9e4;box-shadow:inset 0 -2px #467a98}.pause-action{background:#6a4b26;color:#ffe0b0;border-color:#c79655}.editor-top{display:flex;gap:8px;align-items:center;min-height:48px}.editor-top h2{flex:1;font-size:19px;font-weight:500}.stage-types{display:flex;gap:8px;min-height:48px}.stage-types button{flex:1;background:#30383d;border-color:#465159}.stage-types .selected{color:#f1f3f2}.stage-types .stage-type-heating.selected{background:#e8a04b;border-color:#e8a04b}.stage-types .stage-type-hold.selected{background:#a77bd1;border-color:#a77bd1}.stage-types .stage-type-cooling.selected{background:#42b6a3;border-color:#42b6a3}.edit-fields{display:flex;flex-direction:column;gap:6px}.edit-field{display:flex;gap:8px;align-items:center;background:#242a2e;padding:4px 8px;min-height:52px;border-radius:6px}.edit-field label{flex:1;color:#bbc3c7;font-size:14px}.edit-field input,.edit-field select{color:#f1f3f2;background:#171b1e;border:1px solid #52616a;border-radius:4px;padding:6px;width:150px;height:44px;font-size:18px}.edit-field select{width:210px}.edit-field button{min-width:48px;padding:6px;background:#285d7a;border-color:#467a98;color:#f1f3f2}.edit-note{font-size:12px;color:#bbc3c7;min-height:16px;margin:0}.edit-note.error{color:#ffc2b9}.edit-actions{display:flex;gap:8px;margin-top:auto;min-height:48px}.edit-actions button{flex:1}.loading-note{font-size:13px;color:#bbc3c7;margin:0}.screen[data-run-state="running"] .header{border-top-color:#e8a04b}.screen[data-run-state="paused"] .header{border-top-color:#a77bd1}
+
+.screen{position:relative}#touch-keyboard[hidden]{display:none}#touch-keyboard{position:absolute;inset:80px 12px 12px;background:#20272b;border:1px solid #59666e;border-radius:6px;z-index:20;padding:12px;display:flex;flex-direction:column;gap:4px;box-shadow:0 -4px 24px #0007}.keyboard-heading{display:flex;justify-content:space-between;align-items:center;min-height:22px}.keyboard-heading h2{font-size:18px;margin:0}.keyboard-heading span{font-size:12px;color:#bbc3c7}.keyboard-input{height:48px;min-height:48px;background:#171b1e;border:1px solid #7895a7;border-radius:4px;color:#f1f3f2;padding:8px 12px;font:22px system-ui,sans-serif;width:100%}.keyboard-hint{font-size:12px;min-height:16px;color:#bbc3c7;margin:0}.keyboard-hint.error{color:#ffc2b9}.keyboard-layout{display:flex;flex-direction:column;gap:6px;margin-top:auto}.keyboard-row{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px}.keyboard-row button{min-height:48px;height:48px;font-size:18px;padding:4px}.keyboard-row .function-key{font-size:13px;background:#3b464d}.keyboard-row .shift-on{color:#b8dcf0;border-color:#6898b4;background:#285d7a}.keyboard-bottom{display:flex;gap:6px}.keyboard-bottom button{min-height:48px;font-size:14px;padding:6px 12px}.keyboard-bottom .space-key{flex:1}.keyboard-number-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.keyboard-number-grid button{height:48px;min-height:48px;font-size:21px;padding:4px}.keyboard-number-grid .function-key{font-size:14px;background:#3b464d}.keyboard-number-actions{display:flex;gap:6px}.keyboard-number-actions button{flex:1;min-height:48px}.stage-name-entry{flex:1;background:transparent;border-color:transparent;font-size:19px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.edit-field input[readonly]{cursor:pointer}
+.keyboard-input::selection{background:#285d7a;color:#f1f3f2}
+.program-toolbar h2{font-size:24px;text-align:left}
+.stage-action{background:transparent!important;border:2px solid #b87922!important;color:#f1f3f2!important;opacity:1}
+.run-readings{display:grid;grid-template-columns:minmax(0,2.2fr) repeat(3,minmax(0,1fr));gap:8px;padding:6px 0;min-height:56px;font-size:13px;color:#bbc3c7}
+.run-readings>span,.run-readings>button{display:flex;align-items:center;justify-content:center;text-align:center;min-width:0;padding:6px 4px;background:#242a2e;border:0;border-radius:4px;white-space:nowrap}
+.run-readings span+span{border-left:0;padding-left:4px}
+.run-readings .run-time{justify-content:space-between;gap:10px;padding:4px 8px;background:transparent;border:0;color:#f1f3f2;font-size:13px;min-height:44px}.run-time-part{display:flex;align-items:baseline;gap:4px;min-width:0;white-space:nowrap}.run-time-part small{font-size:12px;color:#bbc3c7}.run-time-part strong{font-size:14px;font-weight:500}.run-readings .power-reading{flex-direction:column;gap:2px}
+/* Expo wrapper: the HMI remains a logical rectangle; only this outer layer fits it. */
+html,body{min-width:0;overflow-x:hidden}
+body{display:flex;flex-direction:column;align-items:center;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));gap:12px}
+.demo-shell{width:min(100%,1024px);display:flex;flex-direction:column;align-items:stretch;gap:8px;min-width:0;background:#101315}
+#demo-document,#demo-source{width:100%;min-width:0}
+.expo-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:56px;padding:4px 0;color:#bbc3c7}
+.expo-toolbar button,.expo-toolbar select{min-height:48px;border-color:#414b51;background:#242a2e;font-size:13px;padding:8px 12px}
+.expo-toolbar button{white-space:nowrap}.expo-toolbar .toolbar-title{flex:1;min-width:150px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#d6dde0}
+.expo-toolbar .toolbar-status{font-size:12px;color:#bbc3c7;white-space:nowrap}.expo-toolbar .toolbar-status[data-mode=inspect]{color:#efc18b}
+.expo-toolbar .primary{background:#285d7a;border-color:#467a98}
+.viewport-area{width:100%;height:auto;display:flex;justify-content:center;align-items:flex-start;min-width:0;min-height:0;overflow:hidden;position:relative}
+.viewport-frame{position:relative;flex:none;width:800px;height:480px;overflow:visible}
+.viewport-frame>.screen{transform-origin:top left}
+.rotate-hint{display:none;margin:0;color:#bbc3c7;font-size:12px;text-align:center}
+.demo-shell:fullscreen,.demo-shell.is-fallback-fullscreen{width:100vw;height:100dvh;max-width:none;padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));background:#101315}
+.demo-shell:fullscreen .viewport-area,.demo-shell.is-fallback-fullscreen .viewport-area{flex:1;height:auto;align-items:center}
+.demo-shell:fullscreen .advanced-controls,.demo-shell.is-fallback-fullscreen .advanced-controls{max-height:32vh;overflow:auto}
+.advanced-controls{width:100%;color:#bbc3c7;font-size:14px;line-height:1.5}
+.advanced-controls summary{cursor:pointer;min-height:48px;padding:12px 0;color:#d6dde0}.advanced-controls .outside{max-width:none;padding:0 4px 8px}
+.advanced-controls .outside button,.advanced-controls .outside select{min-height:48px}.advanced-controls .outside p{margin:0 0 10px}
+#message{position:fixed;inset:auto;left:50%;top:50%;margin:0;transform:translate(-50%,-50%) scale(var(--message-scale,1));transform-origin:center;max-width:calc(100vw - 24px)}
+#message::backdrop{background:#000a}
+.inspect-mode{overflow:auto;justify-content:flex-start;align-items:flex-start}.inspect-mode .viewport-frame{width:var(--logical-width,800px)!important;height:var(--logical-height,480px)!important}.inspect-mode .viewport-frame>.screen{transform:none!important}
+@media (orientation:portrait) and (max-width:700px){.rotate-hint{display:block}.expo-toolbar{justify-content:center}.expo-toolbar .toolbar-title{flex-basis:100%;text-align:center}.viewport-area{max-height:calc(100dvh - 150px)}}
+@media (max-width:700px){.expo-toolbar{gap:4px}.expo-toolbar button,.expo-toolbar select{flex:1 1 auto}.expo-toolbar .toolbar-status{flex-basis:100%;text-align:center}.advanced-controls .outside{font-size:13px}}
+.advanced-controls .outside{max-width:none;padding:4px 0 14px}
+.scenario-intro{background:#20272b;border:1px solid #3b454b;border-radius:6px;padding:12px 14px;margin-bottom:10px}
+.scenario-intro strong{display:block;color:#f1f3f2;font-size:15px;margin-bottom:4px}
+.scenario-intro p{margin:0;color:#bbc3c7;font-size:13px}
+.scenario-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.scenario-group{min-width:0;background:#20272b;border:1px solid #3b454b;border-radius:6px;padding:10px}
+.scenario-group h3{margin:0 0 8px;color:#d6dde0;font-size:14px;font-weight:600}
+.scenario-buttons,.scenario-fields{display:grid;gap:8px}
+.scenario-buttons{grid-template-columns:repeat(2,minmax(0,1fr))}
+.scenario-buttons button{width:100%;min-height:52px;padding:8px 10px}
+.scenario-field{display:flex;flex-direction:column;gap:4px;color:#bbc3c7;font-size:12px}
+.scenario-field select{width:100%;min-height:48px;background:#242a2e}
+.scenario-note{margin:10px 0 0;color:#bbc3c7;font-size:12px}
+.scenario-note a{white-space:nowrap}
+@media (max-width:900px){.scenario-groups{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:700px){.scenario-groups{grid-template-columns:1fr}.scenario-buttons{grid-template-columns:1fr}}
+.primary{background:#b87922;border-color:#e8a04b;color:#fff4df}.rail button.active,.nav button.selected{background:#76521f;border-color:#e8a04b}.header{border-top-color:#b87922}.nav button.selected{box-shadow:inset 0 2px #e8a04b}.keyboard-input{border-color:#b87922}.keyboard-row .shift-on{color:#fff0c9;border-color:#e8a04b;background:#76521f}.run-controls .pause-action{flex:1.15}.run-controls .danger{flex:1.35}.run-controls .selectors{flex:.75}.manual-layout{display:flex;flex:1;min-height:0;gap:8px}.manual-graph{flex:1;min-width:0}.manual-controls{width:38%;min-width:250px;background:#242a2e;border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px}.manual-controls h2{font-size:19px;margin:0}.manual-control{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#20272b;border-radius:5px;padding:6px 8px;min-height:56px}.manual-control span{color:#bbc3c7;font-size:13px}.manual-control button{min-width:138px;text-align:right;background:#171b1e;border-color:#b87922;font-size:20px}.manual-note{color:#bbc3c7;font-size:12px;margin:0}.manual-actions{display:flex;gap:8px;margin-top:auto}.manual-actions button{flex:1;min-height:56px}.manual-run-state{display:flex;justify-content:space-between;gap:8px;color:#bbc3c7;font-size:13px}.program-editor{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}.program-editor-name{display:flex;align-items:center;gap:8px;background:#242a2e;border-radius:6px;padding:6px 10px;min-height:56px}.program-editor-name span{color:#bbc3c7;font-size:13px}.program-editor-name button{flex:1;text-align:left;background:#171b1e;border-color:#b87922;font-size:18px}.program-stage-list{display:flex;flex-direction:column;gap:6px;overflow:hidden;flex:1}.program-stage-row{display:flex;align-items:center;gap:8px;background:#242a2e;border:1px solid #3b454b;border-radius:6px;padding:6px 10px;min-height:56px}.program-stage-row .ordinal{min-width:28px;color:#e8a04b}.program-stage-row .summary{flex:1;min-width:0}.program-stage-row .summary strong{display:block;font-size:15px}.program-stage-row .summary small{display:block;color:#bbc3c7;font-size:12px}.program-stage-row button{min-width:72px}.program-editor-toolbar,.program-editor-actions{display:flex;gap:8px;min-height:48px}.program-editor-toolbar button,.program-editor-actions button{flex:1}.program-editor-actions .status{flex:1;color:#bbc3c7;font-size:12px;display:flex;align-items:center}.cooling-note{color:#9cc9a9;font-size:12px;margin:0}.cooling-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.cooling-summary div{background:#242a2e;border-radius:5px;padding:7px}.cooling-summary small{display:block;color:#bbc3c7;font-size:11px}.cooling-summary strong{font-size:18px}.controller-pending{color:#efc18b;font-size:12px;margin:0}.device-log-list{display:flex;flex-direction:column;gap:6px;overflow:hidden;flex:1}.device-log-row{background:#242a2e;border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;gap:8px;font-size:13px}.device-log-row small{display:block;color:#bbc3c7;font-size:11px}.device-log-row .result{color:#e8a04b;white-space:nowrap}
+.sim,.header{display:none}.top-light{appearance:none;display:block;flex:0 0 4px;width:calc(100% + 24px);height:4px;min-height:4px;margin:0 -12px;padding:0;border:0;border-radius:0;background:#b87922;cursor:pointer;position:relative;z-index:1}.top-light.light-on{background:#f6c453;box-shadow:0 0 5px #f6c453,0 0 18px #e8a04b}.top-light:focus-visible{outline:2px solid #fff4df;outline-offset:3px}.body{padding:0}.nav{margin-top:8px}.screen{padding-top:0}#touch-keyboard{inset:12px}.manual-control>span{flex:1}.manual-control button{min-width:0;padding:6px;background:#171b1e;border-color:#b87922;font-size:18px}.manual-control .manual-adjust{width:40px}.manual-control .manual-value{width:122px;text-align:right}.stage-values{display:flex;align-items:baseline;justify-content:space-between;gap:6px}.stage-time{font-size:14px;color:#f1f3f2}.stage-temperature{font-size:20px;font-weight:500}.program-facts{display:flex;flex-direction:column;gap:8px}.program-fact-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;flex:1}.program-duration{border-top:1px solid #3b454b;padding-top:8px;display:flex;flex-direction:column;gap:6px;flex:2}.program-duration h3{font-size:16px;font-weight:500;margin:0}.program-duration-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;flex:1}.program-duration-values .program-fact strong{font-size:18px}
+.manual-layout{align-items:stretch;flex-direction:column}.manual-graph{display:flex;flex:7 1 0;min-height:0;width:100%;flex-direction:column}.manual-graph .program-graph{flex:1 1 0;min-height:0;width:100%}.manual-graph .program-graph svg{display:block;flex:1 1 0;width:100%;height:100%;min-height:0}.manual-controls{width:100%;min-width:0;flex:3 1 0;padding:8px;display:flex;flex-direction:column;align-items:stretch;gap:4px}.manual-control-context{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#d7dddf;font-size:16px;line-height:20px;min-height:24px}.manual-control-row{display:flex;flex:1 1 0;align-items:flex-end;gap:10px;width:100%;min-height:0}.manual-control-stack{display:flex;flex:2 1 0;flex-direction:row;align-items:flex-end;gap:10px;width:0;height:100%;margin-top:0}.manual-control{display:grid;flex:1 1 0;grid-template-columns:48px minmax(0,1fr) 48px;grid-template-rows:auto 56px;align-items:center;gap:5px 8px;background:transparent;padding:0;min-height:0}.manual-control>span{grid-column:1/-1}.manual-control button{height:56px;min-height:56px}.manual-control .manual-adjust{width:auto;padding:0;display:grid;place-items:center;text-align:center;font-size:24px;line-height:1}.manual-control .manual-value{width:auto;min-width:0;padding:6px 12px;text-align:right}.manual-actions{width:0;flex:1 1 0;align-self:flex-end;margin-top:0}.manual-actions button{height:56px;min-height:56px}
+button.top-light{flex:0 0 12px;height:12px;min-height:12px;margin:0 -12px;padding:0;background:transparent;position:relative;z-index:1}button.top-light::before{content:"";position:absolute;inset:0 0 auto;height:4px;background:#b87922}button.top-light.light-on{background:transparent;box-shadow:none}button.top-light.light-on::before{background:#f6c453;box-shadow:0 0 5px #f6c453,0 0 18px #e8a04b}
+.detail-thirds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.program-detail-columns.detail-thirds>:first-child{grid-column:span 2}.program-duration-values{display:flex;flex-direction:column;justify-content:space-evenly;gap:4px}.program-duration-values .program-fact{flex-direction:row;justify-content:space-between;align-items:baseline;gap:8px}
+.run-readings.run-line{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:4px;min-height:32px;white-space:nowrap}.run-reading{display:flex;align-items:baseline;gap:6px;min-width:0}.run-reading small{font-size:14px;color:#bbc3c7}.run-reading strong{font-size:16px;font-weight:600;color:#f1f3f2}
+#touch-keyboard .keyboard-layout{flex:1;min-height:0;margin-top:4px}.keyboard-row,.keyboard-bottom,.keyboard-number-actions{flex:1 1 0;min-height:48px}.keyboard-row{grid-template-columns:repeat(20,minmax(0,1fr))}.keyboard-row>button{grid-column:span 2;height:auto;min-height:48px}.keyboard-row>.wide-key{grid-column:span 3}.keyboard-bottom button,.keyboard-number-actions button{height:auto}.keyboard-number-grid{flex:4 4 0;min-height:0;grid-template-rows:repeat(4,minmax(48px,1fr))}.keyboard-number-grid button{height:auto;min-height:48px}#touch-keyboard.numeric-keypad{left:calc(50% - 230px);right:calc(50% - 230px);box-shadow:0 0 0 2000px rgba(0,0,0,.7)}
+.program-name-field{flex:1;min-width:0;text-align:left;background:#171b1e;border-color:#b87922;font-size:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.program-toolbar .compact-action{flex:0 0 124px;padding:8px 10px;font-size:14px}button.stage-card{color:inherit;font:inherit;width:100%;height:100%;border-radius:6px}.editor-empty{flex:1}.program-editor-actions button{flex:1}
+</style>
+<style id='soft-tiles-theme'>
+/* ============================================================================
+   Soft-tile theme: the adopted HMI style (LVGL port pending).
+   Rules:
+   - Three depth levels: page < panel < tile. Interactive items are tiles,
+     i.e. lighter than whatever they sit on. Value fields are recessed wells.
+   - Every button carries a 2px gradient edge on the side facing away from
+     where it sits on screen (bottom bar -> top edge, left rail -> right
+     edge, top toolbar -> bottom edge, right-hand controls -> left edge).
+   - Selected items get a brighter face and a full-strength edge.
+   - Important actions (primary, pause, delete/stop) also colour their text.
+   Everything below is scoped to #soft so it overrides the base layer without
+   editing it.
+   ========================================================================== */
+#soft{
+ --page:#111416;--panel:#1a1f22;
+ --tile-hi:#2c3338;--tile-lo:#252b2f;
+ --tile-hi-hover:#323a40;--tile-lo-hover:#2b3237;
+ --tile-hi-on:var(--tile-hi);--tile-lo-on:var(--tile-lo);
+ --well:#0e1113;
+ --hairline:rgba(255,255,255,.055);--hairline-strong:rgba(255,255,255,.09);
+ --text:#f1f3f2;--muted:#aeb7bb;--dim:#7f8a90;
+ --amber:#e8a04b;--amber-text:#f3b665;--amber-soft:rgba(232,160,75,.5);--amber-glow:rgba(232,160,75,.2);
+ --yellow:#f2c94c;--yellow-text:#f7d774;--red:#e0786b;--red-text:#ffb3a7;--red-glow:rgba(224,120,107,.13);
+ --heat:#e8a04b;--hold:#a77bd1;--cool:#42b6a3;--ok:#8fcfa9;
+ --neutral-edge:rgba(255,255,255,.2);--amber-quiet:rgba(232,160,75,.3);
+ --radius:10px;--radius-lg:12px;
+ --lift:inset 0 1px 0 rgba(255,255,255,.05),0 2px 6px rgba(0,0,0,.28);
+}
+#soft body,#soft .demo-shell,#soft .demo-shell:fullscreen,#soft .demo-shell.is-fallback-fullscreen{background:#0c0e10}
+#soft .screen{background:var(--page);border-radius:14px;box-shadow:0 0 0 1px rgba(255,255,255,.04),0 18px 40px rgba(0,0,0,.45)}
+
+/* ---- Tiles: every button inside the HMI and the message dialog ---------- */
+#soft .screen button,#soft dialog button,#soft .screen div.stage-card{
+ --edge:var(--amber-soft);--glow:transparent;--glow-reach:55%;
+ --edge-at:center bottom;--edge-w:100%;--edge-h:2px;--edge-dir:90deg;--glow-dir:0deg;
+ --face-hi:var(--tile-hi);--face-lo:var(--tile-lo);
+ color:var(--text);border:1px solid var(--hairline);border-radius:var(--radius);
+ background:
+  linear-gradient(var(--edge-dir),transparent 0%,var(--edge) 28%,var(--edge) 72%,transparent 100%) var(--edge-at)/var(--edge-w) var(--edge-h) no-repeat,
+  linear-gradient(var(--glow-dir),var(--glow),transparent var(--glow-reach)) no-repeat,
+  linear-gradient(180deg,var(--face-hi),var(--face-lo)) no-repeat;
+ background-origin:border-box;
+ box-shadow:var(--lift);opacity:1;
+ transition:filter .12s ease,transform .06s ease;
+}
+#soft .screen button:hover:not(:disabled),#soft dialog button:hover:not(:disabled){filter:brightness(1.07)}
+#soft .screen button:active:not(:disabled),#soft dialog button:active:not(:disabled){transform:translateY(1px);filter:brightness(1.12)}
+#soft .screen button:disabled,#soft dialog button:disabled{--edge:transparent;--glow:transparent;--face-hi:#1f2427;--face-lo:#1d2124;color:var(--dim);box-shadow:none;opacity:1}
+#soft button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+#soft .screen button.top-light,#soft .screen button.top-light:hover:not(:disabled),#soft .screen button.top-light:active:not(:disabled){background:transparent;border:0;border-radius:0;box-shadow:none;transform:none;filter:none}
+
+/* Edge placement: opposite the side of the screen the button sits on. */
+#soft .nav button,#soft .actions button,#soft .edit-actions button,#soft .program-actions:not(.program-quarters) button,
+#soft .run-controls button,#soft .manual-actions button,#soft .manual-control button,
+#soft .program-editor-actions button,#soft .device-footer button,#soft dialog button,
+#soft .keyboard-layout button{--edge-at:center top;--glow-dir:180deg}
+#soft .rail button,#soft .quick-launch button{--edge-w:0px;--edge-h:0px;--ring-dir:to left;--glow-dir:270deg}
+#soft .edit-field button,#soft .screen .device-row,#soft .content .row .value{--edge-w:0px;--edge-h:0px;--ring-dir:to right;--glow-dir:90deg}
+
+/* Selected / active: brighter face, full-strength edge. */
+#soft .rail button.active,#soft .nav button.selected,#soft .device-toolbar .chosen,
+#soft .selectors button.selected,#soft .keyboard-row .shift-on{
+ --face-hi:var(--tile-hi-on);--face-lo:var(--tile-lo-on);--edge:var(--amber);--glow:var(--amber-glow);--glow-reach:85%;color:var(--text);font-weight:600}
+
+/* Important actions: only their text is coloured, so they never read as selected. */
+#soft .screen button.primary,#soft dialog button.primary,#soft .screen .pause-action,#soft .screen .program-favourite{
+ --edge:var(--amber);color:var(--amber-text)!important;font-weight:600}
+#soft .screen button.danger,#soft dialog button.danger,#soft .program-toolbar .delete-action{
+ --edge:var(--red);color:var(--red-text)!important;font-weight:600}
+#soft .screen button.cancel-action,#soft dialog button.cancel-action{--edge:var(--red);color:var(--red-text)!important;font-weight:600}
+#soft .screen button.edit-action{--edge:var(--yellow);color:var(--yellow-text)!important;font-weight:600}
+#soft .screen button.primary:disabled,#soft .screen button.danger:disabled,#soft dialog button.danger:disabled,#soft .screen button.edit-action:disabled,#soft .screen button.cancel-action:disabled{color:var(--dim)!important;--edge:transparent;--glow:transparent}
+/* The old outlined "stage action" buttons become ordinary tiles. */
+#soft .stage-action{border:1px solid var(--hairline)!important;color:var(--text)!important;background:
+  linear-gradient(90deg,transparent 0%,var(--amber-soft) 28%,var(--amber-soft) 72%,transparent 100%) center top/100% 2px no-repeat,
+  linear-gradient(180deg,var(--tile-hi),var(--tile-lo))!important}
+#soft .stage-action:hover{background:
+  linear-gradient(90deg,transparent 0%,var(--amber-soft) 28%,var(--amber-soft) 72%,transparent 100%) center top/100% 2px no-repeat,
+  linear-gradient(180deg,var(--tile-hi-hover),var(--tile-lo-hover))!important}
+
+/* ---- Panels and information tiles --------------------------------------- */
+#soft .program-graph,#soft .furnace-panel,#soft .quick-launch,#soft .manual-controls,#soft #touch-keyboard{
+ background:var(--panel);border:1px solid var(--hairline);border-radius:var(--radius-lg);box-shadow:none}
+#soft .row,#soft .metric,#soft .home-readings,#soft .program-facts,#soft .device-empty,#soft .device-log-row,
+#soft .program-editor-name,#soft .program-stage-row,#soft .cooling-summary div,#soft .edit-field{
+ background:linear-gradient(180deg,var(--tile-hi),var(--tile-lo));border:1px solid var(--hairline);border-radius:var(--radius-lg);box-shadow:var(--lift)}
+#soft .program-editor-name{background:var(--panel);box-shadow:none}
+#soft .edit-field button{--face-hi:#394249;--face-lo:#313940}
+#soft .metric{padding:12px 12px 10px}
+#soft .home-readings{padding:14px 16px}
+#soft .program-fact.material,#soft .program-duration{border-top-color:var(--hairline-strong)}
+#soft .program-summary{border-top-color:var(--hairline-strong)}
+#soft .program-summary span+span{border-left-color:var(--hairline-strong)}
+#soft .subtitle,#soft .row small,#soft .metric span,#soft .metric small,#soft .home-readings small,#soft .furnace-status small,
+#soft .program-fact span,#soft .program-graph-label,#soft .device-row small,#soft .validity,#soft .device-footer span,
+#soft .actions .status,#soft .run-reading small,#soft .manual-control span,#soft .edit-field label,#soft .page-label{color:var(--muted)}
+
+/* ---- Bottom navigation: separate tiles, top edge ------------------------ */
+#soft .nav{background:transparent;gap:8px;overflow:visible;border-radius:0}
+#soft .nav button{border-radius:var(--radius);color:var(--muted);--edge:var(--amber-quiet)}
+#soft .nav button.selected{color:var(--text);box-shadow:var(--lift)}
+
+/* ---- Left rail (Device, Settings) --------------------------------------- */
+#soft .rail{gap:6px}
+#soft .rail button{--edge:var(--amber-quiet);color:var(--muted);min-height:50px;padding-left:14px}
+#soft .rail button.active{color:var(--text)}
+
+/* ---- Settings rows: the row is the tile; its value is the touch target --- */
+#soft .content .row .value{--face-hi:transparent;--face-lo:transparent;box-shadow:none;border-color:transparent;border-radius:8px;min-height:40px;padding:4px 12px}
+#soft .content .row:has(.value:is(button)){--edge:var(--amber-soft);--ring-dir:to right}
+#soft .content .row .value:is(button){--edge:transparent}
+
+/* ---- Device rows: status-coloured left edge ----------------------------- */
+#soft .screen .device-row{border-radius:var(--radius-lg);--edge:var(--neutral-edge)}
+#soft .device-row:has(.tone-due){--edge:var(--amber)}
+#soft .device-row:has(.tone-fault){--edge:var(--red)}
+#soft .device-row:has(.tone-ok){--edge:var(--ok)}
+#soft .tone-ok{color:var(--ok)}
+
+/* ---- Programs ------------------------------------------------------------ */
+#soft .screen .program-card{border-radius:var(--radius-lg);padding:12px 14px}
+#soft button.stage-card,#soft div.stage-card{border-radius:var(--radius-lg)}
+#soft .screen .stage-card:has(.stage-heating){--edge:var(--heat)}
+#soft .screen .stage-card:has(.stage-hold){--edge:var(--hold)}
+#soft .screen .stage-card:has(.stage-cooling){--edge:var(--cool)}
+#soft .stage-number{border-radius:6px;border-width:1px}
+#soft .program-toolbar .icon-action{font-size:22px}
+
+/* Stage type selector: selected type uses its own colour. */
+#soft .stage-types button{--edge:var(--neutral-edge);color:var(--muted)}
+#soft .stage-types button.selected{--face-hi:var(--tile-hi-on);--face-lo:var(--tile-lo-on);--glow-reach:85%;font-weight:600}
+#soft .stage-types .stage-type-heating.selected{--edge:var(--heat);--glow:rgba(232,160,75,.16);color:var(--heat)}
+#soft .stage-types .stage-type-hold.selected{--edge:var(--hold);--glow:rgba(167,123,209,.16);color:#c7a4ec}
+#soft .stage-types .stage-type-cooling.selected{--edge:var(--cool);--glow:rgba(66,182,163,.16);color:#7fd8c9}
+
+/* ---- Value fields are recessed wells ------------------------------------ */
+#soft .edit-field input,#soft .edit-field select,#soft .keyboard-input,#soft dialog input{
+ background:
+  linear-gradient(90deg,transparent 0%,var(--field-edge,var(--amber-soft)) 28%,var(--field-edge,var(--amber-soft)) 72%,transparent 100%) center bottom/100% 2px no-repeat,
+  var(--well);
+ border:1px solid var(--hairline);border-radius:8px;color:var(--text);box-shadow:inset 0 2px 4px rgba(0,0,0,.35)}
+#soft .keyboard-input{background:
+  linear-gradient(90deg,transparent 0%,var(--amber) 28%,var(--amber) 72%,transparent 100%) center bottom/100% 2px no-repeat,var(--well)}
+#soft .manual-control .manual-value,#soft .screen .program-name-field,#soft .program-editor-name button{
+ --face-hi:var(--well);--face-lo:var(--well);--edge:var(--amber-soft);--edge-at:center bottom;--glow:transparent;
+ box-shadow:inset 0 2px 4px rgba(0,0,0,.35)}
+
+/* ---- Running ------------------------------------------------------------- */
+#soft .run-controls .selectors{gap:6px}
+#soft .selectors button{--edge:var(--amber-quiet);color:var(--muted);border-radius:var(--radius)}
+#soft .selectors button.selected{box-shadow:var(--lift)}
+#soft .run-readings.run-line{background:linear-gradient(180deg,var(--tile-hi),var(--tile-lo));border:1px solid var(--hairline);border-radius:var(--radius-lg);padding:4px 14px;box-shadow:var(--lift)}
+#soft .run-readings.run-line>span{background:transparent}
+#soft .run-title span{color:var(--amber-text)}
+
+/* ---- Keyboard ------------------------------------------------------------ */
+#soft #touch-keyboard{box-shadow:0 -6px 30px rgba(0,0,0,.55)}
+#soft #touch-keyboard.numeric-keypad{box-shadow:0 0 0 2000px rgba(0,0,0,.7)}
+#soft .keyboard-layout button{--edge:transparent;border-radius:9px}
+#soft .keyboard-layout .function-key,#soft .keyboard-bottom button:not(.space-key):not(.primary),#soft .keyboard-number-actions button:not(.primary){--edge:var(--neutral-edge);color:var(--muted)}
+#soft .keyboard-layout button.primary{--edge:var(--amber)}
+#soft .keyboard-layout .shift-on{--edge:var(--amber);--glow:var(--amber-glow);--face-hi:var(--tile-hi-on);--face-lo:var(--tile-lo-on);color:var(--amber-text)}
+#soft .keyboard-input::selection{background:rgba(232,160,75,.35);color:var(--text)}
+
+/* ---- Dialog -------------------------------------------------------------- */
+#soft dialog{background:
+  linear-gradient(90deg,transparent 0%,var(--amber) 28%,var(--amber) 72%,transparent 100%) center top/100% 2px no-repeat,
+  linear-gradient(180deg,#262d31,#1f2427);
+ border:1px solid var(--hairline-strong);border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.6)}
+#soft dialog:has(footer .danger){background:
+  linear-gradient(90deg,transparent 0%,var(--red) 28%,var(--red) 72%,transparent 100%) center top/100% 2px no-repeat,
+  linear-gradient(180deg,#262d31,#1f2427)}
+#soft dialog::backdrop{background:rgba(0,0,0,.66)}
+/* ---- Program details: title row, action row, then graph + facts --------- */
+#soft .program-quarters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+#soft .program-detail-columns.program-quarters>:first-child{grid-column:span 3}
+#soft .program-actions.program-quarters{height:48px;min-height:48px}
+#soft .program-actions.program-quarters button{min-width:0;padding:8px 10px;white-space:nowrap}
+#soft .program-facts{padding:12px 14px}
+#soft .program-fact-row .program-fact strong{font-size:24px}
+
+/* ---- Top strip: same fading edge; light-on spills a warm glow downwards -- */
+#soft button.top-light::before{height:3px;background:linear-gradient(90deg,transparent 0%,var(--amber) 28%,var(--amber) 72%,transparent 100%);box-shadow:none;transition:background .3s}
+#soft button.top-light.light-on::before{background:linear-gradient(90deg,transparent 0%,#f6c453 22%,#ffe39a 50%,#f6c453 78%,transparent 100%);box-shadow:0 0 5px rgba(246,196,83,.35)}
+#soft button.top-light::after{content:"";position:absolute;left:0;right:0;top:0;height:22px;pointer-events:none;
+ background:radial-gradient(ellipse 50% 100% at 50% 0%,rgba(246,196,83,.24),rgba(246,196,83,.08) 55%,transparent 100%);
+ mix-blend-mode:screen;opacity:0;transition:opacity .4s ease}
+#soft button.top-light.light-on::after{opacity:1}
+
+/* ---- Dialog buttons: equal width, centred ------------------------------- */
+#soft dialog footer{justify-content:center;flex-wrap:wrap;gap:8px}
+#soft dialog footer button{flex:1 1 0;min-width:112px;max-width:220px}
+#soft dialog footer:has(> :nth-child(4)) button{flex:1 1 calc(50% - 4px);max-width:none}
+/* ---- Home quick launch fills the panel ---------------------------------- */
+#soft .quick-launch .quick-spacer{flex:1 0 8px}
+#soft .quick-launch .choose{margin-top:0}
+#soft .quick-launch .quick-item{flex-shrink:0}
+
+/* ---- Keyboard: grouped actions, danger keys apart from typing keys ------- */
+#soft .keyboard-field{position:relative;flex-shrink:0}
+#soft .keyboard-input{caret-color:transparent}
+#soft .keyboard-input:focus,#soft .keyboard-input:focus-visible,#soft .edit-field input:focus-visible,#soft dialog input:focus-visible{outline:none}
+#soft .keyboard-caret{position:absolute;top:11px;bottom:11px;left:12px;width:2px;margin-left:-1px;border-radius:1px;background:var(--amber);box-shadow:0 0 5px rgba(232,160,75,.55);pointer-events:none}
+#soft .keyboard-caret.blink{animation:soft-caret-blink 1.06s steps(1,end) infinite}
+@keyframes soft-caret-blink{50%{opacity:0}}
+#soft .keyboard-bottom{display:grid;grid-template-columns:repeat(20,minmax(0,1fr));gap:6px;margin-top:6px}
+#soft .keyboard-bottom button{min-width:0;padding:4px}
+#soft .keyboard-bottom .cancel-key{grid-column:1/4}
+#soft .keyboard-bottom .clear-key{grid-column:4/7}
+#soft .keyboard-bottom .space-key{grid-column:8/13}
+#soft .keyboard-bottom .left-key{grid-column:13/15}
+#soft .keyboard-bottom .right-key{grid-column:15/17}
+#soft .keyboard-bottom .apply-key{grid-column:18/21}
+#soft .keyboard-layout .arrow-key{font-size:22px;color:var(--text)}
+#soft #touch-keyboard .clear-key,#soft #touch-keyboard .cancel-key{--edge:var(--red);color:var(--red-text)}
+#soft #touch-keyboard .delete-key{--edge:var(--red);color:var(--red-text)}
+#soft .keyboard-number-grid .delete-key{grid-row:span 2}
+#soft .keyboard-number-grid .zero-key{grid-column:span 2}
+#soft .keyboard-number-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:6px}
+#soft .keyboard-number-actions .apply-key{grid-column:3/5}
+
+/* ---- Stage cards: kind header, large target, quiet detail line ---------- */
+#soft .screen .stage-card{justify-content:space-between;gap:2px;padding:10px 12px 12px;text-align:left}
+#soft .stage-card .stage-top{display:flex;align-items:center;gap:8px}
+#soft .stage-card .stage-kind{flex:1;min-width:0;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+#soft .stage-card .stage-number{border:0;min-width:24px;height:24px;line-height:24px;padding:0 4px;border-radius:7px;font-size:13px;font-weight:600;text-align:center}
+#soft .stage-number.stage-heating{background:rgba(232,160,75,.16)}
+#soft .stage-number.stage-hold{background:rgba(167,123,209,.18)}
+#soft .stage-number.stage-cooling{background:rgba(66,182,163,.16)}
+#soft .stage-card .stage-glyph{width:36px;height:18px;flex:none;overflow:visible}
+#soft .stage-card .stage-values{display:block}
+#soft .stage-card .stage-temperature{font-size:26px;font-weight:600;line-height:1.15;color:var(--text)}
+#soft .stage-card .stage-detail{display:flex;gap:8px;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden}
+#soft .stage-card .stage-detail span+span::before{content:"\00b7";margin-right:8px}
+#soft .stage-card .stage-time{font-size:13px;color:var(--muted)}
+/* ---- Stage editor: fields take the colour of the selected stage type ----- */
+#soft .content:has(.stage-type-hold.selected){--field-edge:rgba(167,123,209,.7)}
+#soft .content:has(.stage-type-cooling.selected){--field-edge:rgba(66,182,163,.7)}
+#soft .edit-field button{--edge:var(--field-edge,var(--amber-soft))}
+
+/* ---- Running controls: narrower Pause/Stop, one segmented view switch ---- */
+#soft .run-controls .pause-action,#soft .run-controls .danger{flex:1}
+#soft .run-controls .selectors{flex:1.55;display:flex;gap:0;padding:0;overflow:hidden;
+ background:linear-gradient(180deg,var(--tile-hi),var(--tile-lo));border:1px solid var(--hairline);border-radius:var(--radius);box-shadow:var(--lift)}
+#soft .run-controls .selectors button{flex:1;min-height:0;height:auto;border:0;border-radius:0;box-shadow:none;
+ --face-hi:transparent;--face-lo:transparent;--edge:transparent;color:var(--muted);font-weight:400}
+#soft .run-controls .selectors button+button{border-left:1px solid var(--hairline-strong)}
+#soft .run-controls .selectors button.selected{--edge:var(--amber);--glow:var(--amber-glow);--glow-reach:85%;color:var(--text);font-weight:600}
+/* ---- Vertical edges: a gradient ring that follows the rounded corners -----
+   Brightest along the edge side, it wraps both corners and fades out along
+   the top and bottom borders. Colour comes from --edge like every other edge. */
+#soft .rail button,#soft .quick-launch button,#soft .edit-field button,#soft .screen .device-row,#soft .content .row:has(.value:is(button)){position:relative}
+#soft .rail button::before,#soft .quick-launch button::before,#soft .edit-field button::before,#soft .screen .device-row::before,#soft .content .row:has(.value:is(button))::before{
+ content:"";position:absolute;inset:-1px;border-radius:inherit;padding:2px;pointer-events:none;
+ background:linear-gradient(var(--ring-dir),var(--edge) 0,transparent var(--ring-reach,110px));
+ -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+ mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+#soft .edit-field button{--ring-reach:36px}
+#soft .rail button:disabled::before,#soft .quick-launch button:disabled::before{display:none}
+/* ---- Variant (default): square tiles with a lit side edge ----------------
+   Only the edge side carries colour: a 2px line along that side, full
+   strength in the middle and fading out before it reaches either corner. Remove data-side (or open with ?side=ring) to
+   return to the rounded ring. */
+#soft[data-side='straight'] .rail button,#soft[data-side='straight'] .quick-launch button,#soft[data-side='straight'] .edit-field button,
+#soft[data-side='straight'] .screen .device-row,#soft[data-side='straight'] .content .row:has(.value:is(button)){border-radius:0}
+#soft[data-side='straight'] .rail button::before,#soft[data-side='straight'] .quick-launch button::before{
+ inset:-1px -1px -1px auto;width:2px;padding:0;border-radius:0;-webkit-mask:none;mask:none;
+ background:linear-gradient(180deg,transparent 0%,var(--edge) 24%,var(--edge) 76%,transparent 100%)}
+#soft[data-side='straight'] .edit-field button::before,#soft[data-side='straight'] .screen .device-row::before,
+#soft[data-side='straight'] .content .row:has(.value:is(button))::before{
+ inset:-1px auto -1px -1px;width:2px;padding:0;border-radius:0;-webkit-mask:none;mask:none;
+ background:linear-gradient(180deg,transparent 0%,var(--edge) 24%,var(--edge) 76%,transparent 100%)}
+/* ---- Variant (default): no rounded corners anywhere in the HMI ----------
+   Open with ?corners=round to compare against the rounded version. */
+#soft[data-corners='square'] .screen,#soft[data-corners='square'] .screen *,#soft[data-corners='square'] .screen *::before,#soft[data-corners='square'] .screen *::after,
+#soft[data-corners='square'] dialog,#soft[data-corners='square'] dialog *{border-radius:0!important}
+/* ---- Graphs: plot fills the panel below a single caption row -------------- */
+#soft .program-graph svg{display:block}
+/* ---- Running readings strip: constant height so the cooling toggle never shifts the graph */
+#soft .run-readings.run-line{min-height:50px;padding:0 14px}
+#soft .run-readings.run-line:has(.cooling-toggle){padding-right:0}
+#soft .run-line .cooling-toggle{flex:none;align-self:stretch;min-height:48px;height:auto;margin:0;padding:0 16px;font-size:14px;border-top:0;border-bottom:0;border-right:0;border-radius:0 !important;box-shadow:none}
+#soft .run-line .cooling-toggle{--edge:#74b4df;width:140px;color:#a9d2ee;font-weight:600}
+/* ---- Manual: readings strip on top, graph fills, controls take their content height */
+#soft .manual-readings{flex:none}
+#soft .manual-readings .manual-state{font-size:15px;font-weight:600;color:var(--muted);min-width:64px}
+#soft .manual-readings .manual-state.active{color:var(--amber-text)}
+#soft .manual-readings .manual-note{flex:1;justify-content:flex-end;text-align:right;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#soft .manual-readings .run-reading small{font-size:13px}
+#soft .manual-readings .run-reading strong{font-size:15px}
+#soft .manual-graph{flex:1 1 0}
+#soft .manual-controls{flex:none}
+#soft .manual-controls .manual-control-row{flex:none}
+#soft .manual-controls .manual-control-stack{height:auto}
+/* ---- Manual controls: four equal 56px slots; each setting is one stepper tile */
+#soft .manual-controls{padding:8px;gap:0}
+#soft .manual-controls .manual-control-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:stretch}
+#soft .manual-controls .manual-actions{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;width:auto;margin:0;align-self:stretch}
+#soft .manual-controls .manual-actions button{height:56px;min-height:56px}
+#soft .manual-controls .manual-control-stack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:auto;height:auto;margin:0}
+#soft .manual-controls .manual-control{display:grid;grid-template-columns:48px minmax(0,1fr) 48px;grid-template-rows:56px;gap:0;padding:0;min-height:0;overflow:hidden;
+ background:
+  linear-gradient(90deg,transparent 0%,var(--amber-soft) 28%,var(--amber-soft) 72%,transparent 100%) center top/100% 2px no-repeat,
+  linear-gradient(180deg,var(--tile-hi),var(--tile-lo));
+ border:1px solid var(--hairline);box-shadow:var(--lift)}
+#soft .manual-controls .manual-control button{--face-hi:transparent;--face-lo:transparent;--edge:transparent;border:0;box-shadow:none;height:56px;min-height:56px;grid-row:1}
+#soft .manual-controls .manual-control .manual-adjust:first-of-type{grid-column:1}
+#soft .manual-controls .manual-control .manual-adjust:last-of-type{grid-column:3}
+#soft .manual-controls .manual-control .manual-value{grid-column:2;margin-top:2px;height:54px;min-height:54px;align-self:end;--face-hi:var(--well);--face-lo:var(--well);--edge:var(--amber-soft);--edge-at:center bottom;box-shadow:inset 0 2px 4px rgba(0,0,0,.35);
+ border-left:1px solid var(--hairline-strong);border-right:1px solid var(--hairline-strong);text-align:center;padding:16px 4px 0;font-size:18px;white-space:nowrap}
+#soft .manual-controls .manual-control>.manual-caption{grid-column:2;grid-row:1;align-self:start;justify-self:center;margin-top:6px;z-index:1;pointer-events:none;
+ font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+/* ---- Variant (default steel): navigation buttons get their own quiet edge colour.
+   White text stays; only the edge changes. Selected tabs keep amber. ?nav=silver / ?nav=amber to compare. */
+#soft[data-nav='steel']{--nav-edge:rgba(127,159,179,.62)}
+#soft[data-nav='silver']{--nav-edge:rgba(255,255,255,.32)}
+#soft[data-nav] .screen button.nav-action:not(:disabled),#soft[data-nav] dialog button.nav-action:not(:disabled),
+#soft[data-nav] .rail button:not(.active):not(:disabled),#soft[data-nav] .nav button:not(.selected):not(:disabled){--edge:var(--nav-edge)}
+/* ---- Home: columns follow the bottom navigation grid ----------------------- */
+#soft .home-layout{grid-template-columns:calc((100% - 24px) / 4) minmax(0,1fr);gap:8px}
+
+/* ---- Load program: bottom row mirrors the detail action row ---------------- */
+#soft .loading-actions{align-items:center}
+#soft .loading-actions .loading-note{grid-column:1/4;margin:0;padding-left:4px;font-size:13px;color:var(--muted)}
+#soft .loading-actions button{grid-column:4;--edge-at:center top;--glow-dir:180deg}
+
+/* ---- Stage editor: tappable position, four-slot type/action row ----------- */
+#soft .editor-top .stage-heading{display:flex;align-items:center;gap:8px;font-size:19px;font-weight:500}
+#soft .editor-top .stage-position{--face-hi:var(--well);--face-lo:var(--well);--edge:var(--amber-soft);min-width:52px;min-height:44px;height:44px;padding:0 10px;font-size:19px;font-weight:600;box-shadow:inset 0 2px 4px rgba(0,0,0,.35)}
+#soft .editor-top .stage-position:disabled{--face-hi:transparent;--face-lo:transparent;color:var(--text);border-color:transparent;box-shadow:none;min-width:0;padding:0}
+#soft .stage-types{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+
+/* ---- Cancel returns to the amber theme colour (destructive actions stay red) */
+#soft .screen button.cancel-action,#soft dialog button.cancel-action{--edge:var(--amber);color:var(--amber-text)!important}
+#soft #touch-keyboard .cancel-key{--edge:var(--amber);color:var(--amber-text)}
+/* ---- Load program: graph full height, Start under the facts --------------- */
+#soft .loading-columns{grid-template-rows:minmax(0,1fr) 48px}
+#soft .loading-columns>:first-child{grid-column:1/4;grid-row:1/3}
+#soft .loading-columns>.program-facts{grid-column:4;grid-row:1}
+#soft .loading-columns>.loading-start{grid-column:4;grid-row:2;height:48px;min-height:48px;--edge-at:center top;--glow-dir:180deg}
+
+/* ---- Stage editor dialog -------------------------------------------------- */
+#soft .stage-dialog[hidden]{display:none}
+#soft .stage-dialog{position:absolute;inset:0;z-index:15;display:grid;place-items:center;background:rgba(0,0,0,.62)}
+#soft .stage-dialog-card{width:600px;max-width:calc(100% - 32px);max-height:calc(100% - 24px);display:flex;flex-direction:column;gap:8px;padding:14px 16px 16px;
+ background:
+  linear-gradient(90deg,transparent 0%,var(--amber) 28%,var(--amber) 72%,transparent 100%) center top/100% 2px no-repeat,
+  linear-gradient(180deg,#262d31,#1f2427);
+ border:1px solid var(--hairline-strong);box-shadow:0 20px 50px rgba(0,0,0,.6)}
+#soft .stage-dialog .editor-top{min-height:48px}
+#soft .stage-dialog .editor-top .stage-heading{flex:1;justify-content:center}
+#soft .stage-dialog .edit-fields{gap:6px}
+#soft .stage-dialog .edit-field{min-height:52px}
+#soft .stage-dialog .edit-note{min-height:16px}
+#soft .stage-dialog .edit-actions{margin-top:4px}
+#soft .stage-dialog .edit-actions button,#soft .stage-dialog .stage-types button{min-width:0}
+#soft .edit-field input{width:92px;text-align:center}
+/* ---- Stage dialog: compact, three two-button rows ----------------------- */
+#soft .stage-dialog-card{width:440px}
+#soft .stage-dialog .stage-manage,#soft .stage-dialog .stage-types{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#soft .stage-dialog .stage-manage button,#soft .stage-dialog .stage-types button{min-width:0}
+#soft .stage-dialog:has(.stage-type-hold.selected){--field-edge:rgba(167,123,209,.7)}
+#soft .stage-dialog .edit-field{background:none;border:0;box-shadow:none;padding:0 0 0 4px;min-height:52px}
+#soft .stage-dialog .edit-field label{font-size:15px;color:var(--muted)}
+
+/* ---- Stage fields: one stepper component, like Manual ------------------- */
+#soft .field-stepper{display:grid;grid-template-columns:48px 96px 48px;height:52px;flex:none;overflow:hidden;
+ background:
+  linear-gradient(90deg,transparent 0%,var(--field-edge,var(--amber-soft)) 28%,var(--field-edge,var(--amber-soft)) 72%,transparent 100%) center top/100% 2px no-repeat,
+  linear-gradient(180deg,var(--tile-hi),var(--tile-lo));
+ border:1px solid var(--hairline);box-shadow:var(--lift)}
+#soft .edit-field .field-stepper button{--edge:transparent;--face-hi:transparent;--face-lo:transparent;border:0;box-shadow:none;height:50px;min-height:50px;min-width:0;padding:0;font-size:22px}
+#soft .edit-field .field-stepper button::before{display:none}
+#soft .edit-field .field-stepper input{width:auto;height:48px;margin-top:2px;padding:0 4px;border:0;border-left:1px solid var(--hairline-strong);border-right:1px solid var(--hairline-strong);border-radius:0;text-align:center;font-size:19px;
+ background:linear-gradient(90deg,transparent 0%,var(--field-edge,var(--amber-soft)) 28%,var(--field-edge,var(--amber-soft)) 72%,transparent 100%) center bottom/100% 2px no-repeat,var(--well)}
+#soft .edit-field .field-readonly{width:194px;text-align:center;font-size:19px;font-weight:600}
+
+/* ---- Centred text in every input field ---------------------------------- */
+#soft .keyboard-input,#soft dialog input,#soft .edit-field input,#soft .screen .program-name-field{text-align:center}
+/* ---- Stage dialog: fixed height; delete / navigation / add share one row -- */
+#soft .stage-dialog-card{height:404px}
+#soft .stage-dialog .edit-fields{flex:1 1 auto}
+#soft .stage-dialog .editor-top{display:flex;align-items:center;gap:8px}
+#soft .stage-dialog .stage-nav{flex:1;display:flex;align-items:center;justify-content:center;gap:6px}
+#soft .stage-dialog .stage-nav .stage-heading{flex:none}
+#soft .stage-dialog .stage-icon,#soft .stage-dialog .stage-arrow{width:48px;min-width:48px;height:48px;min-height:48px;padding:0;display:grid;place-items:center}
+#soft .stage-dialog .stage-icon{font-size:26px;line-height:1}
+#soft .stage-dialog .stage-arrow{font-size:28px;line-height:1;padding-bottom:3px}
+#soft .stage-dialog .stage-icon svg{display:block}
+#soft .stage-dialog .edit-field-slot{visibility:hidden}
+/* ---- Icons (shared set, inline sprite) ------------------------------------ */
+#soft .icon{width:20px;height:20px;flex:none;display:block}
+#soft .screen button:has(>.icon),#soft dialog button:has(>.icon){display:inline-flex;align-items:center;justify-content:center;gap:8px}
+#soft .rail button:has(>.icon){justify-content:flex-start;gap:12px}
+#soft .nav button:has(>.icon){gap:10px}
+#soft button.icon-only .icon,#soft .keyboard-layout .icon{width:22px;height:22px}
+#soft .stage-dialog .stage-arrow{padding:0}
+#soft .device-row .tag{display:inline-flex;align-items:center;gap:6px}
+#soft .device-row .tag .icon{width:16px;height:16px}
+#soft .nav button>span{flex:none;display:inline;place-content:normal}
+/* Rails follow the bottom-navigation grid like Home: rail = Home tab width, content starts at the Programs tab. */
+#soft .body{gap:8px}
+#soft .rail{width:calc((100% - 24px) / 4)}
+#soft .rail button{padding-left:12px;padding-right:8px}
+#soft .rail button:has(>.icon){gap:10px}
+#soft .rail button .icon{width:18px;height:18px}
+/* ---- Stage fields: locked rows are greyed, never replaced --------------- */
+#soft .edit-field.is-locked label{color:var(--dim)}
+#soft .edit-field.is-locked .field-stepper{opacity:.45;--field-edge:rgba(255,255,255,.14)}
+#soft .edit-field .field-stepper input:disabled{color:var(--muted);cursor:default}
+#soft .edit-field .field-stepper button:disabled{--face-hi:transparent;--face-lo:transparent;color:var(--dim)}
+
+/* ---- Pager: one component, ‹ | 1 / 2 | › -------------------------------- */
+#soft .pager{display:grid;grid-template-columns:48px minmax(64px,auto) 48px;height:48px;flex:none;overflow:hidden;
+ background:
+  linear-gradient(90deg,transparent 0%,var(--nav-edge,var(--amber-soft)) 28%,var(--nav-edge,var(--amber-soft)) 72%,transparent 100%) center bottom/100% 2px no-repeat,
+  linear-gradient(180deg,var(--tile-hi),var(--tile-lo));
+ border:1px solid var(--hairline);box-shadow:var(--lift)}
+#soft .device-footer .pager{background-position:center top,0 0}
+#soft .pager>button{--face-hi:transparent;--face-lo:transparent;--edge:transparent;border:0;box-shadow:none;min-width:0;width:48px;height:46px;min-height:46px;padding:0}
+#soft .pager>button:disabled{--face-hi:transparent;--face-lo:transparent;color:var(--dim);opacity:.6}
+#soft .pager>.pager-label,#soft .pager>.stage-heading{display:flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;margin:0;border-left:1px solid var(--hairline-strong);border-right:1px solid var(--hairline-strong);font-size:15px;font-weight:600;color:var(--text);white-space:nowrap}
+#soft .program-toolbar .pager{margin-left:auto}
+#soft .stage-dialog .editor-top{justify-content:space-between}
+#soft .stage-dialog .stage-nav.pager{flex:none;display:grid}
+#soft .stage-dialog .stage-nav .stage-position{height:38px;min-height:38px}
+/* ---- Five-row lists: rows at the 48px minimum so five fit above the footer */
+#soft .screen .device-row{height:48px;min-height:48px}
+#soft .content .rows .row{height:48px;min-height:48px}
+/* ---- Pagers: no divider lines between arrows and the page number -------- */
+#soft .pager>.pager-label,#soft .pager>.stage-heading{border-left:0;border-right:0}
+/* ---- Demo wrapper (outside the HMI): fits any screen and orientation ------ */
+#soft .demo-shell{width:100%;max-width:none;align-items:center}
+#soft .expo-toolbar,#soft .advanced-controls{width:min(100%,max(var(--frame-w,800px),960px))}
+#soft .expo-toolbar{container-type:inline-size;container-name:expo}
+#soft .expo-toolbar .label-short{display:none}
+@container expo (max-width:1060px){#soft .expo-toolbar .label-long{display:none}#soft .expo-toolbar .label-short{display:inline}}
+#soft .expo-toolbar .toolbar-status{font-size:11px;white-space:nowrap}
+#soft .expo-toolbar{min-height:0;padding:0;gap:6px}
+#soft .expo-toolbar button,#soft .expo-toolbar select{min-height:44px;padding:6px 12px}
+#soft .expo-toolbar .toolbar-title{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:900px){#soft .expo-toolbar .toolbar-title{flex-basis:100%}}
+/* Short landscape (phones): one scrollable toolbar row, no title/status, so the HMI keeps the height. */
+@media (orientation:landscape) and (max-height:520px){
+ #soft body{padding:6px max(8px,env(safe-area-inset-right)) 6px max(8px,env(safe-area-inset-left));gap:6px}
+ #soft .demo-shell{gap:6px}
+ #soft .expo-toolbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;justify-content:flex-start}
+ #soft .expo-toolbar::-webkit-scrollbar{display:none}
+ #soft .expo-toolbar .toolbar-title,#soft .expo-toolbar .toolbar-status{display:none}
+ #soft .expo-toolbar button,#soft .expo-toolbar select{flex:none;min-height:40px;font-size:12px;padding:4px 10px}
+}
+</style>
+</head>
+<body>
+<!-- icon-sprite:begin (generated by tools/build_icon_sprite.py; do not edit) -->
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden"><symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol><symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol><symbol id="i-backspace" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5.5h10.5a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9L3.5 12z"/><path d="M11.5 9.5l5 5M16.5 9.5l-5 5"/></symbol><symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><path d="M7.5 15l3.5-4 3 2.5L19 7.5"/></symbol><symbol id="i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.3l2.6 2.6 5-5"/></symbol><symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6l-6 6 6 6"/></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6l6 6-6 6"/></symbol><symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 2"/></symbol><symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-furnace" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="3" width="15" height="18" rx="1.5"/><rect x="7.5" y="6.5" width="9" height="8" rx=".5"/><path d="M10 10.5h4M15 18h1.5"/></symbol><symbol id="i-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l3.5-4.5"/><path d="M4 20h16"/></symbol><symbol id="i-history" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4.5v4h4"/><path d="M12 8v4.5l3 1.8"/></symbol><symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11L12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5.5h4V20"/></symbol><symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8h.01"/></symbol><symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6.5h11M9 12h11M9 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01"/></symbol><symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></symbol><symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></symbol><symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5v13l10.5-6.5z"/></symbol><symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-program" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M4 16.5l4.5-8h4.5l2.5 4h4.5"/></symbol><symbol id="i-shift" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5l7.5 7.5H15.5v7h-7v-7H4.5z"/></symbol><symbol id="i-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9.5a11 11 0 0 1 15 0"/><path d="M7.5 13a6.5 6.5 0 0 1 9 0"/><path d="M12 17h.01"/></symbol><symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h8M18 7h2M4 17h2M12 17h8"/><circle cx="15" cy="7" r="2.5"/><circle cx="9" cy="17" r="2.5"/></symbol><symbol id="i-split" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M12 5v14"/></symbol><symbol id="i-star-filled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z" fill="currentColor"/></symbol><symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z"/></symbol><symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol><symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.8"/><path d="M12 2.8v2M12 19.2v2M2.8 12h2M19.2 12h2M5.5 5.5l1.4 1.4M17.1 17.1l1.4 1.4M5.5 18.5l1.4-1.4M17.1 6.9l1.4-1.4"/></symbol><symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol><symbol id="i-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4L2.8 19.5h18.4z"/><path d="M12 10v4.2M12 16.9h.01"/></symbol><symbol id="i-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.19 20.58A1.96 1.96 0 0 1 3.42 17.81L11.05 10.18A5.26 5.26 0 0 1 18.02 3.29L15.26 6.05L17.95 8.74L20.71 5.98A5.26 5.26 0 0 1 13.82 12.95Z"/></symbol></svg>
+<!-- icon-sprite:end -->
+<section id='demo-document'>
+<div id='demo-source'>
+<script type='text/plain' id='demo-markup'>
+<div class='screen'>
+ <button class="top-light" id="top-light" type="button" aria-label="Turn interior light on" title="Interior light"></button>
+ <div class="sim">DESIGN CONCEPT · ILLUSTRATIVE VALUES</div>
+ <header class="header"><h1>Settings</h1><button class="note" id="open-notifications">Notifications</button><span class="pill">● Idle</span></header>
+ <div class="body"><nav class="rail" aria-label="Settings categories">
+  <button class="active" data-tab="program" aria-current="page">Program preferences</button>
+  <button data-tab="display">Display & interaction</button><button data-tab="time">Date & time</button><button data-tab="connections">Connections</button><button data-tab="maintenance">Maintenance</button>
+ </nav><main class="content" id="content"></main></div>
+ <nav class="nav" aria-label="Main navigation"><button id="nav-home">Home</button><button id="nav-programs">Programs</button><button id="nav-device">Device</button><button id="nav-settings" class="selected">Settings</button></nav>
+ <section id="touch-keyboard" role="dialog" aria-modal="true" aria-labelledby="keyboard-title" hidden></section>
+</div>
+<div class="outside">
+ <p><strong>HMI web demo:</strong> choose a category, edit values, and try Save / Discard. Changes last only until this page closes. Home, Programs, Device and Settings are clickable. Stage edits and demo runs are local to this page; reloading resets them.</p>
+ <button id="try-text-keyboard">Show letter keyboard</button> <button id="try-number-keyboard">Show numeric keypad</button><br>
+ <button id="demo-advance">Advance run 1 min</button> <button id="demo-example">Show running example</button><br>
+ <label>Program library <select id="program-fixture"><option value="full">Full library</option><option value="partial">Partial last page</option><option value="empty">Empty library</option></select></label><br>
+ <label>Device data <select id="device-fixture"><option value="current">Current / service attention</option><option value="healthy">No current attention</option><option value="fault">Active fault</option><option value="stale">Stale snapshot</option><option value="unavailable">Unavailable</option><option value="empty">No components configured</option></select></label><br>
+ <label>Concept viewport <select id="size"><option>800 × 480</option><option>800 × 640</option><option>1024 × 600</option></select></label>
+ <label>Connection fixture <select id="fixture"><option value="disabled">Disabled by configuration</option><option value="unsupported">Not supported</option><option value="unknown">Checking availability</option><option value="enabled">Enabled, not connected</option></select></label>
+ <p style="margin-top:12px"><label>Restart assessment <select id="restart-assessment"><option value="ok">OK now</option><option value="busy">Busy</option><option value="timeout">No response</option></select></label><label>Restart attempt result <select id="restart-result"><option value="accepted">Accepted</option><option value="rejected">Refused</option><option value="unknown">No final response</option><option value="unsent">Cannot send</option></select></label></p>
+ <p style="margin-top:12px">These selectors are design-review controls outside the proposed device UI. <a href="../../09-progress/TOUCH_KEYBOARD_PLAN.md">Keyboard layouts and plan</a>. <a href="../../09-progress/HOME_RUNNING_DEMO_PLAN.md">Home / Running / editor plan</a>. No real clock, furnace, server, Bluetooth, storage, or configuration is accessed. Programs: <a href="../../03-hmi/PROGRAMS_STYLE_PROPOSAL.md">style proposal</a> / <a href="../../09-progress/PROGRAMS_STYLE_PLAN.md">implementation plan</a>. Device: <a href="../../03-hmi/DEVICE_SCREEN_PROPOSAL.md">design proposal</a> / <a href="../../09-progress/DEVICE_IMPLEMENTATION_PLAN.md">implementation plan</a>. Settings: <a href="../../03-hmi/SETTINGS_SCREEN_PROPOSAL.md">behavior proposal</a> and <a href="../../09-progress/SETTINGS_IMPLEMENTATION_PLAN.md">implementation plan</a>.</p>
+</div>
+<dialog id="message"><h2 id="message-title"></h2><p id="message-text"></p><footer id="message-actions"></footer></dialog>
+</script>
+</div>
+</section>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+// Keep the legacy HMI fragment inert until the bootstrap can place it inside the shared demo shell.
+const materializeDemoMarkup=()=>{const source=$('demo-markup');if(source){const holder=document.createElement('div');holder.innerHTML=source.textContent;source.replaceWith(...holder.childNodes);}};
+materializeDemoMarkup();
+const setupAdvancedScenarioMenu=()=>{
+ const outside=document.querySelector('.outside');if(!outside||outside.dataset.structured)return;
+ const textKeyboard=$('try-text-keyboard'),numberKeyboard=$('try-number-keyboard'),startRun=$('demo-example'),manualAdvance=$('demo-advance');
+ const programFixture=$('program-fixture'),deviceFixture=$('device-fixture'),connectionFixture=$('fixture'),size=$('size'),restartAssessment=$('restart-assessment'),restartResult=$('restart-result');
+ const notes=outside.querySelectorAll('p')[2];if(!textKeyboard||!numberKeyboard||!startRun||!manualAdvance||!programFixture||!deviceFixture||!connectionFixture||!size||!restartAssessment||!restartResult||!notes)return;
+ const field=(label,control)=>{const wrapper=node('label',undefined,'scenario-field');wrapper.htmlFor=control.id;wrapper.append(node('span',label),control);return wrapper;};
+ const group=(title,content)=>{const section=node('section',undefined,'scenario-group'),heading=node('h3',title);section.append(heading,content);return section;};
+ const actions=node('div',undefined,'scenario-buttons');actions.append(textKeyboard,numberKeyboard,startRun,manualAdvance);
+ const data=node('div',undefined,'scenario-fields');data.append(field('Program library',programFixture),field('Device data',deviceFixture),field('Connection fixture',connectionFixture));
+ const review=node('div',undefined,'scenario-fields');review.append(field('Concept viewport',size),field('Restart assessment',restartAssessment),field('Restart attempt result',restartResult));
+ const groups=node('div',undefined,'scenario-groups');groups.append(group('Actions',actions),group('Data fixtures',data),group('Review and recovery',review));
+ const intro=node('div',undefined,'scenario-intro');intro.append(node('strong','Advanced demo scenarios'),node('p','These controls are grouped by purpose and stay outside the faithful HMI rectangle. Program changes, fixtures and keyboard previews are local to this page.'));
+ notes.className='scenario-note';outside.replaceChildren(intro,groups,notes);outside.dataset.structured='true';
+};
+setupAdvancedScenarioMenu();
+const PROGRAM_MAX_TEMPERATURE_C=180,PROGRAM_MAX_RATE_TENTHS=30,PROGRAM_MAX_CURING_MINUTES=2880;
+const initial={rate:3,temperature:200,duration:720,brightness:80,dim:5,motion:'Off',view:'Split',format:'24-hour'};
+let mainPage='home',deviceTab='overview',deviceFilter='all',devicePage=0,selectedComponent=null;
+let programEditor=null,programLoadOrigin='home',manualDraft={target:120,rate:2},manualRun=null,manualStatusNotice='';
+const controller={session:1,pending:null,light:false,events:[],requestId:0,phase:'idle',limits:{maxTemperature:180,maxRate:3,maxCuringMinutes:2880}};
+function controllerEvent(source,event,result='confirmed'){controller.events.unshift({time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),source,event,result});controller.events=controller.events.slice(0,24);}
+function controllerRequest(event,apply){const requestId=++controller.requestId;controller.pending=event;controllerEvent('HMI',event,'requested');render();window.setTimeout(()=>{if(requestId!==controller.requestId)return;controller.pending=null;apply();controllerEvent('Control CPU',event,'accepted');render();},180);}
+function controllerLimits(){return controller.limits;}
+let saved={...initial},candidate={...saved},tab='display',displayPage=0,editing=null;
+const dirty=()=>Object.keys(saved).some(k=>saved[k]!==candidate[k]);
+const duration=v=>`${Math.floor(v/60)} h ${String(v%60).padStart(2,'0')} min`;
+function node(tag,text,className){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(className)n.className=className;return n;}
+// Navigation moves (reversible, no side effects) share one edge colour; see the data-nav variant.
+const NAV_LABELS=/^(Back|‹ Back|Previous|Next|More ›|Part info|View stages|Stay)$/;
+// Icons come from the shared set in app/hmi/presentation/icons (embedded by tools/build_icon_sprite.py).
+function icon(name){const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg'),use=document.createElementNS(ns,'use');svg.setAttribute('class','icon');svg.setAttribute('aria-hidden','true');use.setAttribute('href','#i-'+name);svg.append(use);return svg;}
+// [icon, placement, label]. Labelled buttons keep their text; icon-only buttons get an accessible name (callers may override it).
+const BUTTON_ICONS={'Back':['arrow-left'],'\u2039 Back':['arrow-left','start','Back'],'More \u203a':['chevron-right','end','More'],'Previous':['chevron-left'],'Next':['chevron-right','end'],
+ 'Edit program':['pencil'],'Edit stages':['pencil'],'Delete program':['trash'],'New program':['plus'],'View stages':['list'],'Part info':['info'],
+ 'Start program':['play'],'Start':['play'],'Start manual':['play'],'Resume':['play'],'Pause':['pause'],'Stop':['stop'],'Return Home':['home'],'Show cooling':['chart'],'Hide cooling':['chart'],'Graph':['chart'],'Split':['split'],'Furnace':['furnace'],
+ 'Caps':['shift'],'Delete':['backspace'],'\u2190':['arrow-left','only','Move cursor left'],'\u2192':['arrow-right','only','Move cursor right'],
+ '\u270e':['pencil','only','Edit'],'\u2605':['star-filled','only','Favourite'],'\u2606':['star','only','Favourite'],'\u2039':['chevron-left','only','Previous'],'\u203a':['chevron-right','only','Next'],'+':['plus','only','Increase'],'-':['minus','only','Decrease']};
+function applyButtonIcon(b,text){const spec=BUTTON_ICONS[text];if(!spec)return;const [name,place='start',label]=spec;if(place==='only'){b.replaceChildren(icon(name));b.classList.add('icon-only');if(label)b.setAttribute('aria-label',label);return;}const words=node('span',label??b.textContent);b.replaceChildren(...(place==='end'?[words,icon(name)]:[icon(name),words]));}
+function button(text,fn,className){const b=node('button',text==='Backspace'?'Delete':text,className);if(NAV_LABELS.test(text))b.classList.add('nav-action');applyButtonIcon(b,text==='Backspace'?'Delete':text);b.type='button';b.onclick=fn;return b;}
+function tell(title,text){$('message-title').textContent=title;$('message-text').textContent=text;$('message-actions').replaceChildren(button('Close',()=>$('message').close(),'primary'));$('message').showModal();}
+function go(next){if(next===tab)return;if(dirty()){$('message-title').textContent='Unsaved preferences';$('message-text').textContent='Save your changes, discard them, or stay on this page.';$('message-actions').replaceChildren(button('Stay',()=>$('message').close()),button('Discard',()=>{candidate={...saved};$('message').close();tab=next;render();},'danger'),button('Save',()=>{saved={...candidate};$('message').close();tab=next;render();},'primary'));$('message').showModal();}else{tab=next;render();}}
+function edit(key,title,help,min,max,step){openNumericKeyboard(title,candidate[key],{min,max,step,help},value=>{candidate[key]=value;render();});}
+
+function row(rows,label,value,action,detail){const r=node('div',undefined,'row'),l=node('div',label,'label');if(detail)l.append(node('small',detail));r.append(l);r.append(action?button(value,action,'value'):node('span',value,'value'));rows.append(r);}
+function render(){if(touchKeyboard)closeTouchKeyboard(false);if(mainPage!=='stage-edit')hideStageDialog();document.querySelector('.nav').style.display=(mainPage==='running'||mainPage==='manual-running'||mainPage==='stage-edit'||mainPage==='program-editor')?'none':'flex';if(programGraphObserver){programGraphObserver.disconnect();programGraphObserver=null;}if(mainPage==='home'){renderHome();return;}if(mainPage==='manual'||mainPage==='manual-running'){renderManual();return;}if(mainPage==='running'){renderRunning();return;}if(mainPage==='stage-edit'){renderStageEditor();return;}if(mainPage==='program-editor'){renderProgramEditor();return;}if(mainPage==='loading'){renderLoading();return;}if(mainPage==='programs'){renderPrograms();return;}if(mainPage==='device'){renderDevice();return;}mountShell('Settings',settingsCategories,tab,next=>go(next));document.querySelectorAll('[data-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.tab===tab);if(b.dataset.tab===tab)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});const c=$('content');c.replaceChildren();const titles={program:'Program preferences',display:'Display & interaction',time:'Date & time',connections:'Connections',maintenance:'Maintenance'};c.append(node('h2',titles[tab]));const subtitles={program:'Controller limits are supplied by the furnace.',display:'Adjust this display to suit your workspace.',time:'Date and time are supplied by the furnace controller.',connections:'Availability follows device configuration.',maintenance:'Maintenance workflows are presented here.'};c.append(node('p',subtitles[tab],'subtitle'));const rows=node('div',undefined,tab==='maintenance'?'rows maintenance':'rows');c.append(rows);
+ if(tab==='program'){
+  row(rows,'Maximum heating rate',`${candidate.rate.toFixed(1)} °C/min  ›`,()=>edit('rate','Maximum heating rate (°C/min)','Controller limits still apply.',0.1,PROGRAM_MAX_RATE_TENTHS/10,0.1));
+  row(rows,'Maximum temperature',`${candidate.temperature} °C  ›`,()=>edit('temperature','Maximum temperature (°C)','A display preference, not a furnace protection limit.',1,PROGRAM_MAX_TEMPERATURE_C,1));
+  row(rows,'Maximum program duration',`${duration(candidate.duration)}  ›`,()=>edit('duration','Maximum program duration (minutes)','Planned duration preference. Does not enforce an actual run cutoff. Concept entry range: 1–59999 minutes.',1,59999,1));
+ }else if(tab==='display'){
+  // Up to five rows per page; the remainder sits behind More.
+  const displayRows=[
+   ()=>row(rows,'Brightness',`${candidate.brightness}%  ›`,()=>edit('brightness','Brightness (%)','Screen brightness.',10,100,1)),
+   ()=>row(rows,'Dim when idle',`${candidate.dim} min  ›`,()=>edit('dim','Idle dim delay (minutes)','Keeps the screen legible during operation and faults.',1,60,1)),
+   ()=>row(rows,'Reduced motion',candidate.motion,()=>{candidate.motion=candidate.motion==='Off'?'On':'Off';render();}),
+   ()=>row(rows,'Default Running view',`${candidate.view}  ›`,()=>{const modes=['Graph','Split','Furnace'];candidate.view=modes[(modes.indexOf(candidate.view)+1)%3];render();}),
+   ()=>row(rows,'Language / units','English / °C',null,'Initially supported options'),
+   ()=>row(rows,'Theme','Graphite',null,'Current visual theme')];
+  displayRows.slice(displayPage*5,displayPage*5+5).forEach(draw=>draw());
+ }else if(tab==='time'){
+  row(rows,'Controller date','14 Sep 2026',()=>tell('Set date & time','Date and time are set on the controller.'),'Current value');
+  row(rows,'Controller time',candidate.format==='24-hour'?'14:32':'2:32 PM',()=>tell('Set date & time','The controller confirms or rejects the change.'),'Current value');
+  row(rows,'Display format',candidate.format,()=>{candidate.format=candidate.format==='24-hour'?'12-hour':'24-hour';render();});
+ }else if(tab==='maintenance'){
+  row(rows,'Reset settings','Review',resetScopes,'Choose which local preferences to reset');
+  row(rows,'Delete programs','Review',deletePrograms,'Controller-owned program library');
+  row(rows,'Restart display','Review',restartDisplay,'Restart this display only');
+  row(rows,'Attempt furnace restart','Check',assessRestart,'Ask the controller before confirmation');
+ }else{
+  const mode=$('fixture').value,status={disabled:'Disabled by configuration',unsupported:'Not supported',unknown:'Checking availability',enabled:'Not connected'}[mode];
+  for(const name of ['Server','Bluetooth'])row(rows,name,mode==='enabled'?'Set up  ›':status,mode==='enabled'?()=>tell(`${name} setup`,name==='Server'?'Connection details appear here when supported and enabled.':'Pairing details appear here only when supported and enabled. Radio hardware, permissions and pairing flow remain to be defined.'):null,mode==='enabled'?status:undefined);
+  c.append(node('p','Server and Bluetooth status are separate from the furnace link.','subtitle'));
+ }
+ const actions=node('div',undefined,'actions'),status=node('span',tab==='maintenance'?'Each action has its own confirmation.':tab==='connections'?'Connection controls follow available permissions.':dirty()?'Unsaved changes':tab==='program'?'Saved programs are unchanged.':'Preferences for this display.','status');status.setAttribute('role','status');actions.append(status);
+ if(tab==='display')actions.append(button(displayPage===0?'More ›':'‹ Back',()=>{displayPage=1-displayPage;render();}));
+ if(tab!=='connections'&&tab!=='maintenance'){const discard=button('Discard',()=>{candidate={...saved};render();},'danger');discard.disabled=!dirty();const save=button('Save',()=>{saved={...candidate};render();tell('Preferences saved','Your preferences were saved.');},'primary');save.disabled=!dirty();actions.append(discard,save);}c.append(actions);
+}
+
+function confirmAction(title,text,label,action){
+ $('message-title').textContent=title;$('message-text').textContent=text;
+ const cancel=button('Cancel',()=>$('message').close(),'cancel-action');
+ const confirm=button(label,()=>{confirm.disabled=true;$('message').close();action();},'danger');
+ $('message-actions').replaceChildren(cancel,confirm);$('message').showModal();cancel.focus();
+}
+function resetScopes(){
+ $('message-title').textContent='Reset settings';
+ $('message-text').textContent='Choose the local preferences to reset. Controller configuration, programs, history, credentials and pairing are excluded.';
+ const cancel=button('Cancel',()=>$('message').close(),'cancel-action');
+ const choice=(label,keys,details)=>button(label,()=>{$('message').close();confirmAction('Reset '+label.toLowerCase()+'?',details+' Continue?', 'Reset preferences',()=>{for(const key of keys){saved[key]=initial[key];candidate[key]=initial[key];}render();tell('Concept reset complete','The selected preferences were reset.');});});
+ const displayKeys=['brightness','dim','motion','view','format'],programKeys=['rate','temperature','duration'];
+ const displayDefaults='Brightness 80%; idle dim 5 min; reduced motion Off; Running view Split; time format 24-hour.';
+ const programDefaults='Heating rate 3.0 degrees C/min; temperature 200 degrees C; program duration 12 h.';
+ $('message-actions').replaceChildren(cancel,choice('Display preferences',displayKeys,displayDefaults),choice('Program preferences',programKeys,programDefaults),choice('Both groups',[...displayKeys,...programKeys],displayDefaults+' '+programDefaults));$('message').showModal();cancel.focus();
+}
+function deletePrograms(){
+ $('message-title').textContent='Delete programs';$('message-text').textContent='Choose which programs to delete.';
+ const cancel=button('Cancel',()=>$('message').close(),'cancel-action');
+ const choice=(label,scope)=>button(label,()=>{$('message').close();confirmAction('Delete '+scope+'?', 'This requests permanent deletion from the controller program library and cannot be undone. History and the active accepted run snapshot are excluded. The controller may refuse.','Request deletion',()=>tell('Deletion requested','The controller will report which programs were deleted.'));});
+ $('message-actions').replaceChildren(cancel,choice('Selected (1)','Example program A'),choice('All programs (2)','Example program A and Example program B'));$('message').showModal();cancel.focus();
+}
+function restartDisplay(){confirmAction('Restart display?', 'The display and its controls will be temporarily unavailable. This does not request a furnace Stop. Unsaved edits and pending local writes must be resolved first.', 'Restart display',()=>tell('Display restarting','After restarting, the display reads the current controller state and never replays old furnace commands.'));}
+function assessRestart(){
+ const assessment=$('restart-assessment').value;
+ const copies={ok:['Restart furnace controller?','The controller reports that restart is allowed now. Restart will temporarily interrupt communication. Continue?','Request restart'],busy:['Furnace is busy','The controller reports work in progress. Restarting may interrupt the program, leave work unfinished, lose unsaved data, or damage the load/equipment. Do you still want to request a restart? The controller can refuse.','Attempt restart'],timeout:['No response from furnace','Restart suitability could not be checked. The furnace may still be operating. Attempt a restart request if communication permits? The controller still decides whether to execute it.','Attempt restart']};
+ // The fixture stands in for a bounded read-only assessment; no transport exists.
+ const [title,text,label]=copies[assessment];confirmAction(title,text,label,attemptRestart);
+}
+function attemptRestart(){
+ const outcomes={accepted:['Restart accepted','The controller accepted the restart. The display will reconnect and verify the controller session and current state.'],rejected:['Restart refused','Controller reason: operation in progress. The refusal is final for this request.'],unknown:['Restart outcome unknown','No final response was received. The display will read the current controller state and will not repeat the request.'],unsent:['Could not send restart request','No communication path is available. Nothing is queued for reconnect.']};
+ const [title,text]=outcomes[$('restart-result').value];tell(title,text);
+}
+
+
+// Developer-owned sample catalogue: add a part/task here, not a renderer branch.
+// All values and procedures below are synthetic review data, not manufacturer advice.
+const deviceCatalogue=[
+ {id:'cabinet_fan',name:'Cabinet fan',part:'FAN-DEMO',location:'Electrical cabinet',usage:'1,840 h',source:'Confirmed rotating time',instance:'fan-instance-01',tasks:[
+  {id:'fan_inspect',name:'Inspect fan',basis:'Fan runtime',interval:'800 h',remaining:'160 h remaining',state:'soon',last:'1,200 h',procedure:'Approved inspection procedure not yet supplied.'},
+  {id:'fan_calendar',name:'Scheduled inspection',basis:'Calendar',interval:'12 months',remaining:'Due 14 Sep 2026',state:'due',last:'14 Sep 2025',procedure:'Refer this task to service personnel.'}]},
+ {id:'air_filter',name:'Air filter',part:'FILTER-DEMO',location:'Cabinet air inlet',usage:'530 h',source:'Fan runtime since service',instance:'filter-instance-01',tasks:[
+  {id:'filter_inspect',name:'Inspect filter',basis:'Fan runtime',interval:'500 h',remaining:'30 h overdue',state:'due',last:'1,310 fan h',procedure:'Use the approved filter service procedure when available.'}]},
+ {id:'main_contactor',name:'Main contactor',part:'CONTACTOR-DEMO',location:'Electrical cabinet',usage:'12,400 cycles',source:'Controller switching count',instance:'contactor-instance-01',tasks:[
+  {id:'contactor_inspect',name:'Scheduled inspection',basis:'Switching cycles',interval:'20,000 cycles',remaining:'7,600 cycles remaining',state:'ok',last:'Installation',procedure:'Electrical service personnel only; approved procedure not yet supplied.'}]},
+ {id:'thermocouple',name:'Temperature sensor',part:'SENSOR-DEMO',location:'Chamber',usage:'1,286 h',source:'Program runtime',instance:'sensor-instance-01',tasks:[
+  {id:'sensor_check',name:'Check measurement chain',basis:'Calendar',interval:'12 months',remaining:'Due 10 Feb 2027',state:'ok',last:'10 Feb 2026',procedure:'Refer measurement verification to authorized service personnel.'}]},
+ {id:'heater_ssr',name:'Heater SSR',part:'SSR-DEMO',location:'Electrical cabinet',usage:'Not measured',source:'No dedicated counter',instance:'ssr-instance-01',tasks:[
+  {id:'ssr_inspect',name:'Condition inspection',basis:'Condition-based',interval:'No fixed interval',remaining:'No countdown',state:'condition',last:'No record',procedure:'No worker electrical tests. Refer the approved service procedure to service personnel.'}]},
+ {id:'door_seal',name:'Door seal',part:'SEAL-DEMO',location:'Chamber door',usage:'1,286 h',source:'Program runtime',instance:'seal-instance-01',tasks:[
+  {id:'seal_inspect',name:'Inspect seal condition',basis:'Condition-based',interval:'No fixed interval',remaining:'No countdown',state:'condition',last:'No record',procedure:'Approved worker inspection guidance not yet supplied.'}]},
+ {id:'power_supply',name:'Power supply',part:'PSU-DEMO',location:'Electrical cabinet',usage:'2,418 h',source:'Powered-on time',instance:'psu-instance-01',tasks:[
+  {id:'psu_inspect',name:'Scheduled inspection',basis:'Calendar',interval:'12 months',remaining:'Installation date missing',state:'unknown',last:'Unknown',procedure:'Service personnel must verify the baseline and approved schedule.'}]}
+];
+const serviceHistory=[
+ {title:'Air filter inspected',detail:'20 Aug 2026 / 1,310 fan h',kind:'Inspection',text:'Controller record. Task: filter_inspect. Recorded by Service team. The worker cannot edit this record.'},
+ {title:'Service warning acknowledged',detail:'18 Aug 2026 / Service period 3',kind:'Acknowledgement',text:'Controller-recorded service-policy acknowledgement. This is not a repair or inspection completion record and cannot clear a component task locally.'},
+ {title:'Temperature sensor replaced',detail:'10 Feb 2026 / sensor-instance-01',kind:'Replacement',text:'Installed-instance change. Furnace lifetime totals and the previous part history are retained.'},
+ {title:'Cabinet fan inspected',detail:'02 Feb 2026 / 1,200 fan h',kind:'Inspection',text:'Controller record. The runtime task baseline differs from the calendar task baseline.'}
+];
+const settingsCategories=[['display','Display & interaction'],['time','Date & time'],['connections','Connections'],['maintenance','Maintenance']];
+const deviceCategories=[['overview','Overview'],['log','Device log'],['maintenance','Maintenance'],['history','Service history'],['info','Device info']];
+function fixture(){return $('device-fixture').value||'current';}
+const RAIL_ICONS={overview:'gauge',log:'list',maintenance:'wrench',history:'history',info:'info',display:'sun',time:'clock',connections:'signal',program:'program'};
+function mountShell(title,categories,active,select){
+ const topLight=$('top-light');topLight.classList.toggle('light-on',controller.light);topLight.setAttribute('aria-label',controller.light?'Turn interior light off':'Turn interior light on');topLight.onclick=toggleLight;
+ document.querySelector('.header h1').textContent=title;
+ document.querySelector('.note').textContent='Maintenance';
+ $('nav-home').classList.toggle('selected',mainPage==='home');$('nav-programs').classList.toggle('selected',mainPage==='programs'||mainPage==='loading'||mainPage==='stage-edit');$('nav-device').classList.toggle('selected',mainPage==='device');$('nav-settings').classList.toggle('selected',mainPage==='settings');
+ for(const [id,name]of [['nav-home','home'],['nav-programs','program'],['nav-device','furnace'],['nav-settings','sliders']]){const b=$(id);if(!b.querySelector('.icon'))b.replaceChildren(icon(name),node('span',b.textContent));}
+ const rail=document.querySelector('.rail');rail.hidden=!['settings','device'].includes(mainPage);rail.style.display=rail.hidden?'none':'';rail.setAttribute('aria-label',title+' categories');
+ rail.replaceChildren(...categories.map(([id,name])=>{const b=button(name,()=>select(id));if(RAIL_ICONS[id])b.replaceChildren(icon(RAIL_ICONS[id]),node('span',name));b.classList.toggle('active',active===id);if(active===id)b.setAttribute('aria-current','page');return b;}));
+ const state=fixture();document.querySelector('.screen').setAttribute('data-validity',state);
+ document.querySelector('.pill').textContent=state==='fault'?'\u25cf Fault':state==='stale'?'\u25cf Stale':state==='unavailable'?'\u25cf Unavailable':'\u25cf Idle';
+}
+function switchMain(page,nextTab){if((demoRun||manualRun)&&['running','manual-running'].includes(mainPage)&&page!=='running'&&page!=='manual-running')return;if(stageSession&&page!=='stage-edit'){leaveStageEditor();return;}
+ const finish=()=>{mainPage=page;if(page==='programs'){programRoute='library';programPage=0;programStagePage=0;selectedProgram=0;}if(nextTab){deviceTab=nextTab;deviceFilter='all';devicePage=0;selectedComponent=null;}render();};
+ if(mainPage==='settings'&&dirty()&&page!=='settings'){
+  $('message-title').textContent='Unsaved preferences';$('message-text').textContent='Save or discard Settings edits before leaving Settings.';
+  $('message-actions').replaceChildren(button('Stay',()=>$('message').close()),button('Discard',()=>{candidate={...saved};$('message').close();finish();},'danger'),button('Save',()=>{saved={...candidate};$('message').close();finish();},'primary'));$('message').showModal();
+ }else finish();
+}
+function chooseDevice(tabName,filter='all'){deviceTab=tabName;deviceFilter=filter;devicePage=0;selectedComponent=null;render();}
+function visibleCatalogue(){return fixture()==='empty'?[]:deviceCatalogue;}
+function effectiveTask(task){
+ if(fixture()==='healthy'&&['soon','due','unknown'].includes(task.state))return {...task,state:'ok',remaining:'No task currently due (fixture)'};
+ return task;
+}
+function componentSummary(part){const rank={due:0,unknown:1,soon:2,condition:3,ok:4};return part.tasks.map(effectiveTask).sort((a,b)=>rank[a.state]-rank[b.state])[0];}
+function stateLabel(state){return {due:'Due / overdue',soon:'Due soon',ok:'Up to date',condition:'Condition-based',unknown:'Unknown'}[state]||'Unknown';}
+function tone(state){return state==='fault'?'tone-fault':state==='due'||state==='soon'?'tone-due':state==='ok'?'tone-ok':'tone-unknown';}
+function deviceRow(parent,title,detail,tag,state,action){const b=button('',action,'device-row');const text=node('div');text.append(node('strong',title),node('small',detail));const tagNode=node('span',undefined,'tag '+tone(state)),statusIcon={fault:'warning',due:'warning',soon:'warning',ok:'check-circle'}[state];if(statusIcon)tagNode.append(icon(statusIcon));tagNode.append(document.createTextNode(tag));b.append(text,tagNode);parent.append(b);return b;}
+function deviceToolbar(parent,title,filters=[]){const bar=node('div',undefined,'device-toolbar');bar.append(node('h2',title));for(const [id,label]of filters)bar.append(button(label,()=>{deviceFilter=id;devicePage=0;render();},deviceFilter===id?'chosen':''));parent.append(bar);}
+const DEVICE_PAGE_SIZE=5;
+function pageList(parent,items,draw,emptyText){
+ const perPage=DEVICE_PAGE_SIZE,pages=Math.max(1,Math.ceil(items.length/perPage));devicePage=Math.min(devicePage,pages-1);
+ const list=node('div',undefined,'device-list');if(!items.length)list.append(node('div',emptyText,'device-empty'));else items.slice(devicePage*perPage,devicePage*perPage+perPage).forEach(x=>draw(list,x));parent.append(list);
+ const footer=node('div',undefined,'device-footer');footer.append(node('span',`${items.length} items${fixture()==='stale'?' \u00b7 Last known':''}`));
+ footer.append(pager(devicePage,pages,v=>{devicePage=v;render();}));parent.append(footer);
+}
+function taskDetails(part,original){const t=effectiveTask(original),stale=fixture()==='stale'?'LAST KNOWN SNAPSHOT, 2 minutes old. ':'';tell(part.name+' / '+t.name,stale+`${stateLabel(t.state)}. Basis: ${t.basis}. Interval: ${t.interval}. ${t.remaining}. Last baseline: ${t.last}. ${t.procedure} Manufacturer reference: not supplied. Viewing this notice does not record service or clear a fault.`);}
+function partInfo(part){tell(part.name+' / Part info',`Part: ${part.part}. Location: ${part.location}. Installed instance: ${part.instance}. Usage: ${part.usage} (${part.source}). Catalogue DEMO-1. Manufacturer/procedure references not supplied. Configuration and service baselines are read-only on this page.`);}
+function openPart(id){selectedComponent=id;devicePage=0;render();}
+function notifications(){
+ const list=[];
+ if(fixture()==='fault')list.push({kind:'error',title:'Temperature reading unavailable',detail:'E-DEMO-01 \u00b7 Active',tag:'Fault',state:'fault',open:()=>tell('E-DEMO-01 / Active fault','Temperature reading unavailable. No approved recovery procedure is supplied. Refer this code to service personnel. This screen cannot clear the fault or authorize continued operation.')});
+ for(const part of visibleCatalogue())for(const original of part.tasks){const t=effectiveTask(original);if(['due','soon','unknown'].includes(t.state))list.push({kind:'service',title:part.name,detail:t.name+' \u00b7 '+t.remaining,tag:stateLabel(t.state),state:t.state,open:()=>taskDetails(part,original)});}
+ const rank={fault:0,due:1,soon:2,unknown:3};return list.sort((a,b)=>rank[a.state]-rank[b.state]);
+}
+function renderDevice(){
+ mountShell('Device',deviceCategories,deviceTab,id=>chooseDevice(id));const c=$('content');c.replaceChildren();
+ if(deviceTab==='log'){c.append(node('h2','Device log'),node('p','Session events from the HMI and Control CPU.','subtitle'));const log=node('div',undefined,'device-log-list');if(!controller.events.length)log.append(node('div','No events recorded in this session.','device-empty'));controller.events.forEach(event=>{const row=node('div',undefined,'device-log-row'),text=node('div');text.append(node('strong',event.event),node('small',`${event.time} · ${event.source}`));row.append(text,node('span',event.result,'result'));log.append(row);});c.append(log);return;}
+ if(deviceTab==='maintenance'){c.append(node('h2','Maintenance'),node('p','Maintenance workflows will be connected to controller service records later.','subtitle'));const list=node('div',undefined,'device-list');deviceRow(list,'Service attention','Controller service condition will appear here','Deferred','unknown',()=>tell('Maintenance','Service tasks appear here when the controller reports them.'));deviceRow(list,'Maintenance history','Completed service events appear in Device log','Open Device log','unknown',()=>chooseDevice('log'));c.append(list);return;}
+ if(fixture()==='unavailable'){
+  deviceToolbar(c,deviceCategories.find(x=>x[0]===deviceTab)[1]);c.append(node('div','Controller data unavailable. Runtime, components, service status and records cannot be verified. No zero totals or healthy status are assumed.','device-empty'));return;
+ }
+ if(fixture()==='stale')c.append(node('p','Last known snapshot \u00b7 2 min old \u00b7 Values are not updating','validity'));
+ if(deviceTab==='overview'){
+  c.append(node('h2','Runtime & service'),node('p','Controller-reported \u00b7 Inspection only','subtitle'));
+  const metrics=node('div',undefined,'metrics');for(const [name,value,basis]of [['Powered-on time','2,418 h','Furnace lifetime'],['Program runtime','1,286 h','Excludes Manual / pauses'],['Fan runtime','1,840 h','Confirmed rotation']]){const m=node('div',undefined,'metric');m.append(node('span',name),node('strong',value),node('small',basis));metrics.append(m);}c.append(metrics);
+  const notices=notifications(),service=notices.filter(x=>x.kind==='service'),faults=notices.filter(x=>x.kind==='error');const list=node('div',undefined,'device-list');
+  deviceRow(list,'Service attention',fixture()==='empty'?'No service data configured':service.length?'Maintenance review is deferred':'No current service attention',`${service.length} tasks`,service.length?'due':'unknown',()=>chooseDevice('maintenance'));
+  deviceRow(list,fixture()==='stale'?'Last reported errors':'Current errors',faults.length?'Read the controller report and guidance':fixture()==='stale'?'No errors in the last snapshot':'No current reported errors',`${faults.length} active`,faults.length?'fault':'unknown',()=>chooseDevice('log'));c.append(list);
+ }else if(deviceTab==='components'&&selectedComponent){
+  const part=visibleCatalogue().find(x=>x.id===selectedComponent);if(!part){selectedComponent=null;renderDevice();return;}
+  const bar=node('div',undefined,'device-toolbar');bar.append(button('Back',()=>{selectedComponent=null;devicePage=0;render();}),node('h2',part.name,'device-detail-title'),button('Part info',()=>partInfo(part)));c.append(bar);
+  pageList(c,part.tasks,(list,t)=>{const current=effectiveTask(t);deviceRow(list,t.name,t.basis+' \u00b7 '+t.interval,current.remaining,current.state,()=>taskDetails(part,t));},'No service tasks configured.');
+ }else if(deviceTab==='components'){
+  deviceToolbar(c,'Components',[['all','All'],['attention','Attention']]);const parts=visibleCatalogue().filter(p=>deviceFilter==='all'||p.tasks.some(t=>['due','soon','unknown'].includes(effectiveTask(t).state)));
+  pageList(c,parts,(list,p)=>{const t=componentSummary(p);deviceRow(list,p.name,p.usage+' \u00b7 '+t.name,stateLabel(t.state),t.state,()=>openPart(p.id));},fixture()==='empty'?'No components configured.':'No components match this filter.');
+ }else if(deviceTab==='notifications'){
+  deviceToolbar(c,'Notifications',[['all','All'],['service','Service'],['error','Errors']]);const notices=notifications().filter(x=>deviceFilter==='all'||x.kind===deviceFilter);
+  pageList(c,notices,(list,n)=>deviceRow(list,n.title,n.detail,n.tag,n.state,n.open),'No current notices in this category.');
+ }else if(deviceTab==='history'){
+  deviceToolbar(c,'Service history');pageList(c,serviceHistory,(list,event)=>deviceRow(list,event.title,event.detail,event.kind,'unknown',()=>tell(event.title,event.text)),'No service records available.');
+ }else{
+  deviceToolbar(c,'Device info');const info=[
+   ['Device identity','FURNACE-DEMO / Serial DEMO-001','Product and serial number.'],
+   ['Firmware','HMI DEMO / Controller DEMO','HMI and controller firmware versions.'],
+   ['Controller link',fixture()==='stale'?'Stale / last snapshot 2 min ago':'Current snapshot','Link state and snapshot validity are distinct from server and Bluetooth status.'],
+   ['Component catalogue','DEMO-1 / '+visibleCatalogue().length+' configured parts','Product-configured entries only. Manufacturer references must be verified before deployment.'],
+   ['Support / documentation','Not configured','Show approved support and document references when provided. No credentials are displayed.']
+  ];pageList(c,info,(list,item)=>deviceRow(list,item[0],item[1],'Details','unknown',()=>tell(item[0],item[2])),'No device information available.');
+ }
+}
+$('nav-device').onclick=()=>switchMain('device');$('nav-settings').onclick=()=>switchMain('settings');$('open-notifications').onclick=()=>{if(mainPage==='running'){runNotice=!runNotice;render();}else if(stageSession)tell('Maintenance','Maintenance details will be supplied by the controller.');else switchMain('device','maintenance');};
+$('device-fixture').onchange=()=>{devicePage=0;selectedComponent=null;if($('message').open)$('message').close();render();};
+
+
+// Snapshot of existing host-lab program_fixtures/program_stage content, 2026-09-14.
+// No new programs, execution semantics, persistence or thermal claims.
+const programCatalogue=[{"id":0,"name":"Ceramic test program","material":"Stoneware","energy":"3.40 kWh","count":5,"minutes":103,"maximum":160,"stages":[{"name":"Warm-up","kind":"Heating","target":34,"rateTenths":30,"minutes":3},{"name":"Drying hold","kind":"Hold","target":34,"rateTenths":0,"minutes":9},{"name":"Heating to 160 C","kind":"Heating","target":160,"rateTenths":30,"minutes":42},{"name":"Peak hold","kind":"Hold","target":160,"rateTenths":0,"minutes":11},{"name":"Controlled cooling","kind":"Cooling","target":47,"rateTenths":-30,"minutes":38}]},{"id":1,"name":"Bisque firing","material":"Earthenware","energy":"8.20 kWh","count":6,"minutes":271,"maximum":180,"stages":[{"name":"Heating","kind":"Heating","target":45,"rateTenths":7,"minutes":29},{"name":"Hold","kind":"Hold","target":45,"rateTenths":0,"minutes":43},{"name":"Heating","kind":"Heating","target":180,"rateTenths":24,"minutes":57},{"name":"Hold","kind":"Hold","target":180,"rateTenths":0,"minutes":43},{"name":"Hold","kind":"Hold","target":180,"rateTenths":0,"minutes":42},{"name":"Cooling","kind":"Cooling","target":45,"rateTenths":-24,"minutes":57}]},{"id":2,"name":"Cooling hold test","material":"Test coupon","energy":"2.10 kWh","count":4,"minutes":140,"maximum":140,"stages":[{"name":"Heating","kind":"Heating","target":35,"rateTenths":6,"minutes":16},{"name":"Hold","kind":"Hold","target":35,"rateTenths":0,"minutes":34},{"name":"Heating","kind":"Heating","target":140,"rateTenths":23,"minutes":45},{"name":"Cooling","kind":"Cooling","target":35,"rateTenths":-23,"minutes":45}]},{"id":3,"name":"Glaze firing","material":"Glazed ceramic","energy":"9.10 kWh","count":7,"minutes":350,"maximum":200,"stages":[{"name":"Heating","kind":"Heating","target":50,"rateTenths":8,"minutes":32},{"name":"Hold","kind":"Hold","target":50,"rateTenths":0,"minutes":45},{"name":"Heating","kind":"Heating","target":200,"rateTenths":21,"minutes":71},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":44},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":44},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":44},{"name":"Cooling","kind":"Cooling","target":50,"rateTenths":-21,"minutes":70}]},{"id":4,"name":"Anneal profile","material":"Glass","energy":"4.00 kWh","count":4,"minutes":156,"maximum":120,"stages":[{"name":"Heating","kind":"Heating","target":30,"rateTenths":5,"minutes":10},{"name":"Hold","kind":"Hold","target":30,"rateTenths":0,"minutes":40},{"name":"Heating","kind":"Heating","target":120,"rateTenths":17,"minutes":53},{"name":"Cooling","kind":"Cooling","target":30,"rateTenths":-17,"minutes":53}]},{"id":5,"name":"Quick bisque","material":"Earthenware","energy":"3.40 kWh","count":5,"minutes":225,"maximum":180,"stages":[{"name":"Heating","kind":"Heating","target":45,"rateTenths":8,"minutes":26},{"name":"Hold","kind":"Hold","target":45,"rateTenths":0,"minutes":38},{"name":"Heating","kind":"Heating","target":180,"rateTenths":22,"minutes":62},{"name":"Hold","kind":"Hold","target":180,"rateTenths":0,"minutes":37},{"name":"Cooling","kind":"Cooling","target":45,"rateTenths":-22,"minutes":62}]},{"id":6,"name":"High-fire glaze","material":"Glazed ceramic","energy":"9.10 kWh","count":6,"minutes":300,"maximum":200,"stages":[{"name":"Heating","kind":"Heating","target":50,"rateTenths":8,"minutes":33},{"name":"Hold","kind":"Hold","target":50,"rateTenths":0,"minutes":47},{"name":"Heating","kind":"Heating","target":200,"rateTenths":24,"minutes":63},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":47},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":47},{"name":"Cooling","kind":"Cooling","target":50,"rateTenths":-24,"minutes":63}]},{"id":7,"name":"Kiln dry","material":"Test coupon","energy":"2.10 kWh","count":3,"minutes":135,"maximum":140,"stages":[{"name":"Heating","kind":"Heating","target":140,"rateTenths":20,"minutes":58},{"name":"Hold","kind":"Hold","target":140,"rateTenths":0,"minutes":26},{"name":"Cooling","kind":"Cooling","target":35,"rateTenths":-21,"minutes":51}]},{"id":8,"name":"Stoneware test","material":"Stoneware","energy":"9.10 kWh","count":5,"minutes":240,"maximum":200,"stages":[{"name":"Heating","kind":"Heating","target":51,"rateTenths":9,"minutes":30},{"name":"Hold","kind":"Hold","target":51,"rateTenths":0,"minutes":43},{"name":"Heating","kind":"Heating","target":200,"rateTenths":24,"minutes":62},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":43},{"name":"Cooling","kind":"Cooling","target":51,"rateTenths":-24,"minutes":62}]},{"id":9,"name":"Glass anneal","material":"Glass","energy":"4.00 kWh","count":4,"minutes":222,"maximum":120,"stages":[{"name":"Heating","kind":"Heating","target":30,"rateTenths":3,"minutes":16},{"name":"Hold","kind":"Hold","target":30,"rateTenths":0,"minutes":56},{"name":"Heating","kind":"Heating","target":120,"rateTenths":12,"minutes":75},{"name":"Cooling","kind":"Cooling","target":30,"rateTenths":-12,"minutes":75}]},{"id":10,"name":"Long cooling","material":"Test coupon","energy":"2.10 kWh","count":3,"minutes":155,"maximum":120,"stages":[{"name":"Heating","kind":"Heating","target":120,"rateTenths":20,"minutes":47},{"name":"Hold","kind":"Hold","target":120,"rateTenths":0,"minutes":45},{"name":"Cooling","kind":"Cooling","target":30,"rateTenths":-14,"minutes":63}]},{"id":11,"name":"Production profile","material":"Stoneware","energy":"9.10 kWh","count":8,"minutes":400,"maximum":200,"stages":[{"name":"Heating","kind":"Heating","target":50,"rateTenths":7,"minutes":34},{"name":"Hold","kind":"Hold","target":50,"rateTenths":0,"minutes":49},{"name":"Heating","kind":"Heating","target":200,"rateTenths":23,"minutes":65},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":48},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":47},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":47},{"name":"Hold","kind":"Hold","target":200,"rateTenths":0,"minutes":47},{"name":"Cooling","kind":"Cooling","target":50,"rateTenths":-24,"minutes":63}]}];
+function coolingEstimateMinutes(program){const maximum=Math.max(30,Number(program.maximum)||120);return Math.max(20,Math.ceil((maximum-30)/1.2));}
+function normalizeProgram(program){program.maximum=Math.min(Number(program.maximum)||120,PROGRAM_MAX_TEMPERATURE_C);program.stages=program.stages.filter(stage=>stage.kind!=='Cooling').map(stage=>{const copy={...stage};delete copy.name;copy.target=Math.min(Number(copy.target)||30,program.maximum);return copy;});program.count=program.stages.length;program.minutes=program.stages.reduce((sum,stage)=>sum+(Number.isFinite(stage.minutes)?stage.minutes:0),0);program.curingMinutes=program.minutes;program.coolingMinutes=coolingEstimateMinutes(program);return program;}
+programCatalogue.forEach(normalizeProgram);
+let programGraphObserver=null;const FURNACE_MAX_STAGES=8;
+let programRoute='library',programPage=0,programStagePage=0,selectedProgram=0;
+const programFavourites=new Set();
+function visiblePrograms(){const kind=$('program-fixture').value;return kind==='empty'?[]:kind==='partial'?programCatalogue.slice(0,7):programCatalogue;}
+function openProgram(index){selectedProgram=index;programRoute='detail';programStagePage=0;render();}
+function stageEditorPreview(index){openStageEditor(index);}
+function pager(page,pages,set){const box=node('div',undefined,'pager'),prev=button('\u2039',()=>set(page-1),'nav-action'),next=button('\u203a',()=>set(page+1),'nav-action');prev.setAttribute('aria-label','Previous page');next.setAttribute('aria-label','Next page');prev.disabled=page===0;next.disabled=page===pages-1;const label=node('span',`${page+1} / ${pages}`,'pager-label');label.setAttribute('aria-live','polite');box.append(prev,label,next);return box;}
+function programPager(bar,page,pages,set){bar.append(pager(page,pages,set));}
+function graphElement(tag,attrs,text){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v]of Object.entries(attrs||{}))e.setAttribute(k,v);if(text!==undefined)e.textContent=text;return e;}
+function stageKindLabel(stage){return stage.kind==='Hold'?'Hold':'Heating';}
+function appendProgramFacts(facts,p){const top=node('div',undefined,'program-fact-row');for(const [label,value]of [['Stages',p.count],['Max. temp',p.maximum+' C']]){const fact=node('div',undefined,'program-fact');fact.append(node('span',label),node('strong',String(value)));top.append(fact);}const duration=node('section',undefined,'program-duration');duration.append(node('h3','Duration'));const values=node('div',undefined,'program-duration-values');for(const [label,value]of [['Curing',Number.isFinite(p.minutes)?p.minutes+' min':'Unknown'],['Est. cooling',p.coolingMinutes+' min'],['Est. total',Number.isFinite(p.minutes)?p.minutes+p.coolingMinutes+' min':'Unknown']]){const fact=node('div',undefined,'program-fact');fact.append(node('span',label),node('strong',String(value)));values.append(fact);}duration.append(values);facts.append(top,duration);}
+function stageSummary(stage){const target=stage.kind==='Hold'?'Inherited target':`${stage.target} C`;const rate=stage.kind==='Hold'?'':`${Math.abs(stage.rateTenths||0)/10} C/min`;return `${target}${rate?' · '+rate:''} · ${stage.minutes||0} min`;}
+function openProgramEditor(index=-1){const source=index>=0?programCatalogue[index]:{id:null,name:'New program',maximum:controllerLimits().maxTemperature,stages:[]};programEditor={id:index>=0?index:null,name:source.name,stages:structuredClone(source.stages),origin:mainPage};programEditor.stages.forEach(stage=>{delete stage.name;});programEditor.baseline=JSON.stringify({name:programEditor.name,stages:programEditor.stages});programStagePage=0;mainPage='program-editor';render();}
+function cancelProgramEditor(){if(!programEditor)return;const origin=programEditor.origin;programEditor=null;mainPage=origin==='programs'?'programs':'home';programRoute=origin==='programs'?'detail':'library';render();}
+function programEditorErrors(){if(!programEditor)return ['No program draft.'];const errors=[];if(!programEditor.name.trim())errors.push('Enter a program name.');if(!programEditor.stages.length)errors.push('Add at least one Heating or Hold stage.');const total=programEditor.stages.reduce((sum,stage)=>sum+(Number(stage.minutes)||0),0);if(total>controllerLimits().maxCuringMinutes)errors.push('Curing duration cannot exceed 48 hours.');programEditor.stages.forEach((stage,index)=>{if(stage.kind==='Cooling')errors.push(`Stage ${index+1}: cooling is automatic.`);if(!Number.isFinite(stage.target)||stage.target<0||stage.target>controllerLimits().maxTemperature)errors.push(`Stage ${index+1}: target must be within controller limits.`);if(stage.kind==='Heating'&&(!stage.rateTenths||stage.rateTenths<1||stage.rateTenths>controllerLimits().maxRate*10))errors.push(`Stage ${index+1}: heating rate is outside controller limits.`);if(!Number.isFinite(stage.minutes)||stage.minutes<1)errors.push(`Stage ${index+1}: enter a valid duration.`);});return errors;}
+function saveProgramEditor(){const errors=programEditorErrors();if(errors.length){tell('Program not accepted',errors[0]);return;}const draft=structuredClone(programEditor);controllerRequest('Save program',()=>{if(draft.id===null){draft.id=programCatalogue.length;programCatalogue.push(draft);}else programCatalogue[draft.id]=draft;normalizeProgram(programCatalogue[draft.id]);controllerEvent('Control CPU','Program saved','confirmed');const origin=programEditor.origin;programEditor=null;mainPage=origin==='programs'?'programs':'home';programRoute=origin==='programs'?'detail':'library';render();});}
+function programEditorDirty(){return !!programEditor&&JSON.stringify({name:programEditor.name,stages:programEditor.stages})!==programEditor.baseline;}
+// Leaving asks only when the draft differs from what was opened.
+function leaveProgramEditor(){if(!programEditor)return;if(programEditorDirty())confirmAction('Discard changes?','Your changes to this program have not been saved.','Discard changes',cancelProgramEditor);else cancelProgramEditor();}
+function addProgramStage(){const draft=programEditor;draft.stages.push({kind:'Heating',target:120,rateTenths:10,minutes:95});openStageEditor(draft.stages.length-1);}
+function stageCard(stage,index,onOpen){const kind=stage.kind.toLowerCase(),card=onOpen?button('',onOpen,'stage-card'):node('div',undefined,'stage-card');if(onOpen)card.setAttribute('aria-label','Edit stage '+(index+1));const top=node('div',undefined,'stage-top');top.append(node('span',String(index+1),'stage-number stage-'+kind),node('strong',stage.kind==='Hold'?'Holding':'Heating','stage-kind stage-'+kind),stageGlyph(kind));const values=node('div',undefined,'stage-values');values.append(node('strong',stage.target+' C','stage-temperature'));const detail=node('div',undefined,'stage-detail');detail.append(node('span',(stage.minutes||0)+' min','stage-time'));if(stage.kind!=='Hold'&&stage.rateTenths)detail.append(node('span',Math.abs(stage.rateTenths)/10+' C/min','stage-rate'));card.append(top,values,detail);return card;}
+// Small segment sketch in the stage colour: rising ramp, flat hold or falling ramp.
+function stageGlyph(kind){const svg=graphElement('svg',{viewBox:'0 0 36 18',class:'stage-glyph stage-'+kind,'aria-hidden':'true'}),y=kind==='hold'?[9,9]:kind==='cooling'?[3,15]:[15,3];svg.append(graphElement('line',{x1:3,y1:y[0],x2:29,y2:y[1],stroke:'currentColor','stroke-width':2.5,'stroke-linecap':'round'}),graphElement('circle',{cx:31,cy:y[1],r:3,fill:'currentColor'}));return svg;}
+function renderProgramEditor(){mountShell(programEditor.id===null?'New program':'Edit program',[],null,()=>{});const c=$('content');c.replaceChildren();const draft=programEditor;
+ // Back, the editable name, then compact stage actions share one row.
+ const top=node('div',undefined,'program-toolbar');const name=button(draft.name||'Enter program name',()=>openTextKeyboard('Program name',draft.name,value=>{draft.name=value;render();}),'program-name-field');name.setAttribute('aria-label','Program name');const add=button('+ Add stage',addProgramStage,'primary compact-action');add.disabled=draft.stages.length>=FURNACE_MAX_STAGES;const edit=button('Edit stages',()=>draft.stages.length&&openStageEditor(0),'compact-action edit-action');edit.disabled=!draft.stages.length;top.append(button('Back',leaveProgramEditor),name,add,edit);c.append(top);
+ const pages=Math.max(1,Math.ceil(draft.stages.length/9));programStagePage=Math.min(programStagePage,pages-1);
+ if(!draft.stages.length)c.append(node('div','Add the first stage.','device-empty editor-empty'));else{const grid=node('div',undefined,'stage-grid');for(let i=programStagePage*9;i<Math.min(draft.stages.length,programStagePage*9+9);i++)grid.append(stageCard(draft.stages[i],i,()=>openStageEditor(i)));c.append(grid);}
+ const errors=programEditorErrors();if(errors.length&&draft.stages.length)c.append(node('p',errors[0],'edit-note error'));
+ const actions=node('div',undefined,'program-editor-actions');actions.append(button('Cancel',leaveProgramEditor,'cancel-action'));if(pages>1)programPager(actions,programStagePage,pages,v=>{programStagePage=v;render();});const save=button('Save program',saveProgramEditor,'primary');save.disabled=errors.length>0;actions.append(save);c.append(actions);}
+// Running graph: compact view shows the start of cooling; the operator can expand it once measured cooling runs past that window.
+let runCoolingFull=false;
+function coolingWindowMinutes(p){const curing=p.stages.reduce((sum,stage)=>sum+(stage.minutes||0),0),estimate=Number.isFinite(p.coolingMinutes)?p.coolingMinutes:coolingEstimateMinutes(p);return Math.min(estimate,Math.max(1,Math.floor(curing/4)));}
+function coolingOverflows(){return !!demoRun&&demoRun.mode==='program'&&demoRun.coolingElapsed>coolingWindowMinutes(demoRun.program);}
+function programGraph(parent,p){
+ if(p.stages.some(s=>!Number.isFinite(s.minutes))){parent.append(node('div','Full trajectory unavailable: cooling duration is unknown.','device-empty'));return;}
+ const running=mainPage==='running';
+ const graph=node('div',undefined,'program-graph');const caption=node('div',undefined,'program-graph-label');caption.append(node('span','Temperature (C) \u00b7 Time (min)'),node('span',running?'Planned / Measured':'Planned'));graph.append(caption);
+ const svg=graphElement('svg',{role:'img','aria-label':p.name+' planned temperature trajectory'});
+ const points=[{minutes:0,target:25}];let time=0;for(const stage of p.stages){time+=stage.minutes;points.push({minutes:time,target:stage.target});}const coolingMinutes=Number.isFinite(p.coolingMinutes)?p.coolingMinutes:coolingEstimateMinutes(p);
+ // Show only the start of automatic cooling (at most a quarter of the curing time) so the curing stages keep most of the width.
+ // A run already cooling widens the window just enough to include the cooling time elapsed so far.
+ const cap=coolingWindowMinutes(p),cooled=running&&demoRun&&demoRun.coolingElapsed?Math.ceil(demoRun.coolingElapsed):0,shownCooling=running&&runCoolingFull&&cooled>cap?cooled:cap,coolingFrom=points[points.length-1].target,plannedCooling=Math.min(shownCooling,coolingMinutes);
+ const coolingStartIndex=points.length-1;points.push({minutes:time+plannedCooling,target:coolingFrom+Math.trunc((30-coolingFrom)*plannedCooling/coolingMinutes),cooling:true});
+ const min=Math.min(...points.map(x=>x.target)),max=Math.max(...points.map(x=>x.target)),span=Math.max(100,max-min),lo=min<0||min>Math.floor(span/10)?min-Math.floor(span/10):0,hi=max+Math.floor(span/8),end=Math.max(1,time+shownCooling);
+ const samples=[];if(running&&demoRun){for(let t=0;t<demoRun.elapsed;t+=Math.max(1,demoRun.elapsed/120))samples.push({t,v:demoMeasured(p,t)});samples.push({t:demoRun.elapsed,v:demoMeasured(p,demoRun.elapsed)});}
+ // Measured cooling: recorded readings, so the line only ever grows forward from the end of curing.
+ const cooledSamples=running&&demoRun&&demoRun.coolingElapsed>0&&demoRun.coolingHistory?demoRun.coolingHistory.map(pt=>({t:time+pt.t,v:pt.v})):[];
+ const clipAt=time+shownCooling;for(let i=1;i<cooledSamples.length;i++)if(cooledSamples[i].t>clipAt){const a=cooledSamples[i-1],b=cooledSamples[i],f=(clipAt-a.t)/(b.t-a.t);cooledSamples.splice(i,cooledSamples.length-i,{t:clipAt,v:a.v+(b.v-a.v)*f});break;}
+ const label=(x,y,text,anchor)=>graphElement('text',{x,y,fill:'#bbc3c7','font-size':13,'text-anchor':anchor},text);
+ // Draw in the SVG's own layout pixels: the plot fills the panel, leaving only a gutter for degrees (left) and minutes (bottom).
+ const draw=(width,height)=>{if(width<120||height<60)return;svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.replaceChildren();
+  const left=46,right=width-6,top=12,bottom=height-20,x=v=>left+v/end*(right-left),y=v=>bottom-(v-lo)/(hi-lo)*(bottom-top);
+  for(let i=0;i<5;i++){const yy=top+i*(bottom-top)/4;svg.append(graphElement('line',{x1:left,y1:yy,x2:right,y2:yy,stroke:'#3b484f','stroke-width':1}));}
+  for(let i=0;i<7;i++){const xx=left+i*(right-left)/6;svg.append(graphElement('line',{x1:xx,y1:top,x2:xx,y2:bottom,stroke:'#3b484f','stroke-width':1}));}
+  for(const value of [hi,lo+Math.floor((hi-lo)/2),lo])svg.append(label(2,y(value)+4,value+' C','start'));
+  svg.append(label(left,height-4,'0','start'),label((left+right)/2,height-4,Math.floor(end/2)+' min','middle'),label(right,height-4,Math.floor(end)+' min','end'));
+  svg.append(graphElement('polyline',{points:points.map(pt=>x(pt.minutes)+','+y(pt.target)).join(' '),fill:'none',stroke:'#a4afb3','stroke-width':2}));
+  svg.append(graphElement('polyline',{points:points.slice(coolingStartIndex).map(pt=>x(pt.minutes)+','+y(pt.target)).join(' '),fill:'none',stroke:'#9cc9a9','stroke-width':3,'stroke-dasharray':'6 4'}));
+  if(samples.length)svg.append(graphElement('polyline',{points:samples.map(pt=>x(pt.t)+','+y(pt.v)).join(' '),fill:'none',stroke:'#e8a04b','stroke-width':3}));
+  if(cooledSamples.length)svg.append(graphElement('polyline',{points:cooledSamples.map(pt=>x(pt.t)+','+y(pt.v)).join(' '),fill:'none',stroke:'#74b4df','stroke-width':3,'stroke-dasharray':'6 4'}));
+  for(let i=0;i<p.stages.length&&!running&&mainPage!=='stage-edit';i++){const stage=p.stages[i],pt=points[i],color={Heating:'#e8a04b',Hold:'#a77bd1'}[stage.kind];svg.append(graphElement('circle',{cx:x(pt.minutes),cy:y(pt.target),r:5,fill:color,class:'graph-node','aria-hidden':'true'}));}
+ };
+ // contentRect is the untransformed CSS size, so demo viewport scaling does not change glyph size.
+ programGraphObserver=new ResizeObserver(entries=>{const box=entries[0].contentRect;draw(box.width,box.height);});programGraphObserver.observe(svg);graph.append(svg);parent.append(graph);
+}
+function renderPrograms(){
+ const title={library:'Programs',detail:'Program details',stages:'Program stages'}[programRoute];mountShell(title,[],null,()=>{});const c=$('content');c.replaceChildren();
+ const p=programCatalogue[selectedProgram],bar=node('div',undefined,'program-toolbar');c.append(bar);
+ if(programRoute==='library'){
+  const list=visiblePrograms(),pages=Math.max(1,Math.ceil(list.length/6));programPage=Math.min(programPage,pages-1);
+  bar.append(button('New program',()=>openProgramEditor(-1),'primary'));
+  programPager(bar,programPage,pages,v=>{programPage=v;render();});const grid=node('div',undefined,'program-grid');
+  for(const item of list.slice(programPage*6,programPage*6+6)){const card=button('',()=>openProgram(item.id),'program-card');card.append(node('strong',item.name,'program-name'));const summary=node('div',undefined,'program-summary');summary.append(node('span',item.count+' stages'),node('span',(Number.isFinite(item.minutes)?item.minutes+' min':'Unknown')),node('span',item.maximum+' C'));card.append(summary);grid.append(card);}
+  if(!list.length){c.append(node('div','No programs. Choose New program.','device-empty'));return;}c.append(grid);
+ }else if(programRoute==='detail'){
+  bar.append(button('Back',()=>{programRoute='library';render();}),node('h2',p.name));
+  const favourite=button(programFavourites.has(p.id)?'\u2605':'\u2606',()=>{programFavourites.has(p.id)?programFavourites.delete(p.id):programFavourites.add(p.id);render();},'icon-action'+(programFavourites.has(p.id)?' program-favourite':''));favourite.setAttribute('aria-label',programFavourites.has(p.id)?'Remove favourite':'Add favourite');favourite.title=favourite.getAttribute('aria-label');
+  bar.append(favourite);
+  const actions=node('div',undefined,'program-actions program-quarters');const startNow=button(controller.pending?'Requesting…':'Start program',()=>confirmStart(selectedProgram),'primary');startNow.disabled=!!controller.pending||!!demoRun||!!stageSession||p.stages.some(s=>!Number.isFinite(s.minutes)||s.minutes<=0);actions.append(startNow,button('View stages',()=>{programRoute='stages';programStagePage=0;render();}),button('Edit program',()=>openProgramEditor(selectedProgram),'edit-action'),button('Delete program',()=>confirmAction('Delete program?',p.name+' will be permanently deleted.','Delete program',()=>tell('Deletion request accepted','The controller accepted the request.')),'danger'));c.append(actions);
+  const columns=node('div',undefined,'program-detail-columns program-quarters');programGraph(columns,p);const facts=node('div',undefined,'program-facts');appendProgramFacts(facts,p);columns.append(facts);c.append(columns);
+ }else{
+  const editStages=button('Edit program',()=>openProgramEditor(selectedProgram),'edit-action');editStages.setAttribute('aria-label','Edit program');editStages.title='Edit program';bar.append(button('Back',()=>{programRoute='detail';render();}),editStages);const pages=Math.max(1,Math.ceil(p.stages.length/9));programStagePage=Math.min(programStagePage,pages-1);programPager(bar,programStagePage,pages,v=>{programStagePage=v;render();});
+  const grid=node('div',undefined,'stage-grid');for(let i=programStagePage*9;i<Math.min(p.stages.length,programStagePage*9+9);i++){grid.append(stageCard(p.stages[i],i));}c.append(grid);
+ }
+}
+$('nav-programs').onclick=()=>switchMain('programs');$('program-fixture').onchange=()=>{programRoute='library';programPage=0;render();};
+
+
+// Browser-only interactions. No controller transport or persistence is present.
+let stageSession=null,demoRun=null,runView='graph',runNotice=false;
+const demoRecent=[3,1,2,5,4,7];
+function furnaceIllustration(parent){
+ const panel=node('div',undefined,'furnace-panel');const svg=graphElement('svg',{viewBox:'0 0 230 220',role:'img','aria-label':'Furnace'});
+ for(const [tag,attrs]of [['polygon',{points:'35,35 175,35 200,15 62,15',fill:'#67767e'}],['polygon',{points:'175,35 200,15 200,190 175,211',fill:'#303c43'}],['rect',{x:35,y:35,width:140,height:176,fill:'#455159',stroke:'#829198'}],['rect',{x:51,y:52,width:108,height:144,rx:4,fill:'#22292d',stroke:'#bbc3c7'}],['rect',{x:65,y:69,width:80,height:92,rx:3,fill:'#161b1e'}],['rect',{x:153,y:141,width:4,height:28,fill:'#bbc3c7'}]])svg.append(graphElement(tag,attrs));
+ for(let y=89;y<=137;y+=24)svg.append(graphElement('line',{x1:73,y1:y,x2:137,y2:y,stroke:demoRun?'#bb8246':'#52616a','stroke-width':2}));
+ const status=node('div',undefined,'furnace-status');for(const [label,value]of [['Door',fixture()==='unavailable'?'Unknown':'Closed'],['Fan',demoRun?'1,450 rpm':'Unknown']]){const item=node('div');item.append(node('small',label),node('strong',value));status.append(item);}panel.append(svg,status);parent.append(panel);
+}
+function renderHome(){
+ mountShell('Home',[],null,()=>{});document.querySelector('.screen').removeAttribute('data-run-state');const c=$('content');c.replaceChildren();
+ const layout=node('div',undefined,'home-layout'),quick=node('div',undefined,'quick-launch');quick.append(node('h2','Quick launch'));
+ const fav=[...programFavourites].filter(id=>programCatalogue[id]),recent=demoRecent.filter(id=>programCatalogue[id]&&!fav.includes(id));
+ if(fav.length)quick.append(node('small','Favourites','quick-heading'));for(const id of fav)quick.append(button(programCatalogue[id].name,()=>loadDemoProgram(id),'quick-item'));
+ if(recent.length)quick.append(node('small','Recent programs','quick-heading'));for(const id of recent)quick.append(button(programCatalogue[id].name,()=>loadDemoProgram(id),'quick-item'));
+ if(!fav.length&&!recent.length)quick.append(node('small','Add a favourite program'));
+ quick.append(node('div',undefined,'quick-spacer'),button('Start manual',()=>{mainPage='manual';render();},'primary choose'));
+ const overview=node('div',undefined,'home-overview'),readings=node('div',undefined,'home-readings');for(const [label,value,cls]of [['Current temp',fixture()==='unavailable'?'Unknown':'24 C','current'],['Target','Unknown',''],['Remaining','Unknown','']]){const item=node('div',undefined,cls);item.append(node('small',label),node('strong',value));readings.append(item);}overview.append(readings);if(fixture()==='stale')overview.append(node('p','Last known snapshot - 2 min old','validity'));furnaceIllustration(overview);layout.append(quick,overview);c.append(layout);fitQuickLaunch(quick);
+}
+// Show as many programs as the panel can hold: favourites first, then recents; drop from the end.
+function fitQuickLaunch(quick){const items=()=>[...quick.querySelectorAll('.quick-item')];while(quick.scrollHeight>quick.clientHeight+1&&items().length){items().pop().remove();for(const h of quick.querySelectorAll('.quick-heading'))if(!h.nextElementSibling||!h.nextElementSibling.classList.contains('quick-item'))h.remove();}}
+// Start from Program details asks once: the button sits where the first program card was, so a double tap from the list must not start a run.
+function confirmStart(id){const p=programCatalogue[id];$('message-title').textContent='Start '+p.name+'?';$('message-text').textContent=`${p.count} stages · ${p.minutes} min curing · max ${p.maximum} C`;const cancel=button('Cancel',()=>$('message').close(),'cancel-action'),start=button('Start program',()=>{$('message').close();selectedProgram=id;startDemo();},'primary');$('message-actions').replaceChildren(cancel,start);$('message').showModal();cancel.focus();}
+function loadDemoProgram(id,origin='home'){if(stageSession||demoRun)return;selectedProgram=id;programLoadOrigin=origin;mainPage='loading';render();}
+function renderLoading(){
+ mountShell('Load program',[],null,()=>{});const c=$('content'),p=programCatalogue[selectedProgram];c.replaceChildren();const top=node('div',undefined,'program-toolbar');top.append(button('Back',()=>{mainPage=programLoadOrigin==='home'?'home':'programs';programRoute=programLoadOrigin==='home'?'library':'detail';render();}),node('h2',p.name));c.append(top);
+ // Start sits under the facts, not where Load program was, so a double tap on Load cannot start the program.
+ const columns=node('div',undefined,'program-detail-columns program-quarters loading-columns');programGraph(columns,p);const facts=node('div',undefined,'program-facts');appendProgramFacts(facts,p);const start=button(controller.pending?'Requesting…':'Start program',()=>startDemo(),'primary loading-start');start.disabled=!!controller.pending||p.stages.some(s=>!Number.isFinite(s.minutes)||s.minutes<=0);columns.append(facts,start);c.append(columns);
+}
+function startDemo(elapsed=0){
+ if(stageSession||demoRun||controller.pending)return;const p=programCatalogue[selectedProgram];if(p.stages.some(s=>!Number.isFinite(s.minutes)||s.minutes<=0))return;
+ controllerRequest('Start program',()=>{runCoolingFull=false;demoRun={mode:'program',program:structuredClone(p),elapsed:Math.max(0,Math.min(elapsed,p.minutes)),paused:false,phase:elapsed>=p.minutes?'cooling':'curing',coolingElapsed:0,coolingTemperature:demoMeasured(p,p.minutes),coolingRemaining:p.coolingMinutes};demoRun.coolingHistory=[{t:0,v:demoRun.coolingTemperature}];runView=saved.view.toLowerCase()==='furnace'?'furnace':saved.view.toLowerCase();demoRecent.splice(0,demoRecent.length,selectedProgram,...demoRecent.filter(x=>x!==selectedProgram).slice(0,7));controller.phase=demoRun.phase;mainPage='running';updateExpoControls();});
+}
+function plannedAt(p,t){let elapsed=0,start=25;for(const s of p.stages){if(t<=elapsed+s.minutes)return start+(s.target-start)*Math.max(0,(t-elapsed)/s.minutes);elapsed+=s.minutes;start=s.target;}return start;}
+function demoMeasured(p,t){return Math.round(plannedAt(p,t)-Math.min(8,t/4));}
+function runStage(){let elapsed=0;for(let i=0;i<demoRun.program.stages.length;i++){elapsed+=demoRun.program.stages[i].minutes;if(demoRun.elapsed<elapsed)return i;}return Math.max(0,demoRun.program.stages.length-1);}
+function advanceCooling(run,minutes){run.coolingElapsed+=minutes;run.coolingTemperature=Math.max(30,run.coolingTemperature-Math.max(.4,run.coolingTemperature/180)*minutes);(run.coolingHistory||(run.coolingHistory=[])).push({t:run.coolingElapsed,v:run.coolingTemperature});run.coolingRemaining=Math.max(0,Math.ceil((run.coolingTemperature-30)/Math.max(.4,run.coolingTemperature/180)));if(run.coolingTemperature<=30){run.coolingRemaining=0;run.phase='complete';controller.phase='complete';controllerEvent('Control CPU','Cooling complete','confirmed');}}
+function advanceDemo(minutes=1){if(!demoRun||demoRun.paused||demoFrozen||demoRun.phase==='complete')return;if(demoRun.mode==='manual'){const before=demoRun.elapsed;demoRun.elapsed=Math.min(controllerLimits().maxCuringMinutes,demoRun.elapsed+minutes);if(Number.isFinite(demoRun.temperature)){stepManualTemperature(demoRun,demoRun.elapsed-before);(demoRun.history||(demoRun.history=[])).push({t:demoRun.elapsed,v:demoRun.temperature});}if(demoRun.elapsed>=controllerLimits().maxCuringMinutes){controllerEvent('Control CPU','Manual heating ended at 48 h','confirmed');manualStatusNotice='The controller ended manual heating at 48 h. Furnace cooling is automatic.';demoRun=null;manualRun=null;controller.phase='idle';mainPage='manual';render();updateExpoControls();return;}}else if(demoRun.phase==='curing'){demoRun.elapsed=Math.min(demoRun.program.minutes,demoRun.elapsed+minutes);if(demoRun.elapsed>=demoRun.program.minutes){demoRun.phase='cooling';demoRun.coolingTemperature=demoMeasured(demoRun.program,demoRun.program.minutes);demoRun.coolingHistory=[{t:0,v:demoRun.coolingTemperature}];demoRun.coolingElapsed=0;demoRun.coolingRemaining=demoRun.program.coolingMinutes;controller.phase='cooling';controllerEvent('Control CPU','Program entered automatic cooling','confirmed');}}else if(demoRun.phase==='cooling')advanceCooling(demoRun,minutes);if(!touchKeyboard)render();updateExpoControls();}
+function tickDemoClock(){if(!demoRun||demoRun.paused||demoFrozen)return;advanceDemo(demoSpeed/60);}
+function startDemoClock(){if(demoClock===null)demoClock=window.setInterval(tickDemoClock,1000);}
+function stopDemo(){if(!demoRun)return;const manual=demoRun.mode==='manual';controllerEvent('HMI','Stop','requested');controllerEvent('Control CPU',manual?'Manual heating stopped':'Program stopped','confirmed');demoRun=null;manualRun=null;runNotice=false;controller.phase='idle';if(manual)manualStatusNotice='Heating stopped. Furnace cooling is automatic.';mainPage=manual?'manual':'home';$('message').close();render();updateExpoControls();}
+function formatClock(minutes){const total=Math.max(0,Math.round(minutes*60));return `${Math.floor(total/3600)}:${String(Math.floor(total/60)%60).padStart(2,'0')}`;}
+function manualCurrentTemperature(run){return run?Math.round(Number.isFinite(run.temperature)?run.temperature:Math.min(run.target,24+run.elapsed*run.rate)):24;}
+// Demo only: heat toward the target at the set rate; above target the furnace drifts down naturally.
+function stepManualTemperature(run,minutes){for(let i=0;i<minutes;i++){const t=run.temperature;run.temperature=t<run.target?Math.min(run.target,t+run.rate):Math.max(run.target,t-Math.max(.4,t/180));}}
+function manualPredictionMinutes(target,rate,current){return Math.max(0,Math.ceil(Math.max(0,target-current)/Math.max(.1,rate)));}
+function manualPredictionGraph(parent,target,rate,current,run){const minutes=manualPredictionMinutes(target,rate,current),graph=node('div',undefined,'program-graph');const heading=node('div',undefined,'program-graph-label');heading.append(node('span','Temperature (C) \u00b7 Time (min)'),node('span',run?'Measured / Predicted':'Predicted'));graph.append(heading);const svg=graphElement('svg',{role:'img','aria-label':'Manual heating prediction: '+minutes+' minutes to '+target+' C'});const low=0,high=controllerLimits().maxTemperature,label=(x,y,text,anchor)=>graphElement('text',{x,y,fill:'#bbc3c7','font-size':'14','text-anchor':anchor},text);
+ // Running: the measured line grows from the recorded readings; the prediction starts at "now", ramps to the target and holds there briefly.
+ const now=run?run.elapsed:0,reach=now+minutes,end=run?Math.max(10,reach+Math.max(5,Math.round(reach*.12))):Math.max(1,minutes),measured=run&&run.history?run.history:[];
+ // Draw in the SVG's own layout pixels so text, markers and strokes keep their size instead of stretching with the card.
+ const draw=(width,height)=>{if(width<120||height<80)return;svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.replaceChildren();const left=46,right=width-6,top=12,bottom=height-20,toX=value=>left+value/end*(right-left),toY=value=>bottom-(value-low)/(high-low)*(bottom-top);for(let index=0;index<5;index++){const y=top+index*(bottom-top)/4;svg.append(graphElement('line',{x1:left,y1:y,x2:right,y2:y,stroke:'#465159','stroke-width':'1'}));}for(let index=0;index<6;index++){const x=left+index*(right-left)/5;svg.append(graphElement('line',{x1:x,y1:top,x2:x,y2:bottom,stroke:'#465159','stroke-width':'1'}));}
+  const prediction=[[now,current],[reach,target]];if(end>reach)prediction.push([end,target]);svg.append(graphElement('polyline',{points:prediction.map(([t,v])=>toX(t)+','+toY(v)).join(' '),fill:'none',stroke:'#9ba5ab','stroke-width':'3'}));
+  if(measured.length>1)svg.append(graphElement('polyline',{points:measured.map(pt=>toX(pt.t)+','+toY(pt.v)).join(' '),fill:'none',stroke:'#e8a04b','stroke-width':'3'}));
+  svg.append(graphElement('circle',{cx:toX(now),cy:toY(current),r:5,fill:'#e8a04b'}));
+  for(const value of [high,low+Math.floor((high-low)/2),low])svg.append(label(2,toY(value)+4,Math.round(value)+' C','start'));svg.append(label(left,height-4,'0','start'),label((left+right)/2,height-4,Math.floor(end/2)+' min','middle'),label(right,height-4,Math.floor(end)+' min','end'));};
+ // contentRect is the untransformed CSS size, so demo viewport scaling does not change glyph size.
+ programGraphObserver=new ResizeObserver(entries=>{const box=entries[0].contentRect;draw(box.width,box.height);});programGraphObserver.observe(svg);graph.append(svg);parent.append(graph);}
+function setManualValue(key,value){const limits=controllerLimits(),next=key==='target'?Math.max(0,Math.min(limits.maxTemperature,Math.round(value))):Math.max(.1,Math.min(limits.maxRate,Math.round(value*10)/10));const apply=()=>{manualDraft[key]=next;if(demoRun&&demoRun.mode==='manual')demoRun[key]=next;};if(demoRun&&demoRun.mode==='manual')controllerRequest('Set manual '+key,apply);else{apply();render();}}
+function startManual(){if(demoRun||controller.pending)return;const limits=controllerLimits();if(manualDraft.target<0||manualDraft.target>limits.maxTemperature||manualDraft.rate<=0||manualDraft.rate>limits.maxRate)return;controllerRequest('Start manual',()=>{demoRun={mode:'manual',target:manualDraft.target,rate:manualDraft.rate,elapsed:0,paused:false,phase:'curing',temperature:24,history:[{t:0,v:24}]};manualRun=demoRun;manualStatusNotice='';controller.phase='curing';mainPage='manual-running';});}
+function toggleLight(){if(controller.pending)return;controllerRequest(controller.light?'Turn light off':'Turn light on',()=>{controller.light=!controller.light;controllerEvent('Control CPU','Interior light '+(controller.light?'on':'off'),'confirmed');});}
+// Manual readings strip. Setpoint and heater demand are controller-reported PID values (protocol: setpoint, demand);
+// the demo synthesises them. Power is derived from demand, so it is labelled as an estimate (REQ-NFR-007).
+function manualReadings(run,target,rate,current){const strip=node('div',undefined,'run-readings run-line manual-readings');strip.setAttribute('aria-label','Manual readings');const minutes=manualPredictionMinutes(target,rate,current),toTarget=minutes?formatClock(minutes):'At target',item=(label,value)=>{const e=node('div',undefined,'run-reading');e.append(node('small',label),node('strong',value));strip.append(e);};
+ const state=node('strong',run?(run.paused?'Paused':minutes?'Heating':'Holding'):'Ready','manual-state'+(run&&!run.paused?' active':''));strip.append(state);
+ if(run){const ramping=minutes>0,demand=run.paused||current>target?0:ramping?Math.min(100,Math.round(40+rate*12)):Math.round(12+target*.14),setpoint=ramping?Math.min(target,Math.round(current+rate*1.5)):target;
+  item('Elapsed',formatClock(run.elapsed));item('To target',toTarget);item('Current',current+' C');item('Setpoint',setpoint+' C');item('Heater demand',demand+' %');item('Est. power',(demand*.05).toFixed(2)+' kW');}
+ else{item('Current',current+' C');item('Est. to target',toTarget);strip.append(node('span',manualStatusNotice||'Furnace stays idle until Start.','manual-note'));}
+ return strip;}
+function renderManual(){const running=!!demoRun&&demoRun.mode==='manual';mountShell(running?'Manual running':'Manual mode',[],null,()=>{});const c=$('content');c.replaceChildren();const run=running?demoRun:null,target=run?run.target:manualDraft.target,rate=run?run.rate:manualDraft.rate,current=manualCurrentTemperature(run);const layout=node('div',undefined,'manual-layout'),graph=node('div',undefined,'manual-graph');manualPredictionGraph(graph,target,rate,current,run);layout.append(graph);const controls=node('div',undefined,'manual-controls');c.prepend(manualReadings(run,target,rate,current));const controlRow=node('div',undefined,'manual-control-row'),controlStack=node('div',undefined,'manual-control-stack');const addControl=(label,key,step,min,max)=>{const value=key==='target'?(run?run.target:manualDraft.target):(run?run.rate:manualDraft.rate),text=key==='target'?String(value)+' C':value.toFixed(1)+' C/min',row=node('div',undefined,'manual-control'),edit=()=>openNumericKeyboard(label,value,{min,max,step,help:'Controller supplied range and step.'},next=>setManualValue(key,next));const down=button('-',()=>setManualValue(key,value-step),'manual-adjust');down.setAttribute('aria-label','Decrease '+label);const entry=button(text,edit,'manual-value');const up=button('+',()=>setManualValue(key,value+step),'manual-adjust');up.setAttribute('aria-label','Increase '+label);row.append(node('span',key==='target'?'Target':'Rate','manual-caption'),down,entry,up);entry.setAttribute('aria-label',label+' '+text);controlStack.append(row);};addControl('Target temperature','target',1,0,controllerLimits().maxTemperature);addControl('Rate','rate',.1,.1,controllerLimits().maxRate);const actions=node('div',undefined,'manual-actions');if(run){actions.append(button(run.paused?'Resume':'Pause',()=>{run.paused=!run.paused;controllerEvent('HMI',run.paused?'Pause':'Resume','requested');render();},'pause-action'),button('Stop',stopDemo,'danger'));}else actions.append(button('Start',startManual,'primary'));controlRow.append(actions,controlStack);controls.append(controlRow);layout.append(controls);c.append(layout);}
+function renderRunning(){
+ mountShell('Running program',[],null,()=>{});const c=$('content');c.replaceChildren();const p=demoRun.program,complete=demoRun.phase==='complete',cooling=demoRun.phase==='cooling',index=runStage(),stage=p.stages[index];
+ document.querySelector('.screen').setAttribute('data-run-state',demoRun.paused?'paused':'running');document.querySelector('.pill').textContent=complete?'Cooling complete':cooling?'Automatic cooling':demoRun.paused?'Paused':'Running';
+ const title=node('div',undefined,'run-title');title.append(node('h2',p.name),node('span',complete?'Cooling complete':cooling?'Automatic cooling':`${index+1} / ${p.count} - ${stageKindLabel(stage)}`));c.append(title);
+ if(runNotice)c.append(node('p','Controller event log available in Device.','validity'));const visuals=node('div',undefined,'run-visuals');if(runView!=='furnace')programGraph(visuals,p);if(runView!=='graph')furnaceIllustration(visuals);c.append(visuals);
+ // One reading line. Curing: Elapsed, Remaining, Current, Target, Est. power. Automatic cooling keeps curing Elapsed and adds only cooling time and its estimate.
+ const afterCuring=cooling||complete,current=afterCuring?Math.round(demoRun.coolingTemperature):demoMeasured(p,demoRun.elapsed),demoPower=demoRun.paused?0:stage&&stage.kind==='Hold'?1.1:3.4,items=afterCuring?[['Elapsed',formatClock(demoRun.elapsed)],['Cooling',formatClock(demoRun.coolingElapsed)],...(complete?[]:[['Est. remaining',formatClock(demoRun.coolingRemaining)]]),['Current',current+' C'],['Target','30 C']]:[['Elapsed',formatClock(demoRun.elapsed)],['Remaining',formatClock(Math.max(0,p.minutes-demoRun.elapsed))],['Current',current+' C'],['Target',stage.target+' C'],['Est. power',demoPower.toFixed(2)+' kW']];
+ const readings=node('div',undefined,'run-readings run-line');readings.setAttribute('aria-label','Run readings');for(const [label,value]of items){const item=node('div',undefined,'run-reading');item.append(node('small',label),node('strong',value));readings.append(item);}if(runView!=='furnace'&&coolingOverflows()){const toggle=button(runCoolingFull?'Hide cooling':'Show cooling',()=>{runCoolingFull=!runCoolingFull;render();},'cooling-toggle');toggle.setAttribute('aria-pressed',String(runCoolingFull));readings.append(toggle);}visuals.before(readings);
+ const controls=node('div',undefined,'run-controls');if(!complete)controls.append(button(demoRun.paused?'Resume':'Pause',()=>{demoRun.paused=!demoRun.paused;controllerEvent('HMI',demoRun.paused?'Pause':'Resume','requested');render();},'pause-action'));controls.append(button(complete?'Return Home':'Stop',stopDemo,'danger'));const selectors=node('div',undefined,'selectors');for(const [id,label]of [['graph','Graph'],['split','Split'],['furnace','Furnace']])selectors.append(button(label,()=>{runView=id;render();},runView===id?'selected':''));controls.append(selectors);c.append(controls);
+}
+function openStageEditor(index){if(demoRun)return;const source=programEditor?programEditor.stages:programCatalogue[selectedProgram].stages;stageSession={id:selectedProgram,index,source:programRoute,origin:mainPage,owner:programEditor?'program-editor':'library',stages:structuredClone(source)};mainPage='stage-edit';render();}
+function currentStage(){return stageSession.stages[stageSession.index];}
+function startTemperature(){return stageSession.index===0?25:stageSession.stages[stageSession.index-1].target;}
+function inheritTargets(){for(let i=0;i<stageSession.stages.length;i++)if(stageSession.stages[i].kind==='Hold')stageSession.stages[i].target=i?stageSession.stages[i-1].target:25;}
+function stageErrors(){const errors=[];let start=25;for(let i=0;i<stageSession.stages.length;i++){const t=stageSession.stages[i];if(!Number.isInteger(t.target)||t.target<0||t.target>controllerLimits().maxTemperature)errors.push(`Stage ${i+1}: target is outside controller limits.`);if(t.kind==='Heating'&&t.target<=start)errors.push(`Stage ${i+1}: heating target must exceed its starting temperature.`);if(t.kind!=='Hold'&&(!Number.isInteger(t.rateTenths)||t.rateTenths<1||t.rateTenths>controllerLimits().maxRate*10))errors.push(`Stage ${i+1}: invalid heating rate.`);if(t.kind==='Heating'&&(!Number.isInteger(t.minutes)||t.minutes<1))errors.push(`Stage ${i+1}: duration must be positive.`);start=t.target;}const total=stageSession.stages.reduce((sum,t)=>sum+(Number(t.minutes)||0),0);if(total>controllerLimits().maxCuringMinutes)errors.push('Curing duration cannot exceed 48 hours.');return errors;}
+function changeStage(key,value,redraw=true){const beforeStarts=stageSession.stages.map((_,i)=>i?stageSession.stages[i-1].target:25);const t=currentStage();if(key==='kind'){t.kind=value;t.rateTenths=value==='Hold'?0:Math.max(1,Math.abs(t.rateTenths));if(!Number.isFinite(t.minutes))t.minutes=1;}else if(key==='mode'){t.rateTenths=value==='fastest'?0:10;t.minutes=value==='fastest'?null:Math.max(1,Math.ceil(Math.abs(t.target-startTemperature())/(t.rateTenths/10)));}else{
+ const v=Number(value);if(value===''||!Number.isFinite(v)){t[key]=NaN;}else if(key==='rateTenths'){t.rateTenths=Math.round(v*10);t.minutes=t.rateTenths>0?Math.max(1,Math.ceil(Math.abs(t.target-startTemperature())/(t.rateTenths/10))):NaN;}else{t[key]=v;if(t.kind==='Heating'){const delta=t.target-startTemperature();if(key==='minutes')t.rateTenths=v>0?Math.max(1,Math.ceil(delta*10/v)):NaN;else t.minutes=t.rateTenths>0?Math.max(1,Math.ceil(delta/(Math.abs(t.rateTenths)/10))):NaN;}else if(t.kind==='Cooling'&&t.rateTenths!==0)t.minutes=Math.max(1,Math.ceil(Math.abs(t.target-startTemperature())/(Math.abs(t.rateTenths)/10)));}}
+ inheritTargets();for(let j=stageSession.index+1;j<stageSession.stages.length;j++){const next=stageSession.stages[j],start=stageSession.stages[j-1].target;if(start!==beforeStarts[j]&&next.kind!=='Hold'&&next.rateTenths!==0)next.minutes=Math.max(1,Math.ceil(Math.abs(next.target-start)/(Math.abs(next.rateTenths)/10)));}if(redraw)render();else{
+ const errors=stageErrors(),note=document.querySelector('.edit-note');note.textContent=errors[0]||(t.kind==='Cooling'?(t.rateTenths===0?'Fastest cooling: duration is unknown.':'Calculated duration: '+t.minutes+' min'):'');note.classList.toggle('error',errors.length>0);document.querySelector('.edit-actions .primary').disabled=errors.length>0;
+ for(const field of ['target','rateTenths','minutes']){const input=document.getElementById('stage-'+field);if(input&&input!==document.activeElement){const value=field==='rateTenths'?Math.abs(t.rateTenths)/10:t[field];input.value=Number.isFinite(value)?value:'';}}
+ }
+}
+function editorField(parent,label,key,value,step=1,readonly=false){const line=node('div',undefined,'edit-field');const text=node('label',label);const id='stage-'+key;text.htmlFor=id;line.append(text);{const input=node('input');input.id=id;input.type='text';input.inputMode='none';input.step=step;input.value=typeof value==='string'?value:Number.isFinite(value)?value:'';input.readOnly=true;input.disabled=readonly;input.setAttribute('aria-label','Edit '+label);input.onclick=()=>openNumericKeyboard(label,key==='rateTenths'?Math.abs(currentStage().rateTenths)/10:currentStage()[key],{min:key==='target'?0:step,max:key==='target'?controllerLimits().maxTemperature:key==='rateTenths'?controllerLimits().maxRate:controllerLimits().maxCuringMinutes,step,help:'Controller supplied range and step.'},value=>changeStage(key,value));const stepper=node('div',undefined,'field-stepper'),make=(caption,delta)=>{const b=button(caption,()=>{const live=key==='rateTenths'?Math.abs(currentStage().rateTenths)/10:currentStage()[key];changeStage(key,Math.round(((Number.isFinite(live)?live:0)+delta)*10)/10);});b.setAttribute('aria-label',caption==='+'?'Increase '+label:'Decrease '+label);return b;};const down=make('-',-step),up=make('+',step);down.disabled=up.disabled=readonly;stepper.append(down,input,up);line.append(stepper);if(readonly)line.classList.add('is-locked');}parent.append(line);}
+// Keep heating durations consistent when a stage's starting temperature changes (move, insert, delete).
+function stageStarts(){return new Map(stageSession.stages.map((stage,i)=>[stage,i?stageSession.stages[i-1].target:25]));}
+function reflowStages(before){inheritTargets();stageSession.stages.forEach((stage,i)=>{const start=i?stageSession.stages[i-1].target:25;if(before.get(stage)!==start&&stage.kind!=='Hold'&&stage.rateTenths>0)stage.minutes=Math.max(1,Math.ceil(Math.abs(stage.target-start)/(stage.rateTenths/10)));});}
+function moveStage(to){const from=stageSession.index,count=stageSession.stages.length;to=Math.max(0,Math.min(count-1,Math.round(to)));if(to===from)return;const before=stageStarts(),[stage]=stageSession.stages.splice(from,1);stageSession.stages.splice(to,0,stage);stageSession.index=to;reflowStages(before);render();}
+function addStageAfter(){if(stageSession.stages.length>=FURNACE_MAX_STAGES)return;const before=stageStarts(),start=currentStage().target,target=Math.min(controllerLimits().maxTemperature,start+20);stageSession.stages.splice(stageSession.index+1,0,{kind:'Heating',target,rateTenths:10,minutes:Math.max(1,target-start)});stageSession.index++;reflowStages(before);render();}
+function deleteCurrentStage(){if(stageSession.stages.length<2)return;const before=stageStarts();stageSession.stages.splice(stageSession.index,1);stageSession.index=Math.min(stageSession.index,stageSession.stages.length-1);reflowStages(before);render();}
+function renderStageEditor(){
+ // Draw the page the editor was opened from, then the editor above it as a dialog.
+ mainPage=stageSession.origin;render();mainPage='stage-edit';
+ let panel=$('stage-dialog');if(!panel){panel=node('section',undefined,'stage-dialog');panel.id='stage-dialog';panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-labelledby','stage-dialog-title');document.querySelector('.screen').append(panel);}
+ const c=node('div',undefined,'stage-dialog-card');panel.replaceChildren(c);panel.hidden=false;document.querySelector('.body').inert=true;document.querySelector('.nav').inert=true;
+ const t=currentStage(),count=stageSession.stages.length,top=node('div',undefined,'editor-top');const iconButton=(text,label,fn,className)=>{const b=button(text,fn,className);b.setAttribute('aria-label',label);b.title=label;return b;};const prev=iconButton('‹','Previous stage',()=>{stageSession.index--;render();},'nav-action stage-arrow'),next=iconButton('›','Next stage',()=>{stageSession.index++;render();},'nav-action stage-arrow');prev.disabled=stageSession.index===0;next.disabled=stageSession.index===count-1;
+ const position=button(String(stageSession.index+1),()=>openNumericKeyboard('Move stage to position',stageSession.index+1,{min:1,max:count,step:1},value=>moveStage(value-1)),'stage-position');position.disabled=count<2;position.setAttribute('aria-label',`Stage ${stageSession.index+1} of ${count}. Change to move it.`);
+ const name=node('h2',undefined,'stage-heading');name.id='stage-dialog-title';name.append(position,node('span',`/ ${count}`));
+ const types=node('div',undefined,'stage-types');for(const kind of ['Heating','Hold'])types.append(button(kind,()=>changeStage('kind',kind),(kind===t.kind?'selected ':'')+'stage-type-'+kind.toLowerCase()));
+ const add=iconButton('+','Add a stage after this one',addStageAfter,'primary stage-icon');add.disabled=count>=FURNACE_MAX_STAGES;
+ const remove=iconButton('','Delete this stage',()=>confirmAction(`Delete stage ${stageSession.index+1}?`,'The stage is removed from this program when you save all changes.','Delete stage',deleteCurrentStage),'danger stage-icon');remove.append(icon('trash'));remove.disabled=count<2;
+ const middle=node('div',undefined,'stage-nav pager');middle.append(prev,name,next);top.append(remove,middle,add);c.append(top,types);
+ const fields=node('div',undefined,'edit-fields');const hold=t.kind==='Hold';editorField(fields,'Target (C)','target',t.target,1,hold);
+ // Same rows for Heating and Hold; a Hold stage locks its inherited target and has no rate.
+ editorField(fields,'Rate (C/min)','rateTenths',hold?'None':Math.abs(t.rateTenths)/10,0.1,hold);editorField(fields,'Duration (min)','minutes',t.minutes);c.append(fields);
+ const errors=stageErrors();c.append(node('p',errors[0]||'','edit-note'+(errors.length?' error':'')));
+ const actions=node('div',undefined,'edit-actions');actions.append(button('Discard changes',leaveStageEditor,'danger'));const save=button('Save all changes',saveStageEditor,'primary');save.disabled=errors.length>0;actions.append(save);c.append(actions);
+}
+function hideStageDialog(){const panel=$('stage-dialog');if(!panel||panel.hidden)return;panel.hidden=true;panel.replaceChildren();document.querySelector('.body').inert=false;document.querySelector('.nav').inert=false;}
+function closeStageEditor(){const route=stageSession.source,origin=stageSession.origin,owner=stageSession.owner;stageSession=null;mainPage=owner==='program-editor'?'program-editor':origin==='loading'?'loading':'programs';programRoute=route;render();}
+function leaveStageEditor(){if(!stageSession)return;confirmAction('Discard stage changes?','All unsaved stage edits in this session will be discarded.','Discard changes',closeStageEditor);}
+function saveStageEditor(){if(!stageSession||stageErrors().length)return;if(stageSession.owner==='program-editor'){programEditor.stages=structuredClone(stageSession.stages);closeStageEditor();return;}const p=programCatalogue[stageSession.id];p.stages=structuredClone(stageSession.stages);normalizeProgram(p);closeStageEditor();}
+$('nav-home').onclick=()=>switchMain('home');$('demo-advance').onclick=()=>advanceDemo();$('demo-example').onclick=()=>{if(stageSession||demoRun||dirty())return;selectedProgram=0;startDemo(26);};
+
+
+let touchKeyboard=null;
+function keyboardInert(value){for(const selector of ['.body','.nav','.header .note'])document.querySelector(selector).inert=value;const panel=$('stage-dialog');if(panel){panel.inert=value;if(!value&&!panel.hidden){document.querySelector('.body').inert=true;document.querySelector('.nav').inert=true;}}}
+function closeTouchKeyboard(restoreFocus=true){if(!touchKeyboard)return;const focus=touchKeyboard.focus;touchKeyboard=null;$('touch-keyboard').hidden=true;$('touch-keyboard').replaceChildren();keyboardInert(false);if(restoreFocus&&focus?.isConnected)focus.focus();}
+function openTouchKeyboard(kind,title,value,options,commit){
+ if((demoRun&&demoRun.mode!=='manual')||document.querySelector('dialog[open]'))return;
+ closeTouchKeyboard(false);touchKeyboard={kind,title,value:String(value??''),options,commit,shift:false,page:'letters',focus:document.activeElement};keyboardInert(true);drawTouchKeyboard();$('keyboard-input').focus();$('keyboard-input').select();updateKeyboardCaret();
+}
+function openTextKeyboard(title,value,commit){openTouchKeyboard('text',title,value,{maxLength:32},commit);}
+function openNumericKeyboard(title,value,options,commit){openTouchKeyboard('number',title,value,options,commit);}
+function keyboardError(){
+ const k=touchKeyboard,v=$('keyboard-input').value;
+ if(k.kind==='text'){if(!v.trim())return 'Enter a name.';if(v.length>k.options.maxLength)return `Maximum ${k.options.maxLength} characters.`;if(/[\u0000-\u001f\u007f]/.test(v))return 'Control characters are not supported.';return '';}
+ if(v.length>24)return 'Maximum 24 characters.';
+ if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(v))return 'Enter a complete number.';
+ const n=Number(v),{min,max,step}=k.options;if(!Number.isFinite(n))return 'Enter a finite number.';if(n<min||n>max)return `Allowed range: ${min} to ${max}.`;if(Math.abs((n-min)/step-Math.round((n-min)/step))>1e-7)return `Use increments of ${step}.`;return '';
+}
+function updateKeyboardFeedback(){
+ const k=touchKeyboard;if(!k)return;k.value=$('keyboard-input').value;const error=keyboardError();$('keyboard-hint').textContent=error||(k.kind==='text'?'Changes are applied only when you choose Apply.':`Range ${k.options.min} to ${k.options.max} | Step ${k.options.step}`);$('keyboard-hint').classList.toggle('error',!!error);$('keyboard-apply').disabled=!!error;$('keyboard-count').textContent=k.kind==='text'?`${k.value.length} / ${k.options.maxLength}`:'Numeric entry';updateKeyboardCaret();
+}
+// Draw a clearly visible blinking insertion line; the native 1px caret is hidden and only shows while the field has focus.
+let caretMeasure;
+function updateKeyboardCaret(){const input=$('keyboard-input'),caret=document.querySelector('.keyboard-caret');if(!input||!caret)return;const pos=input.selectionDirection==='backward'?input.selectionStart:input.selectionEnd,style=getComputedStyle(input);caretMeasure=caretMeasure||document.createElement('canvas').getContext('2d');caretMeasure.font=`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;const inner=parseFloat(style.paddingLeft)+parseFloat(style.borderLeftWidth),content=input.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight),full=caretMeasure.measureText(input.value).width,offset=style.textAlign==='center'&&full<content?(content-full)/2:0,x=inner+offset+caretMeasure.measureText(input.value.slice(0,pos??input.value.length)).width-input.scrollLeft;caret.style.left=Math.max(inner,Math.min(inner+content,x))+'px';caret.classList.remove('blink');void caret.offsetWidth;caret.classList.add('blink');}
+document.addEventListener('selectionchange',()=>{if(touchKeyboard)updateKeyboardCaret();});
+function keyboardInsert(text){const input=$('keyboard-input'),start=input.selectionStart,end=input.selectionEnd;if(input.value.length-(end-start)+text.length>input.maxLength){$('keyboard-hint').textContent='Maximum input length reached.';return;}input.setRangeText(text,start,end,'end');updateKeyboardFeedback();}
+function keyboardBackspace(){const input=$('keyboard-input'),start=input.selectionStart,end=input.selectionEnd;if(start!==end)input.setRangeText('',start,end,'end');else if(start>0){const last=Array.from(input.value.slice(0,start)).pop();input.setRangeText('',start-last.length,start,'end');}updateKeyboardFeedback();}
+function keyboardMove(direction){const input=$('keyboard-input'),start=input.selectionStart,end=input.selectionEnd;let pos;if(start!==end)pos=direction<0?start:end;else if(direction<0)pos=start-(Array.from(input.value.slice(0,start)).pop()?.length||0);else pos=end+(Array.from(input.value.slice(end))[0]?.length||0);input.setSelectionRange(pos,pos);updateKeyboardCaret();}
+function applyKeyboard(){if(!touchKeyboard||keyboardError())return;const k=touchKeyboard,value=k.kind==='number'?Number($('keyboard-input').value):$('keyboard-input').value.trim();closeTouchKeyboard(false);k.commit(value);}
+function keyboardKey(text,action,className='',disabled=false){const b=button(text,action,className);if([...text].length===1&&!['←','→'].includes(text)){b.replaceChildren(text);b.classList.remove('icon-only');b.removeAttribute('aria-label');}b.disabled=disabled;b.onmousedown=e=>e.preventDefault();return b;}
+function redrawTextKeyboard(){const input=$('keyboard-input'),start=input.selectionStart,end=input.selectionEnd;touchKeyboard.value=input.value;drawTouchKeyboard();const next=$('keyboard-input');next.focus();next.setSelectionRange(start,end);updateKeyboardCaret();}
+function drawTouchKeyboard(){
+ const k=touchKeyboard,panel=$('touch-keyboard');panel.hidden=false;panel.replaceChildren();panel.classList.toggle('numeric-keypad',k.kind==='number');const heading=node('div',undefined,'keyboard-heading');heading.append(node('h2',k.title));heading.firstChild.id='keyboard-title';const count=node('span');count.id='keyboard-count';heading.append(count);panel.append(heading);
+ const input=node('input',undefined,'keyboard-input');input.id='keyboard-input';input.type='text';input.inputMode='none';input.maxLength=k.kind==='text'?k.options.maxLength:24;input.autocomplete='off';input.spellcheck=false;input.value=k.value;input.setAttribute('aria-label',k.title);input.oninput=updateKeyboardFeedback;input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();applyKeyboard();}else if(e.key==='Escape'){e.preventDefault();closeTouchKeyboard();}};input.onscroll=updateKeyboardCaret;const field=node('div',undefined,'keyboard-field'),caret=node('span',undefined,'keyboard-caret');caret.setAttribute('aria-hidden','true');field.append(input,caret);panel.append(field);panel.onmousedown=e=>{if(e.target!==input)e.preventDefault();};const hint=node('p',undefined,'keyboard-hint');hint.id='keyboard-hint';hint.setAttribute('role','status');panel.append(hint);
+ const layout=node('div',undefined,'keyboard-layout');
+ if(k.kind==='text'){
+  const rows=['1234567890','qwertyuiop','asdfghjkl-','zxcvbnm'];
+  rows.forEach((chars,index)=>{const row=node('div',undefined,'keyboard-row');if(index===3)row.append(keyboardKey('Caps',()=>{k.shift=!k.shift;redrawTextKeyboard();},'function-key wide-key'+(k.shift?' shift-on':'')));
+   for(const char of chars){const label=k.shift?char.toUpperCase():char;row.append(keyboardKey(label,()=>{keyboardInsert(label);if(k.shift){k.shift=false;redrawTextKeyboard();}}));}
+   if(index===3)row.append(keyboardKey('Delete',keyboardBackspace,'function-key wide-key delete-key'));layout.append(row);
+  });
+  const bottom=node('div',undefined,'keyboard-bottom');bottom.append(keyboardKey('Cancel',()=>closeTouchKeyboard(),'function-key cancel-key'),keyboardKey('Clear',()=>{$('keyboard-input').value='';updateKeyboardFeedback();},'function-key clear-key'),keyboardKey('Space',()=>keyboardInsert(' '),'space-key'),keyboardKey('\u2190',()=>keyboardMove(-1),'arrow-key left-key'),keyboardKey('\u2192',()=>keyboardMove(1),'arrow-key right-key'));const apply=keyboardKey('Apply',applyKeyboard,'primary apply-key');apply.id='keyboard-apply';bottom.append(apply);layout.append(bottom);
+ }else{
+  const grid=node('div',undefined,'keyboard-number-grid');for(const key of ['7','8','9','Delete','4','5','6','1','2','3','.','0','\u2190','\u2192']){const action=key==='Delete'?keyboardBackspace:key==='\u2190'?()=>keyboardMove(-1):key==='\u2192'?()=>keyboardMove(1):()=>keyboardInsert(key);const disabled=key==='.'&&Number.isInteger(k.options.step);grid.append(keyboardKey(key,action,key==='Delete'?'function-key delete-key':key==='0'?'zero-key':/^\d$|^\.$/.test(key)?'':'function-key arrow-key',disabled));}layout.append(grid);const bottom=node('div',undefined,'keyboard-number-actions');const apply=keyboardKey('Apply',applyKeyboard,'primary apply-key');apply.id='keyboard-apply';bottom.append(keyboardKey('Cancel',()=>closeTouchKeyboard(),'function-key cancel-key'),keyboardKey('Clear',()=>{$('keyboard-input').value='';updateKeyboardFeedback();},'function-key clear-key'),apply);layout.append(bottom);
+ }
+ panel.append(layout);updateKeyboardFeedback();
+}
+// Keep physical keyboard focus within the visible touch panel.
+$('touch-keyboard').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();closeTouchKeyboard();}else if(event.key==='Tab'){const items=[...$('touch-keyboard').querySelectorAll('input,button:not([disabled])')];const first=items[0],last=items[items.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}});
+$('try-text-keyboard').onclick=()=>openTextKeyboard('Example text','Ceramic test program',value=>tell('Text entered',value+' (demo only)'));
+$('try-number-keyboard').onclick=()=>openNumericKeyboard('Number example',12.5,{min:0,max:9999,step:0.1},value=>tell('Number entered',String(value)+' (demo only)'));
+
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>go(b.dataset.tab));
+$('fixture').onchange=()=>{if(tab==='connections')render();};
+$('size').onchange=()=>{const [w,h]=$('size').value.split(' × ').map(Number);const screen=document.querySelector('.screen');screen.style.width=`${w}px`;screen.style.height=`${h}px`;};
+// Viewport and expo controls are outside the faithful HMI rectangle.
+const demoViewport={width:800,height:480,mode:'fit',scale:1};
+let demoSpeed=60,demoFrozen=false,viewportObserver=null,demoClock=null;
+// Demo toolbar labels: the long text shows when the toolbar is wide, the short one when it is narrow (CSS container query).
+const EXPO_SHORT={'Fullscreen':'Full','Exit fullscreen':'Exit','Freeze simulation':'Freeze','Unfreeze simulation':'Unfreeze','Next stage':'Next','Return to run':'To run','Reset demo session':'Reset','Inspect / zoom':'Inspect','Fit screen':'Fit'};
+function setExpoLabel(b,label){if(b.dataset.label===label)return;b.dataset.label=label;b.title=label;b.replaceChildren(node('span',label,'label-long'),node('span',EXPO_SHORT[label]||label,'label-short'));}
+function expoButton(id,label,action,className){
+ const b=button(label,action,className);b.id=id;b.setAttribute('type','button');setExpoLabel(b,label);return b;
+}
+function updateExpoControls(){
+ const fullscreen=$('fullscreen-toggle'),mode=$('viewport-mode'),freeze=$('freeze-toggle'),next=$('next-stage'),back=$('return-to-run');
+ if(!fullscreen)return;
+ const shell=$('demo-shell'),full=document.fullscreenElement===shell||shell.classList.contains('is-fallback-fullscreen');
+ setExpoLabel(fullscreen,full?'Exit fullscreen':'Fullscreen');
+ setExpoLabel(mode,demoViewport.mode==='inspect'?'Fit screen':'Inspect / zoom');
+ setExpoLabel(freeze,demoFrozen?'Unfreeze simulation':'Freeze simulation');
+ freeze.setAttribute('aria-pressed',String(demoFrozen));
+ next.disabled=!demoRun;back.disabled=!demoRun;
+ const status=$('viewport-status');status.textContent=(demoViewport.mode==='inspect'?'Inspect':'Fit')+' - '+demoViewport.width+' x '+demoViewport.height+' @ '+Math.round(demoViewport.scale*100)+'%';status.dataset.mode=demoViewport.mode;
+}
+function positionNativeDialog(){
+ const dialog=$('message'),frame=$('viewport-frame');if(!dialog||!dialog.open||!frame)return;
+ const rect=frame.getBoundingClientRect();dialog.style.left=rect.left+rect.width/2+'px';dialog.style.top=rect.top+rect.height/2+'px';dialog.style.setProperty('--message-scale',String(demoViewport.mode==='inspect'?1:demoViewport.scale));
+}
+// Height left for the HMI: window height minus page padding, toolbar and rotate hint. The scenario
+// summary is kept in view only on tall windows; on short ones it sits just below the fold.
+function demoAvailableHeight(){const shell=$('demo-shell');if(!shell)return demoViewport.height;const full=document.fullscreenElement===shell||shell.classList.contains('is-fallback-fullscreen'),view=window.visualViewport?window.visualViewport.height:window.innerHeight,box=getComputedStyle(full?shell:document.body),gap=8,hint=$('rotate-hint'),summary=shell.querySelector('.advanced-controls>summary'),toolbar=shell.querySelector('.expo-toolbar');let reserved=parseFloat(box.paddingTop)+parseFloat(box.paddingBottom)+(toolbar?toolbar.offsetHeight+gap:0);if(hint&&hint.offsetParent)reserved+=hint.offsetHeight+gap;if(!full&&summary&&view>=600)reserved+=summary.offsetHeight+gap;return Math.max(120,view-reserved);}
+function updateDemoViewport(){
+ const area=$('viewport-area'),frame=$('viewport-frame'),screen=document.querySelector('.screen');if(!area||!frame||!screen)return;
+ const availableWidth=Math.max(1,area.clientWidth),availableHeight=demoAvailableHeight();
+ // Scale up to 2x on large screens and down to fit short landscape phones; the page scrolls only for the scenario panel below.
+ demoViewport.scale=demoViewport.mode==='inspect'?1:Math.min(availableWidth/demoViewport.width,availableHeight/demoViewport.height,2);
+ if(!Number.isFinite(demoViewport.scale)||demoViewport.scale<=0)demoViewport.scale=1;
+ area.classList.toggle('inspect-mode',demoViewport.mode==='inspect');area.style.setProperty('--logical-width',demoViewport.width+'px');area.style.setProperty('--logical-height',demoViewport.height+'px');
+ $('demo-shell')?.style.setProperty('--frame-w',Math.round(demoViewport.width*(demoViewport.mode==='inspect'?1:demoViewport.scale))+'px');frame.style.width=demoViewport.width*demoViewport.scale+'px';frame.style.height=demoViewport.height*demoViewport.scale+'px';
+ screen.style.width=demoViewport.width+'px';screen.style.height=demoViewport.height+'px';screen.style.transform=demoViewport.mode==='inspect'?'none':'scale('+demoViewport.scale+')';
+ updateExpoControls();positionNativeDialog();
+}
+function setDemoSize(){
+ const values=($('size').value.match(/\d+/g)||[]).map(Number);if(values.length<2)return;
+ demoViewport.width=values[0];demoViewport.height=values[1];const frame=$('viewport-frame');if(frame){frame.style.width=demoViewport.width+'px';frame.style.height=demoViewport.height+'px';}updateDemoViewport();
+}
+function toggleViewportMode(){demoViewport.mode=demoViewport.mode==='fit'?'inspect':'fit';updateDemoViewport();}
+async function toggleDemoFullscreen(){
+ const shell=$('demo-shell');if(document.fullscreenElement===shell){await document.exitFullscreen().catch(()=>{});return;}
+ if(shell.classList.contains('is-fallback-fullscreen')){shell.classList.remove('is-fallback-fullscreen');updateDemoViewport();return;}
+ if(!document.fullscreenEnabled||!shell.requestFullscreen){shell.classList.add('is-fallback-fullscreen');updateDemoViewport();return;}
+ try{await shell.requestFullscreen({navigationUI:'hide'});}catch(error){shell.classList.add('is-fallback-fullscreen');}
+ updateDemoViewport();
+}
+function nextDemoStage(){
+ if(!demoRun){tell('No active demo','Start a demo run before advancing to its next stage.');return;}
+ if(demoRun.mode==='manual'){advanceDemo(Math.max(1,controllerLimits().maxCuringMinutes-demoRun.elapsed));render();updateExpoControls();return;}
+ const next=runStage()+1;if(next>=demoRun.program.stages.length)demoRun.elapsed=demoRun.program.minutes;else{let elapsed=0;for(let i=0;i<=next;i++)elapsed+=demoRun.program.stages[i].minutes;demoRun.elapsed=Math.min(demoRun.program.minutes,elapsed);}render();updateExpoControls();
+}
+function returnToDemoRun(){
+ if(!demoRun){tell('No active demo','Start a demo run before returning to Running.');return;}
+ mainPage='running';render();updateExpoControls();
+}
+function resetDemoSession(){confirmAction('Reset demo session?','Reload the page and restore the premade examples, preferences and local demo state?','Reset demo session',()=>window.location.reload());}
+function setupDemoShell(){
+ if($('demo-shell'))return;
+ const screen=document.querySelector('.screen'),outside=document.querySelector('.outside'),dialog=$('message'),shell=document.createElement('div');shell.id='demo-shell';shell.className='demo-shell';
+ const toolbar=document.createElement('div');toolbar.className='expo-toolbar';toolbar.setAttribute('aria-label','Demo controls');
+ toolbar.append(node('span','Furnace HMI / browser demonstration','toolbar-title'));
+ toolbar.append(expoButton('fullscreen-toggle','Fullscreen',toggleDemoFullscreen,'primary'),expoButton('scenario-toggle','Scenarios',()=>{const details=$('advanced-controls');details.open=!details.open;if(details.open)details.querySelector('summary').focus();}));
+ const speed=document.createElement('select');speed.id='demo-speed';speed.setAttribute('aria-label','Simulation speed');for(const [value,label]of [['1','1x'],['10','10x'],['60','60x'],['300','300x']]){const option=node('option',label);option.value=value;if(value==='60')option.selected=true;speed.append(option);}speed.onchange=()=>{demoSpeed=Number(speed.value)||60;updateExpoControls();};toolbar.append(speed);
+ toolbar.append(expoButton('freeze-toggle','Freeze simulation',()=>{demoFrozen=!demoFrozen;updateExpoControls();}),expoButton('next-stage','Next stage',nextDemoStage),expoButton('return-to-run','Return to run',returnToDemoRun),expoButton('reset-demo-session','Reset demo session',resetDemoSession));
+ const viewportMode=expoButton('viewport-mode','Inspect / zoom',toggleViewportMode),status=node('span','Fit - 800 x 480','toolbar-status');status.id='viewport-status';toolbar.append(viewportMode,status);
+ const hint=node('p','Landscape is preferred for faithful HMI interaction.','rotate-hint');hint.id='rotate-hint';
+ const sourceParent=screen.parentNode;sourceParent.insertBefore(shell,screen);const area=document.createElement('div');area.id='viewport-area';area.className='viewport-area';const frame=document.createElement('div');frame.id='viewport-frame';frame.className='viewport-frame';frame.append(screen);area.append(frame);
+ const details=document.createElement('details');details.id='advanced-controls';details.className='advanced-controls';details.append(node('summary','Advanced scenarios and fixtures'),outside);
+ shell.append(toolbar,hint,area,details,dialog);
+ $('size').onchange=setDemoSize;document.addEventListener('fullscreenchange',()=>{if(document.fullscreenElement!==shell)shell.classList.remove('is-fallback-fullscreen');updateDemoViewport();});window.addEventListener('resize',updateDemoViewport);window.visualViewport?.addEventListener('resize',updateDemoViewport);
+ const nativeShowModal=dialog.showModal.bind(dialog);dialog.showModal=()=>{nativeShowModal();positionNativeDialog();requestAnimationFrame(positionNativeDialog);};dialog.addEventListener('close',()=>dialog.style.removeProperty('--message-scale'));
+ if(typeof ResizeObserver!=='undefined'){viewportObserver=new ResizeObserver(updateDemoViewport);viewportObserver.observe(area);}
+ setDemoSize();updateDemoViewport();
+}
+setupDemoShell();
+render();
+startDemoClock();
+</script>
+</body>
+</html>

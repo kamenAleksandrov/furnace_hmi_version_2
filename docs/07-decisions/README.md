@@ -30,3 +30,5 @@ and use [the template](ADR_TEMPLATE.md).
 | [ADR-0007](0007-serialization-and-framing.md) | Deferred | Select serialization, framing, and integrity |
 | [ADR-0008](0008-memory-policy.md) | Deferred | Set bounded memory/allocation policy |
 | [ADR-0009](0009-protocol-source-sharing.md) | Deferred | Select HMI/controller protocol source-sharing model |
+| [ADR-0010](0010-maintenance-request-workflows.md) | Proposed | Separate maintenance actions and controller-validated restart attempts |
+| [ADR-0011](0011-component-service-catalogue.md) | Proposed | Generic configured component service catalogue and read-only worker Device view |

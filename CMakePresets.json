@@ -92,6 +92,28 @@
         "FURNACE_HMI_LVGL_SOURCE_DIR": "${sourceDir}/.deps/zephyr-workspace/modules/lib/gui/lvgl",
         "SDL2_DIR": "${sourceDir}/.deps/tools/sdl2-msvc-2.32.10/SDL2-2.32.10/cmake"
       }
+    },
+    {
+      "name": "host-msvc-ui-lab-800x640-debug",
+      "displayName": "Host-only UI laboratory 800×640 (Debug)",
+      "description": "Graphite UI review viewport variant",
+      "inherits": "host-msvc-ui-lab-debug",
+      "binaryDir": "${sourceDir}/build/host-msvc-ui-lab-800x640-debug",
+      "cacheVariables": {
+        "FURNACE_HMI_UI_LAB_WIDTH": "800",
+        "FURNACE_HMI_UI_LAB_HEIGHT": "640"
+      }
+    },
+    {
+      "name": "host-msvc-ui-lab-1024x600-debug",
+      "displayName": "Host-only UI laboratory 1024×600 (Debug)",
+      "description": "Graphite UI candidate viewport variant",
+      "inherits": "host-msvc-ui-lab-debug",
+      "binaryDir": "${sourceDir}/build/host-msvc-ui-lab-1024x600-debug",
+      "cacheVariables": {
+        "FURNACE_HMI_UI_LAB_WIDTH": "1024",
+        "FURNACE_HMI_UI_LAB_HEIGHT": "600"
+      }
     }
   ],
   "buildPresets": [
@@ -116,6 +138,16 @@
     {
       "name": "host-msvc-ui-lab-debug",
       "configurePreset": "host-msvc-ui-lab-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "host-msvc-ui-lab-800x640-debug",
+      "configurePreset": "host-msvc-ui-lab-800x640-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "host-msvc-ui-lab-1024x600-debug",
+      "configurePreset": "host-msvc-ui-lab-1024x600-debug",
       "configuration": "Debug"
     }
   ],
@@ -169,6 +201,30 @@
     {
       "name": "host-msvc-ui-lab-debug",
       "configurePreset": "host-msvc-ui-lab-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
+    {
+      "name": "host-msvc-ui-lab-800x640-debug",
+      "configurePreset": "host-msvc-ui-lab-800x640-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
+    {
+      "name": "host-msvc-ui-lab-1024x600-debug",
+      "configurePreset": "host-msvc-ui-lab-1024x600-debug",
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true

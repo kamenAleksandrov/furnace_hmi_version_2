@@ -41,6 +41,19 @@ int main(void)
     }
 
     furnace_hmi_dashboard_state_initialize(&state);
+    if (state.run_phase != FURNACE_HMI_RUN_PHASE_NONE ||
+        state.cooling_elapsed_seconds.validity != FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE ||
+        state.cooling_remaining_seconds.validity != FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE) {
+        (void)fprintf(stderr, "cooling observation did not start unavailable.\n");
+        return 6;
+    }
+    state.run_phase = FURNACE_HMI_RUN_PHASE_COUNT;
+    if (furnace_hmi_dashboard_state_is_well_formed(&state)) {
+        (void)fprintf(stderr, "invalid run phase was accepted.\n");
+        return 7;
+    }
+
+    furnace_hmi_dashboard_state_initialize(&state);
     memset(state.program_name, 'x', sizeof(state.program_name));
     if (furnace_hmi_dashboard_state_is_well_formed(&state)) {
         (void)fprintf(stderr, "unterminated program name was accepted.\n");

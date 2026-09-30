@@ -31,6 +31,17 @@ Manual is teal, idle is blue-grey, faults are red, and stale/unavailable state
 uses an explicitly cautionary muted treatment. These are presentation cues, not
 additional machine state.
 
+The accepted reversible host-lab presentation direction is a graphite
+instrument panel: Background `#171B1E`, panel `#242A2E`, secondary control
+`#30383D`, main text `#F1F3F2`, supporting text `#BBC3C7`, and selected
+navigation `#285D7A`. Current temperature is the dominant reading, followed by
+target and remaining time; estimated power and elapsed time are subordinate.
+Related readings share a panel with restrained dividers, common 6 px corners,
+and an 8 px spacing rhythm. Frequent actions target at least 48 px in the host
+lab, with 56 px run and primary actions as the starting physical-touch proxy.
+This is a presentation decision for the reversible simulator/lab pass, not a
+production display or controller-behavior decision.
+
 ### Motion and navigation feedback
 
 The current host-lab baseline presents bottom navigation as one continuous tab
@@ -150,3 +161,52 @@ Provide immediate perceptible feedback. For ordinary controller interactions,
 show a meaningful result or pending/progress state at about 500 ms rather than
 leaving the operator uncertain. Normal Stop has a stronger, bounded path and
 must not wait behind low-priority UI work. Emergency Stop is not an HMI feature.
+
+## Verified host graphite composition
+
+**Decision (presentation only):** Reserve a separate simulation identity band,
+use a 56-pixel header, 48-pixel ordinary controls, and fixed editor/run actions.
+Primary readings use 40-pixel type, secondary readings 32, and engineering labels
+16. At the short review viewport, furnace readouts sit beside the proportional
+drawing; taller views place them below it. Program facts stay together beside
+the preview graph, with management actions separated from Load/Start.
+
+
+### Local program-edit presentation follow-up
+
+**Decision (presentation only):** The host lab places the transparent header a
+few pixels below its coloured state line and uses only a bottom divider. The
+state indicator is a compact coloured pill with a dot; its colour follows the
+observed state. The notification control is labelled **Notifications** and has
+no filled background.
+
+**Fact:** Quick launch hides empty Favourites and Recent programs headings. If
+both local lists are empty, it displays **Add a favourite program**. Program
+details place a compact favourite marker and rename icon beside the name, use a
+red delete action, and give **View stages** a muted amber treatment. The bundled
+LVGL symbol set supplies the pencil but has no star symbol, so the host-lab
+marker currently uses an asterisk fallback.
+
+**Fact:** Program stages render up to nine direct-edit cards in a three-column,
+three-row grid. Each card keeps its name at upper-left, carries a type-coloured
+outlined ordinal badge at upper-right, and presents type/duration plus either a
+temperature or explicit inherited target temperature. Graph nodes and cards enter the stage editor directly. The editor
+shows its ordinal and total beside the stage name, with previous/next controls.
+It holds a bounded HMI-local set of edits while cycling; **Save all changes**
+retains the local preview and **Discard changes** clears it. Stage-name keyboard
+input is intentionally deferred to the next requested batch. No controller
+request, persistence, validation, or furnace semantics are implied.**Fact:** The host lab uses explicit Start/Save/acknowledgement request previews.
+Observed active Program state controls the Running navigation lock; Manual
+retains normal navigation. Modal coverage leaves normal Stop accessible.
+These are host presentation choices and evidence, not production permissions.
+See [native verification](../09-progress/GRAPHITE_UI_VERIFICATION.md).
+
+### Running-view presentation refinement
+
+**Decision (presentation only):** The Running view uses unboxed Graph, Split,
+and Furnace selectors with narrow straight separators. In full Graph view the
+reading band becomes a compact unboxed footer beside Elapsed, allowing the
+graph to use the released vertical space. The measured path is high-contrast
+amber, distinct from the muted planned path. The graph's lower grid boundary
+is lowered to clear its time labels, while temperature labels move slightly
+right without shifting the plot.

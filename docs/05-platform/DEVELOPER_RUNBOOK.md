@@ -67,8 +67,9 @@ The expanded explorer uses a dark neutral theme and carries a distinct machine
 state accent across every page (running amber, paused violet, Manual teal,
 fault red). Click/tap the four bottom destinations. Programs use short pages
 and Details rather than scrolling; the stage draft editor uses explicit +/-
-buttons, never drag gestures. Press `H`, `P`, `D`, or `S` for Home, Programs,
-Device, or Settings; press `I` for the synthetic service-warning dialog. All
+buttons, never drag gestures. Press `H`, `P`, `R`, `D`, or `S` for Home,
+Programs, Running, Device, or Settings; press `I` for the synthetic
+service-warning dialog. All
 program data, edits, and confirmations are lab previews. In particular,
 acknowledging the service dialog does not contact a controller or waive any
 maintenance policy.
@@ -97,14 +98,31 @@ Use `check` to build and test without opening a window:
 python tools\run_ui_lab.py check --scenario running-normal
 ```
 
+The default UI-lab window is 800 x 480. The review variants are deliberate
+host-only viewport configurations; each uses the same semantic scenarios and
+smoke suite:
+
+```powershell
+cmake --preset host-msvc-ui-lab-800x640-debug
+cmake --build --preset host-msvc-ui-lab-800x640-debug
+ctest --preset host-msvc-ui-lab-800x640-debug
+
+cmake --preset host-msvc-ui-lab-1024x600-debug
+cmake --build --preset host-msvc-ui-lab-1024x600-debug
+ctest --preset host-msvc-ui-lab-1024x600-debug
+```
+
+The smoke test also exercises a compact 640 x 360 layout floor. These viewport
+sizes are development evidence only; they do not select an embedded display.
+
 The same check can be selected through the all-in-one workflow helper:
 
 ```powershell
 python tools\run_foundation.py ui-check --scenario running-normal
 ```
 
-While the laboratory is open, keys `1` through `8` switch between the same
-scenarios. The first dashboard is intentionally read-only; simulated values
+While the laboratory is open, keys `1` through `9` switch between the same
+scenarios; `9` (`--scenario cooling`) is a Program run in automatic cooling. The first dashboard is intentionally read-only; simulated values
 exercise presentation and recovery states, not controller safety or process
 control. The current stage values and planned trajectory are illustrative until
 HEATING/HOLD/COOL semantics are accepted.
@@ -355,3 +373,26 @@ commands whenever shared target-facing sources or Zephyr configuration change.
 The final explicit CMake reconfiguration is required for fresh File API
 metadata. Report any check you did not run; do not infer a pass from an old
 build directory.
+
+## Native graphite UI review
+
+Run `.\.venv\Scripts\python.exe tools\review_ui_lab.py` from the repository
+root to configure, build, and test all three native UI-lab presets, capture the
+actual SDL app renderer, and generate `build/graphite-review/final/index.html`.
+The tool stops on a failed command; the gallery links native PNGs and the
+manifest records source/executable hashes. Pillow is needed only for BMP-to-PNG
+encoding; the CTest capture and geometry checks have no Pillow dependency.
+
+Default interactive launch: `python tools\run_ui_lab.py --scenario idle`.
+After the review build, launch either larger variant directly:
+
+```powershell
+.\build\host-msvc-ui-lab-800x640-debug\simulator\ui_lab\Debug\furnace_hmi_ui_lab.exe --scenario running-normal
+.\build\host-msvc-ui-lab-1024x600-debug\simulator\ui_lab\Debug\furnace_hmi_ui_lab.exe --scenario running-normal
+```
+
+Open one at a time. The native preset determines layout; resizing a window is
+not another viewport test. Start on the loading page opens a request preview;
+use the Running scenario to inspect a simulated observed run. For raw capture,
+pass `--capture DIRECTORY` to a built executable with an existing destination.
+See [per-page evidence and limits](../09-progress/GRAPHITE_UI_VERIFICATION.md).

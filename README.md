@@ -70,7 +70,7 @@ python tools\run_ui_lab.py --scenario running-overrun
 python tools\run_ui_lab.py check --scenario running-normal
 ```
 
-The lab window is marked `SIMULATION - NOT DEVICE DATA`; keys `1` through `8`
+The lab window is marked `SIMULATION - NOT DEVICE DATA`; keys `1` through `9`
 switch scenarios while it is open. See the [UI-lab vertical-slice plan](docs/09-progress/UI_LAB_VERTICAL_SLICE_PLAN.md)
 and [developer runbook](docs/05-platform/DEVELOPER_RUNBOOK.md). For the full
 non-graphical verification sequence, run `python tools\run_foundation.py all`.
@@ -84,4 +84,6 @@ After both canonical builds, regenerate and verify navigation metadata:
 ```powershell
 .\.venv\Scripts\python.exe tools\codebase_index.py
 .\.venv\Scripts\python.exe tools\codebase_index.py --check
+python tools\run_ui_lab.py --scenario running-normal
+python tools\run_ui_lab.py --scenario idle
 ```

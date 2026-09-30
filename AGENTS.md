@@ -22,3 +22,13 @@ Before substantial work, read [the documentation index](docs/INDEX.md),
 
 Substantial work follows [PLANS.md](PLANS.md). Detailed procedures belong in
 the relevant documentation or repository skill, not in this file.
+
+## Web/LVGL UI parity
+
+When changing a user-visible web demo or LVGL UI behavior, implement and verify
+the corresponding behavior in both interfaces in the same work slice. Treat
+the web demo and host LVGL lab as two presentations of one operator workflow;
+do not close a UI task with only one implementation. The only exception is a
+demo-only simulator fixture or visualization that does not represent an HMI
+screen, navigation rule, control, or user-visible behavior. Use the
+[UI-parity skill](.agents/skills/ui-parity/SKILL.md) for the detailed workflow.

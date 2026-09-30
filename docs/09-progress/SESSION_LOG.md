@@ -1,5 +1,300 @@
 # Session log
 
+## 2026-09-27 - Program editor rework, equal borders and operator text sweep
+
+**Fact:** The light strip is 12 px (native: negative bottom margin cancels the row
+gap; web: 12 px side padding, the nav owns its 8 px gap). The program editor was
+rebuilt in both presentations around a shared stage card, with change tracking
+(web: draft snapshot; native: `program_editor_dirty` set by rename, add stage or a
+changed stage). About 40 explanation strings were reworded or removed via one
+mapping applied to the web demo and native catalogue; the native
+`REQUEST_PREVIEW_DETAIL` string was removed and dialogs hide an empty body.
+Fixed native overlays stopping 24 px short of the bottom and the editor return
+page being overwritten after opening a stage.
+
+**Verification:** Browser smoke passed; native 10/10 CTest at three sizes;
+desktop preset and Zephyr workflow passed; captures inspected.
+
+## 2026-09-26 - Touch keyboard layout refinement
+
+**Fact:** Text keyboard rows are full (hyphen key added; Delete moved beside m;
+Caps/Delete 1.5 keys wide via a 20-column web grid and 2:3 LVGL flex weights).
+Keyboard rows now fill the panel height in both presentations. The numeric
+keypad panel is 460 px wide and centred with a dimmed backdrop. The web label
+Backspace became Delete to match native. Native disabled keys override the
+LVGL default theme's disabled recolor so they recede.
+
+**Verification:** Browser smoke passed; native 10/10 CTest at the three review
+sizes without warnings; captures inspected. Physical touch not tested.
+
+## 2026-09-26 - Program details thirds, Running reading line and cooling phase
+
+**Fact:** Program details moved Edit program from the title bar to a three-action
+bottom row and aligned graph/facts to a shared thirds grid (CSS grid and LVGL
+grid). Running replaced boxed readings, native top reading cards and the web
+cooling card row with one label/value line. Added `run_phase`,
+`cooling_elapsed_seconds`, `cooling_remaining_seconds` (estimated) and
+`graph_samples[].planned_cooling` to the dashboard model, the `cooling`
+simulator scenario, four catalogue strings, and a polyline dashed cooling
+overlay. The running-normal fixture now reports 4 stages and curing remaining
+to the 68-minute curing end.
+
+**Verification:** Browser smoke passed; native 10/10 CTest at all three sizes
+and the desktop preset passed without warnings; captures inspected. The Zephyr
+qemu_x86 workflow (3/3 cases, analysis) and tooling tests passed after the
+shared model/string change. `run_foundation.py --scenario` now also accepts
+`running-overrun` and `cooling`.
+
+## 2026-09-26 - Program details, cooling preview and 24-pixel light strip
+
+**Fact:** Set the light strip to 24 pixels in both presentations. Program
+previews now end with a dashed green automatic-cooling segment limited to a
+quarter of the curing time; the web Running view keeps the full estimate. LVGL
+draws the dashes in a draw-event overlay because its software renderer only
+dashes horizontal and vertical lines. Native Duration now precedes its values.
+View stages is outline-only, and Edit program is icon-only on details and
+stages in both presentations.
+
+**Verification:** Browser smoke passed. Native 10/10 CTest passed at 800x640
+and 1024x600 with no compiler warnings; captures were inspected. The 800x480
+link was blocked by the open UI-lab executable.
+
+## 2026-09-26 - Light strip height and browser Manual graph scale
+
+**Fact:** Reduced the full-width top light target from 48 to 32 pixels in the
+browser demo and native lab (`FURNACE_HMI_UI_LAB_LIGHT_TARGET_HEIGHT`). The
+browser Manual graph draws in its own layout pixels through a ResizeObserver,
+so text and the current-temperature marker are no longer distorted. It uses
+the native labels (maximum/middle/minimum C, Time (min)/middle/end min).
+Renamed the native Manual page capture to `manual-setup` because the `manual`
+scenario capture overwrote it.
+
+**Verification:** Browser smoke passed, including the new viewBox-equals-layout
+check. Native builds and 10/10 CTest passed at 800x640 and 1024x600, and the
+fresh captures were inspected. The 800x480 preset compiled but could not link
+while the UI-lab executable was open. Physical touch was not tested.
+
+## 2026-09-26 - Running readings, keyboard and light target refinement
+
+**Fact:** The Manual page title is Manual mode; browser and native Running
+present curing elapsed and remaining side by side, with cooling time separate.
+The old switch control is removed, estimate labels use Est., and the text
+keyboard is one digits-plus-letters layout. The top accent remains visibly
+4 pixels high while its full-width click target is 48 pixels high.
+
+**Verification:** Browser smoke passed keyboard entry/persistence, same-line
+time layout without overflow and light-target geometry. Native builds and all
+10 CTest checks passed at 800x480, 800x640 and 1024x600, including unknown
+remaining time and compact maximum-stage geometry. No firmware, protocol,
+physical-touch or furnace-control behavior was tested.
+
+## 2026-09-24 - Manual action and graph-scale stability
+
+**Fact:** Manual Start, Stop, Pause and Resume now update the retained native
+LVGL Manual page rather than rebuilding it. The retained browser and native
+Manual graph uses the full supplied 0--180 C range, so selection changes do
+not auto-zoom the temperature axis.
+
+**Verification:** Browser smoke passed. Native MSVC builds and all 10 CTest
+checks passed at 800 x 640 and 1024 x 600. Default 800 x 480 remains pending
+while its UI-lab executable is open; no firmware, protocol, physical-touch or furnace-control behavior
+changed.
+
+## 2026-09-24 - Manual graph and input stability
+
+**Fact:** Browser Manual graph/card sizing now fills its assigned visual area.
+The browser simulation leaves an open touch keyboard intact during periodic
+ticks. Native Manual target/rate actions update the existing trajectory and
+labels instead of rebuilding the Manual page, removing the visible
+minimum-size-to-final-size graph redraw. Lower-band context text is larger in
+both renderers.
+
+**Verification:** Browser smoke passed its keyboard-persistence and graph-fill
+checks. Native MSVC build and all 10 CTest checks passed at 800 x 640 and 1024
+x 600, including trajectory-identity coverage after a target adjustment.
+Default 800 x 480 is pending because its executable is currently open. No
+firmware, protocol, physical-touch or furnace-control behavior changed.
+
+## 2026-09-24 - Manual lower-band alignment
+
+**Fact:** Browser and native LVGL Manual now reserve the graph for the
+temperature prediction. State and Curing elapsed appear above the lower-band
+controls; Start/Pause/Stop are at its left and target/rate controls at its
+right. Operator-facing run buttons use Start, Pause, Resume and Stop, without
+demo/preview wording. The native geometry test protects that ordering.
+
+**Verification:** Browser smoke passed. Native MSVC build and all 10 CTest
+checks passed at 800 x 480, 800 x 640 and 1024 x 600. No firmware, protocol,
+physical-touch or furnace-control behavior changed.
+
+## 2026-09-24 - Manual graph and control composition refinement
+
+**Fact:** The browser Manual prediction graph now occupies roughly the upper
+70 percent of a vertical split; browser and native LVGL use the lower 30
+percent as a compact control band. Browser and native LVGL
+source share label-over-control target/rate
+bands with 48 x 52 minimum plus/minus targets, yellow outlines and bottom
+anchoring above Start or Pause/Stop. Native Manual adds controller-observed
+`Curing elapsed`; the browser shows its equivalent through its clearly
+session-scoped demo simulator.
+
+**Verification:** Browser smoke, whitespace and generated-index freshness
+checks passed. Native MSVC builds and all 10 CTest checks passed at 800 x 480,
+800 x 640 and 1024 x 600, including the Manual elapsed/control geometry capture
+path. No firmware, protocol, physical-touch or furnace-control behavior changed.
+
+## 2026-09-24 - Shared UI parity refinement
+
+**Fact:** Updated both browser and native LVGL UI shells to remove the
+status/current-page bezel and retain a single yellow, glowing top-line interior
+light request control. Reworked Manual into a current-target-only prediction
+graph with direct and +/- controls, Pause/Stop, and no separate Manual cooling
+screen. The browser controller fixture now returns to Manual setup when it
+ends heating at 48 hours and provides the ten-minute warning. Revised stage
+cards and Program details to the agreed shared hierarchy. Native visual/smoke
+tests now invoke the retained service-dialog API instead of the removed header
+button.
+
+**Verification:** Native MSVC UI-lab build and configured CTest passed 10/10;
+the browser smoke passed with explicit light, Manual controls, stage-card and
+Program-detail assertions. No firmware, physical touchscreen, deployment, or
+real furnace/control-CPU integration was run.
+
+## 2026-09-23 - Operator workflow first implementation slice
+
+**Fact:** Implemented the first native LVGL/browser slice from the operator
+workflow plan. Quick Launch now opens Manual instead of Choose program; Manual
+supports controller-bounded target/rate setup, start/pause/stop, light-demo
+control, 48-hour automatic cooling transition, and run containment. Programs
+now have a browser creation/edit route, authored Heating/Hold stages only,
+automatic cooling estimates, and no user stage names. Native LVGL mirrors the
+new Manual, Program Editor, automatic cooling, Device log and Maintenance
+routes; the obsolete Program preferences Settings category is removed. Device
+now exposes a volatile event log in the browser demo. The browser simulates
+asynchronous HMI requests and Control CPU acceptance for showable demos.
+
+**Deferred:** Production protocol messages, Control CPU validation/timing,
+furnace-side light and door policy, real cooling estimation, maintenance
+acknowledgement records, persistence, and restart behavior remain backlog work.
+
+**Verification:** Native MSVC build and configured CTest passed 10/10,
+including geometry and semantic UI-lab smoke. The extended headless browser
+smoke and `git diff --check` passed. No firmware, physical touchscreen,
+website deployment, or real furnace integration was run.
+
+## 2026-09-23 - Operator workflow plan and screen concepts
+
+**Fact:** Inspected requirements, authority/protocol/GUI ADRs, current browser
+routes and prior plans. Added [plan](OPERATOR_WORKFLOW_IMPLEMENTATION_PLAN.md),
+[concepts](../03-hmi/OPERATOR_WORKFLOW_SCREEN_CONCEPTS.md) and
+[controller backlog](CONTROLLER_INTEGRATION_BACKLOG.md). Recorded REQ-FUN-005/017
+conflicts for explicit reconciliation. Summary-row editing is recommended from
+the 800 x 480 budget, not a visually tested implementation.
+
+**Verification:** All 146 local Markdown targets across the eight planning/index
+records resolve; scoped diff and new-document whitespace checks passed. The
+owning codebase index generator and freshness check passed. Runtime, screenshots,
+native/Zephyr, thermal and physical-panel checks were not run. No application
+or firmware code changed.
+
+## 2026-09-18 - Client web demo planning
+
+**Fact:** Inspected both HTML copies, website sync/build ownership, existing browser behavior, governing HMI records and exact emulator key mappings 1-8. Created the [agent build plan](WEB_DEMO_CLIENT_BUILD_PLAN.md) for incremental single-file implementation. The user confirmed faithful HMI presentation with simulated controller responses. The follow-up answers confirmed session-only saved programs with premade examples, an ordinary online webpage without installation/download/offline support, and English only. The plan was updated to remove persistent storage, import/export and service-worker work. No HTML, firmware or website behavior was changed.
+
+**Verification:** All 130 local Markdown file targets across the six planning/index records resolved; diff whitespace checks passed. The owning codebase-index generator completed successfully. Its final freshness check is recorded with the handoff result. Browser interactions, screenshots, native/Zephyr builds, physical phones and deployment were not run for this planning pass.
+
+## 2026-09-15 - Running readings refinement
+
+The [running readings refinement](RUNNING_READINGS_REFINEMENT_PLAN.md) adds a
+tappable elapsed/remaining total, filled tiles, and live full-graph readings.
+Native builds and 10/10 tests pass at all three review sizes (67 captures each);
+Chrome running layout/toggle checks pass at the same sizes. Existing keyboard,
+program title, star and graph refinements are preserved. Host/browser only.
+
+## 2026-09-08 - All-page graphite execution handoff
+
+- Prepared the [completion plan](GRAPHITE_UI_COMPLETION_PLAN.md) at the
+  stakeholder's request for another agent. It starts from the existing dirty
+  graphite implementation and preserves that work, rather than assuming a
+  palette-only implementation or another clean baseline.
+- Specified all ten routes, dialogs, shared controls/graph/furnace composition,
+  editor and running containment, ownership constraints, and phased acceptance
+  criteria. Actual LVGL screenshots at 800 x 480, 800 x 640, and 1024 x 600 are
+  required; previous smoke success is not promoted to visual sign-off.
+- Preserved the existing illustrative SVG under
+  [docs/images/theme](../images/theme/graphite-running-concept.svg) so the
+  reference travels with the repository rather than living only in ignored build.
+- This handoff changes documentation only. No application implementation,
+  controller behavior, or new UI build/test/visual result is claimed here.
+- Handoff verification: all 40 Python tooling tests passed; 81 local Markdown
+  link targets resolved; the preserved SVG parsed as XML; index generation,
+  index --check, and git diff --check passed. Application/Zephyr builds and
+  live UI review were not rerun for this documentation-only change.
+
+## 2026-09-08 - Screenshot-driven furnace composition correction
+
+### Fact and decision
+
+- The stakeholder's live screenshot showed that the first graphite pass had
+  applied the palette and hierarchy but had not achieved the intended concept
+  composition: the Home furnace visual was narrow, clipped, and surrounded by
+  unused space.
+- The cause was a layout defect in the host-only lab: furnace illustration
+  pieces were direct children of a column flex panel while also being aligned
+  as overlays, and the visual panel had no explicit full-column width.
+- Corrected the composition with an explicit full-width visual panel and a
+  dedicated non-layout canvas for the furnace, roof, side, and door overlays.
+  The door is now aligned to the furnace canvas, and compact widths reduce the
+  illustration proportionally.
+
+### Verification
+
+- Rebuilt the default, 800 x 640, and 1024 x 600 UI-lab variants successfully.
+- Full CTest passed 9/9 for each UI-lab variant after the correction.
+- Launched the freshly rebuilt 800 x 640 UI-lab executable for stakeholder
+  inspection. Manual visual sign-off and physical touch-target measurement
+  remain pending.
+
+## 2026-09-08 - Graphite instrument-panel UI pass
+
+### Scope
+
+- Applied the graphite instrument-panel visual system across the complete
+  host-only explorer: shared charcoal palette, restrained blue navigation,
+  deliberate state accents, common 6 px corners, 8 px spacing, grouped metric
+  bands, and touch-sized controls.
+- Rebalanced Home and Running hierarchy so current temperature dominates target
+  and remaining time; estimated power and elapsed time are subordinate.
+- Rebuilt the furnace visual layout to be width-aware, kept planned/measured
+  graph language stable through paused presentation, added a persistent state
+  strip, and moved Delete into Program management away from Start.
+- Added explicit 800 x 640 and 1024 x 600 UI-lab presets while retaining 800 x
+  480 and the compact 640 x 360 smoke floor.
+
+### Facts and decision
+
+The implementation changes only the host-only presentation lab and its desktop
+LVGL font configuration. The Control CPU remains authoritative; no production
+protocol, controller behavior, persistence, safety logic, or embedded display
+wiring was added. The graphite visual system is accepted as a reversible
+presentation direction pending manual operator review.
+
+### Verification
+
+- Default `host-msvc-ui-lab-debug`: build passed; full CTest passed 9/9.
+- `host-msvc-ui-lab-800x640-debug`: configure/build passed; full CTest passed
+  9/9.
+- `host-msvc-ui-lab-1024x600-debug`: configure/build passed; full CTest passed
+  9/9.
+- Canonical `host-debug` and `host-msvc-desktop-debug`: builds passed; CTest
+  passed 10/10 for each.
+- `git diff --check` passed. The compact smoke path exercises 640 x 360 and
+  verifies the state strip, grouped Running reading band, graph objects, and
+  all current routes/scenarios.
+- Manual visual review and physical touch-target measurement were not run in
+  this session. Existing Zephyr evidence remains applicable because no Zephyr
+  target or production source changed.
+
 ## 2026-09-04 - Favourite-state clarity and Program-loading containment
 
 ### Scope
@@ -470,3 +765,309 @@ Exact reproduction commands and the tested-version table live in the
 - Zephyr was not rerun because no target-facing source, target configuration,
   or accepted Zephyr dependency changed; the previously verified 2/2 QEMU
   Ztest evidence remains current for that scope.
+
+## 2026-09-09 - Graphite all-page completion
+
+**Fact:** Preserved the starting dirty tree and stored its status/patch under
+`build/graphite-review/`. Completed shared frame, typography, graph/furnace
+geometry, every route/dialog, bounded fixture consistency, and owner-context
+observation/modal lifetime fixes. Native SDL capture and all-ancestor geometry
+checks now accompany real-action smoke tests. Inspected 55 frames at each of
+800 x 480, 800 x 640, and 1024 x 600, including final corrected stage identity,
+Manual overlay, and overrun copy. UI CTests pass 10/10 at each size; shared host
+suites pass 10/10, 10/10, 10/10, and 8/8. Zephyr qemu_x86 build and Twister 3/3 passed; GCC analysis completed with two
+known upstream libc warnings and none in repository-owned sources. Python
+tooling passed 40/40; canonical index generation/check and diff whitespace
+validation passed. Detailed logs
+and hardware/product limits are in [the verification record](GRAPHITE_UI_VERIFICATION.md).
+No sibling repository, architecture authority, or production protocol changed.
+
+## 2026-09-09 - local program-edit UI follow-up
+
+**Fact:** Refined the host-only UI-lab header, quick launch, program details,
+stage grid, and stage editor. A bounded HMI-local edit session persists while
+cycling stages and is retained only by local **Save all changes**; **Discard
+changes** clears it. No controller, protocol, safety, or persistent-program
+behavior changed. Inspected fresh 800 x 480 native captures and passed the
+MSVC UI-lab build plus 10/10 CTest preset with zero capture geometry errors.
+The star uses an asterisk fallback because this LVGL symbol set has no star;
+stage-name keyboard input remains deferred to the next batch.
+## 2026-09-09 - stage-card hierarchy refinement
+
+**Fact:** Stage pages now fit up to nine direct-edit cards in a 3 x 3 grid at
+800 x 480. Cards retain their name, use a type-coloured outlined stage-number
+badge, show type plus duration, and make inherited temperatures explicit.
+Fresh native capture produced zero geometry errors and the MSVC UI-lab preset
+passed 10/10. This remains a host-only presentation refinement.
+## 2026-09-10 - Running-view presentation refinement
+
+**Fact:** Updated the host-only Running Graph, Split, and Furnace views with
+straight-separated selectors, full-graph text statistics, improved graph-axis
+clearance, and an amber measured path. Fresh 800 x 480 native captures had no
+geometry errors; the MSVC UI-lab CTest preset passed 10/10. No controller,
+protocol, safety, or persistent behavior changed.
+
+## 2026-09-14 - Settings design proposal
+
+**Fact:** Reviewed current settings source, graphite design baseline, ownership,
+requirements, and ADR-0001/0005. Added a settings proposal, standalone clickable
+browser concept, and staged implementation plan for operator review. Preference
+limits do not override controller configuration. Policy/defaults, clock and
+connectivity decisions remain open; no runtime or production behavior changed.
+Verification results are recorded in the [plan](SETTINGS_IMPLEMENTATION_PLAN.md).
+
+
+## 2026-09-14 - Settings Maintenance extension
+
+**Fact:** Operator approved the Settings UI direction and requested reset settings,
+delete programs, restart display, and furnace restart assessment/confirmation
+for OK, busy, and no-response outcomes. Updated the concept, proposal, plan,
+and open questions; drafted ADR-0010. An attempt always remains subject to final
+controller validation. No force reset or real deletion/restart is implemented.
+
+**Verification:** Link, JavaScript syntax, generated metadata, and whitespace
+checks passed. Corrected mocked-DOM harness passed the 12 restart branch
+combinations and scoped maintenance-dialog checks. Browser/native render and
+real device operations were not tested.
+
+## 2026-09-14 - Native Settings presentation
+
+**Fact:** Translated `docs/images/theme/hmi-web-demo.html` into the
+host-only LVGL explorer. The implementation adds the five-category Settings
+rail, Program preferences, Display page 1/page 2, Date & time, Connections
+availability states, local temporary preference editing, numeric plus/minus
+editors, dirty navigation handling, and independent Maintenance confirmation
+previews. All new operator text is catalog-backed.
+
+**Boundary:** The implementation is presentation-only. It sends no controller
+requests, does not persist settings, does not change controller configuration,
+and does not perform real deletion or restart operations.
+
+**Verification:** Host MSVC build passed; the full CTest preset passed 10/10;
+Settings smoke interactions passed; native 800 x 480 captures for the default,
+Display page 2, Date & time, Connections, and Maintenance routes reported zero
+geometry errors. Browser inspection and physical-panel testing remain pending.
+
+
+## 2026-09-14 - Device inspection design
+
+**Fact:** Extended the same Settings browser concept with Device navigation,
+runtime overview, generic configured component/task lists, notifications,
+read-only service history, and device information. Added current, no-attention,
+fault, stale, unavailable, and empty-catalogue fixtures. Added the Device
+proposal/plan and proposed ADR-0011. All sample service intervals, parts and
+records are synthetic, not manufacturer recommendations. Worker controls do
+not change counters, intervals, faults or service completion. This was the
+browser-design stage; existing native Settings work was preserved. Native
+Device implementation is recorded below.
+Verification evidence is in [the Device plan](DEVICE_IMPLEMENTATION_PLAN.md).
+
+**Verification:** Actual Chrome rendering/interaction passed 90 Device views
+at three sizes plus component details, catalogue extension, pagination,
+Settings dirty navigation and 12 restart regressions. Inspected browser captures;
+corrected separator encoding and an illustrative interval/baseline mismatch.
+A final capture rerun initially connected before Chrome was ready; rerunning
+after startup passed. Link, syntax, generated metadata and whitespace checks
+passed. Native and hardware verification were deferred to the implementation
+stage below.
+
+## 2026-09-14 - Native Device presentation
+
+**Fact:** Translated the Device browser concept into the host-only native LVGL
+explorer. The implementation adds Overview, Components, Notifications, Service
+history, and Device info categories; generic component/task rows and details;
+All/Attention and All/Service/Errors filters; three-row pagination; read-only
+history/info dialogs; stale/unavailable states; and a dirty-Settings navigation
+guard. All new visible text is string-catalog backed.
+
+**Catalogue decision for this host slice:** Service intervals are not embedded
+in the renderer. `simulator/ui_lab/data/device_service_catalogue.txt` is an
+editable bounded text catalogue read at startup before `lv_init()`. Developers
+can add component/task records or change the interval field; CMake copies the
+same source file beside the built UI-lab executable. The sample values remain
+synthetic and are not manufacturer policy.
+
+**Boundary:** This is presentation-only. The HMI does not accumulate counters,
+evaluate authoritative due policy, persist service history, send controller
+commands, or permit interval editing, fault clearing, reset, service
+completion, calibration, or actuator tests. ADR-0011 remains Proposed, and
+controller catalogue/counter/service-history integration is still pending.
+
+**Verification:** Native MSVC builds and the complete UI-lab CTest preset passed
+10/10 at 800 x 480, 800 x 640, and 1024 x 600. Direct smoke passed startup
+catalogue loading, interval rendering, all Device categories, filters,
+pagination, details, notifications, history, info, stale presentation,
+unavailable state, and the dirty-Settings guard. Device and full-suite native
+capture geometry reported zero errors. Firmware, manufacturer-source, physical
+touchscreen, and controller integration tests were not run.
+
+
+## 2026-09-14 - Programs presentation refinement
+
+**Fact:** Inspected current native Programs, Program details and Program stages
+captures and their fixture/action code. Added the same routes to the shared
+browser concept with neutral library summaries, aligned detail facts/actions,
+clear inherited-target treatment and consolidated toolbar pagination. Existing
+twelve program fixtures and sixty stages were copied from the current source;
+editor/Load actions remain explicit preview boundaries. Native code, program
+semantics, protocol, and independent Settings/Device changes were preserved.
+Evidence and the later native styling scope are in [the plan](PROGRAMS_STYLE_PLAN.md).
+
+
+**Programs browser verification:** Passed 87 program views across three sizes,
+nine-stage grid stress and navigation/action-preview regressions. Device/Settings
+regressions passed 90 views and twelve restart branches. Inspected actual
+captures, corrected nonuniform graph-label/marker scaling, then reran the
+Programs suite and inspected the corrected tall capture. An automatic approval
+usage-limit rejection interrupted verification; the user resumed work and the
+final rerun passed. No native source or firmware behavior changed.
+
+## 2026-09-15 - Native Programs styling
+
+**Fact:** Translated the approved Programs style proposal into the existing
+native LVGL library, detail and stages builders. The pass keeps the two-column
+six-card library, graph/facts detail, three-column nine-stage layout, full-card
+targets, graph-node/editor routing, Load-before-Start boundary and all fixture
+values. It adds neutral aligned library summaries, toolbar page indicators,
+aligned detail facts, restrained Delete styling, outlined stage ordinal badges,
+and separate inherited-target captions.
+
+**Boundary:** This is host-only presentation work. No controller, protocol,
+firmware, persistence, safety or physical-panel behavior changed; stage and
+program values remain illustrative local previews.
+
+**Verification:** Native MSVC builds and complete CTest presets passed 10/10 at
+800 x 480, 800 x 640 and 1024 x 600. Native capture geometry reported zero
+errors at all three sizes. The local image viewer could not open the generated
+BMP captures, so automated geometry/workflow evidence passed while manual
+native image inspection and physical touchscreen review remain pending.
+
+
+## 2026-09-15 - Home, Running and interactive stage demo
+
+Added Home/quick launch, Load/Start demo, three Running views, pause/resume/Stop,
+external bounded time advancement and local all-stage Save/Discard editing to
+the shared HTML. Retained active Program navigation containment, independent
+run copies, unknown cooling duration and explicit simulation identity. Browser
+checks passed 39 views at three sizes plus field/transaction/navigation cases;
+actual captures were inspected. Native source and website deployment unchanged.
+See [the demo plan](HOME_RUNNING_DEMO_PLAN.md) for evidence and limitations.
+
+
+## 2026-09-15 - Touch keyboard layouts
+
+Added full QWERTY/number/symbol entry and a numeric/sign keypad to the shared
+HTML. Program/stage names and Settings/stage values use bounded temporary
+buffers with Apply/Cancel and field-specific validation. Background UI is inert
+while entry is open; active runs cannot open the keyboards. Browser checks
+passed 15 layouts at three sizes plus selection, Backspace, validation,
+transaction and integration cases; actual captures were inspected. Improved
+selection contrast and verified ten-key maximum text rows. Native firmware
+and website deployment are unchanged. See [the plan](TOUCH_KEYBOARD_PLAN.md).
+
+## 2026-09-15 - Programs visual and keyboard refinement
+
+**Fact:** Refined the native LVGL and shared HTML presentation to match the
+approved concept: both keyboard layouts display Delete; the native
+numbers/symbols cycle is closed within those pages; Program detail and Load
+titles are larger, left-aligned and vertically centered; the native favourite
+control is a drawn five-point star; View stages is opaque with white text; and
+graph annotations have additional bottom clearance. Full-graph Running
+statistics now use centered background cards without vertical separators.
+
+**Boundary:** This remains host-only presentation work. No controller,
+protocol, firmware, persistence, safety or physical-touch behavior changed.
+The star, keyboard state and graph values remain local UI-lab behavior.
+
+**Verification:** Native MSVC build, complete CTest suite and capture harness
+passed at 800 x 480, 800 x 640 and 1024 x 600. All capture geometry checks
+reported zero errors. Native smoke explicitly checked Delete, Shift state,
+closed number/symbol cycling and the drawn star. Firmware, embedded LVGL and
+physical touchscreen review were not run.
+
+## 2026-09-15 - Running time control outline
+
+**Fact:** Updated the native LVGL and shared HTML Running time control to keep
+its elapsed/remaining toggle while removing the trailing swap glyph and
+background fill. The control now has a transparent interior with the blue
+accent retained as its border; the associated running readings and estimate
+caption remain unchanged.
+
+**Boundary:** This is host/browser presentation work only. The elapsed and
+remaining values, total calculation, local toggle state and controller
+authority boundary are unchanged. No controller, protocol, firmware,
+persistence, safety or physical-touch behavior changed.
+
+**Verification:** Native MSVC builds, complete CTest suites and capture
+geometry checks passed at 800 x 480, 800 x 640 and 1024 x 600. The standalone
+HTML script syntax and targeted running-time style assertions also passed.
+Browser interaction/capture, physical touchscreen and embedded LVGL verification
+were not rerun for this presentation-only edit.
+
+## 2026-09-18 - Web demo P1 faithful viewport
+
+**Fact:** Implemented the first packet from
+[WEB_DEMO_CLIENT_BUILD_PLAN.md](WEB_DEMO_CLIENT_BUILD_PLAN.md) in the
+canonical shared HTML. Added the outer toolbar, advanced scenario disclosure,
+logical-size viewport fitting, inspect mode, portrait hint, fullscreen fallback,
+explicit dialog placement and responsive wrapper constraints. Added the durable
+[P1 browser smoke driver](../../tools/hmi_web_demo_p1_smoke.cjs).
+
+**Boundary:** The HMI remains a browser-side remote-interface demonstration.
+No controller authority, protocol, firmware, native LVGL or persistent storage
+behavior changed. Website adaptation and publication were not touched.
+
+**Verification:** Ran
+& 'C:\Program Files\nodejs\node.exe' tools\hmi_web_demo_p1_smoke.cjs.
+It passed the three logical sizes, toolbar state, keyboard, dialog bounds,
+390 x 800 portrait fit/no horizontal overflow, rotate hint, fullscreen fallback
+and zero runtime exceptions. Real phones, other browsers, visual comparison,
+website build/deployment and native/firmware checks were not run.
+
+## 2026-09-15 - HMI web demo publishing
+
+**Fact:** Renamed the shared browser source to `hmi-web-demo.html` and added
+a repeatable client adaptation to the Telamorph website build. Build and
+headless browser interaction checks passed. See the
+[web demo record](HMI_WEB_DEMO.md) for workflow, deployment result and limits.
+
+**Deployment:** Attempted; blocked by expired Firebase login. Local preview
+is available; live publishing requires `firebase.cmd login --reauth`.
+
+## 2026-09-16 - Running and program control styling
+
+**Fact:** Removed the separate Estimate caption from the native LVGL and
+shared web-demo power reading. Running Graph/Split/Furnace selectors now use
+transparent surfaces with text and a colored bottom border for the active
+mode. Home quick launch is sized to one quarter of the content width, matching
+one of the four bottom-navigation buttons. Program detail View stages and
+Delete actions are fully filled, and the web-demo stage type and numeric
+plus/minus controls now use the native palette.
+
+**Boundary:** This is host/browser presentation work only. It changes no
+controller values, action lifecycle, protocol, persistence, safety behavior or
+physical-touch implementation.
+
+**Verification:** Native MSVC builds and complete CTest suites passed 10/10 at
+800 x 480, 800 x 640 and 1024 x 600; native capture geometry checks reported
+zero errors. Standalone HTML syntax and targeted style assertions also passed.
+Browser interaction/capture, physical touchscreen and embedded LVGL verification
+were not rerun for this presentation-only edit.
+
+## 2026-09-18 - Advanced scenarios and lower-temperature program fixtures
+
+**Decision:** Keep the 200 C / 3.0 C-per-minute values as reversible local
+preview/editor fixtures only. They do not redefine controller-owned program
+validation, thermal limits, safety behavior, or protocol semantics.
+
+**Fact:** Grouped the HTML advanced scenarios into Actions, Data fixtures, and
+Review and recovery. Letter and numeric keyboard previews are explicit
+buttons. Started demo programs now advance once per wall-clock second at the
+default 60x setting while retaining manual Advance, Pause, Freeze, speed and
+Next stage controls. Rescaled all twelve browser programs and the native
+LVGL/semantic fixtures, including the graph scale and overrun scenario.
+
+**Verification:** The extended browser smoke passed. The native UI-lab build
+and CTest run passed all 10/10 tests, including smoke, geometry, and the
+codebase-index check. Website sync, embedded builds, physical touch, and
+production controller validation remain not run.

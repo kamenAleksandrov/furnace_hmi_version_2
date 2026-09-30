@@ -13,8 +13,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest)
+set(FURNACE_HMI_UI_LAB_WIDTH 800 CACHE STRING "UI-lab viewport width")
+set(FURNACE_HMI_UI_LAB_HEIGHT 480 CACHE STRING "UI-lab viewport height")
+if(NOT FURNACE_HMI_UI_LAB_WIDTH MATCHES "^[1-9][0-9]*$"
+   OR NOT FURNACE_HMI_UI_LAB_HEIGHT MATCHES "^[1-9][0-9]*$")
+  message(FATAL_ERROR "UI-lab viewport width and height must be positive integers.")
+endif()
+if(FURNACE_HMI_UI_LAB_WIDTH LESS 640 OR FURNACE_HMI_UI_LAB_HEIGHT LESS 360)
+  message(FATAL_ERROR "The UI-lab viewport requires at least 640x360.")
+endif()
 
 get_filename_component(FURNACE_HMI_REPOSITORY_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(FURNACE_HMI_UI_LAB_DEVICE_CATALOGUE
+    "${CMAKE_CURRENT_LIST_DIR}/data/device_service_catalogue.txt")
+if(NOT EXISTS "${FURNACE_HMI_UI_LAB_DEVICE_CATALOGUE}")
+  message(FATAL_ERROR "The editable Device catalogue file is missing.")
+endif()
 list(APPEND CMAKE_MODULE_PATH "${FURNACE_HMI_REPOSITORY_ROOT}/simulator/desktop/cmake")
 include(ResolveSDL2)
 include(ResolveLvgl)
@@ -61,8 +75,8 @@ target_compile_definitions(
   furnace_hmi_ui_lab
   PRIVATE
     SDL_MAIN_HANDLED
-    FURNACE_HMI_DESKTOP_WIDTH=800
-    FURNACE_HMI_DESKTOP_HEIGHT=480
+    FURNACE_HMI_DESKTOP_WIDTH=${FURNACE_HMI_UI_LAB_WIDTH}
+    FURNACE_HMI_DESKTOP_HEIGHT=${FURNACE_HMI_UI_LAB_HEIGHT}
 )
 target_link_libraries(furnace_hmi_ui_lab
   PRIVATE
@@ -74,6 +88,16 @@ target_link_libraries(furnace_hmi_ui_lab
     furnace_hmi::simulated_controller
     lvgl::lvgl
     SDL2::SDL2
+)
+
+add_custom_command(
+  TARGET furnace_hmi_ui_lab
+  POST_BUILD
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "${FURNACE_HMI_UI_LAB_DEVICE_CATALOGUE}"
+          "${CMAKE_CURRENT_BINARY_DIR}/device_service_catalogue.txt"
+  COMMENT "Copying the editable Device catalogue beside the UI-lab build"
+  VERBATIM
 )
 
 if(MSVC)
@@ -95,9 +119,20 @@ if(WIN32)
       VERBATIM
     )
   endif()
+  add_custom_command(
+    TARGET furnace_hmi_ui_lab
+    POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${FURNACE_HMI_UI_LAB_DEVICE_CATALOGUE}"
+            "$<TARGET_FILE_DIR:furnace_hmi_ui_lab>/device_service_catalogue.txt"
+    VERBATIM
+  )
 endif()
 
 if(BUILD_TESTING)
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/visual-captures")
+  add_test(NAME desktop.ui_lab_visual_geometry COMMAND furnace_hmi_ui_lab --capture "${CMAKE_CURRENT_BINARY_DIR}/visual-captures")
+  set_tests_properties(desktop.ui_lab_visual_geometry PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy" TIMEOUT 30)
   add_test(NAME desktop.ui_lab_smoke COMMAND furnace_hmi_ui_lab --smoke-test)
   set_tests_properties(
     desktop.ui_lab_smoke

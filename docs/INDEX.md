@@ -6,6 +6,7 @@ browser and ordinary editors.
 
 ## Start here
 
+- [Operator workflow plan](09-progress/OPERATOR_WORKFLOW_IMPLEMENTATION_PLAN.md), [screen concepts](03-hmi/OPERATOR_WORKFLOW_SCREEN_CONCEPTS.md), and [controller integration backlog](09-progress/CONTROLLER_INTEGRATION_BACKLOG.md)
 - [Project charter](00-project/CHARTER.md)
 - [Glossary](00-project/GLOSSARY.md)
 - [Requirements](00-project/REQUIREMENTS.md)
@@ -13,8 +14,19 @@ browser and ordinary editors.
 - [Review policy](06-testing/REVIEW_POLICY.md)
 - [Current status](09-progress/STATUS.md)
 - [Host-only UI laboratory plan](09-progress/UI_LAB_VERTICAL_SLICE_PLAN.md)
+- [Graphite UI all-page completion plan](09-progress/GRAPHITE_UI_COMPLETION_PLAN.md)
+- [Graphite UI native verification](09-progress/GRAPHITE_UI_VERIFICATION.md)
 - [Open questions](09-progress/OPEN_QUESTIONS.md)
+- [Settings screen proposal](03-hmi/SETTINGS_SCREEN_PROPOSAL.md) and [implementation plan](09-progress/SETTINGS_IMPLEMENTATION_PLAN.md)
+- [Device screen proposal](03-hmi/DEVICE_SCREEN_PROPOSAL.md) and [implementation plan](09-progress/DEVICE_IMPLEMENTATION_PLAN.md)
+- [Programs style proposal](03-hmi/PROGRAMS_STYLE_PROPOSAL.md) and [implementation plan](09-progress/PROGRAMS_STYLE_PLAN.md)
+- [Home, Running and editor demo plan](09-progress/HOME_RUNNING_DEMO_PLAN.md)
+- [Running readings refinement](09-progress/RUNNING_READINGS_REFINEMENT_PLAN.md)
+- [Touch keyboard layouts and plan](09-progress/TOUCH_KEYBOARD_PLAN.md)
 - [Decision records](07-decisions/README.md)
+
+- [HMI web demo and website publishing](09-progress/HMI_WEB_DEMO.md)
+- [Client web demo agent build plan](09-progress/WEB_DEMO_CLIENT_BUILD_PLAN.md)
 
 ## Taxonomy
 

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="640" viewBox="0 0 800 640">
+<title>Furnace HMI — Graphite theme proposal</title>
+<desc>Design concept, not a screenshot of implemented firmware. An 800 by 640 running-program view with a graphite background, clear temperature hierarchy, amber running indicator, chart, furnace diagram, and fixed run controls.</desc>
+<rect width="800" height="640" fill="#171B1E"/>
+<rect width="800" height="4" fill="#E8A04B"/>
+<g font-family="Segoe UI, Arial, sans-serif" fill="#F1F3F2">
+<text x="20" y="40" font-size="22" font-weight="600">Running program</text>
+<rect x="469" y="17" width="111" height="32" rx="5" fill="#3D3021"/>
+<circle cx="484" cy="33" r="4" fill="#E8A04B"/>
+<text x="496" y="39" font-size="16" fill="#F0B975">RUNNING</text>
+<text x="595" y="39" font-size="16" fill="#BBC3C7">Connected</text>
+<rect x="691" y="12" width="93" height="44" rx="5" fill="#30383D"/>
+<text x="737" y="40" font-size="16" text-anchor="middle">Notices</text>
+<path d="M16 65H784" stroke="#39434A"/>
+<text x="20" y="96" font-size="23" font-weight="600">Ceramic test program</text>
+<text x="784" y="95" font-size="17" text-anchor="end" fill="#E8A04B">3 / 5 · Heating to 160 °C</text>
+<rect x="16" y="112" width="768" height="105" rx="6" fill="#242A2E"/>
+<path d="M239 132V197 M409 132V197 M579 132V197" stroke="#465159"/>
+<text x="32" y="139" font-size="16" fill="#BBC3C7">Temperature</text>
+<text x="32" y="191" font-size="48" font-weight="600">120<tspan font-size="23" fill="#BBC3C7"> °C</tspan></text>
+<text x="256" y="139" font-size="16" fill="#BBC3C7">Target</text>
+<text x="256" y="180" font-size="32" font-weight="600">160<tspan font-size="18" fill="#BBC3C7"> °C</tspan></text>
+<text x="426" y="139" font-size="16" fill="#BBC3C7">Remaining · est.</text>
+<text x="426" y="180" font-size="32" font-weight="600">61<tspan font-size="18" fill="#BBC3C7"> min</tspan></text>
+<text x="596" y="139" font-size="16" fill="#BBC3C7">Heater power · est.</text>
+<text x="596" y="180" font-size="32" font-weight="600">3.4<tspan font-size="18" fill="#BBC3C7"> kW</tspan></text>
+<rect x="16" y="229" width="496" height="288" rx="6" fill="#202629"/>
+<text x="32" y="254" font-size="16" fill="#BBC3C7">Temperature · °C</text>
+<path d="M272 249H292" stroke="#9BA5AB" stroke-width="2"/>
+<text x="300" y="254" font-size="15" fill="#BBC3C7">Planned</text>
+<path d="M393 249H413" stroke="#F1F3F2" stroke-width="3"/>
+<text x="421" y="254" font-size="15">Measured</text>
+<g stroke="#3A454C" stroke-width="1">
+<path d="M70 275H488 M70 325H488 M70 375H488 M70 425H488 M70 475H488"/>
+<path d="M70 275V475 M174 275V475 M279 275V475 M383 275V475 M488 275V475"/>
+</g>
+<g font-size="14" fill="#BBC3C7" text-anchor="end"><text x="61" y="280">200</text><text x="61" y="380">100</text><text x="61" y="480">0</text></g>
+<path d="M70 470L120 439L188 439L316 305L404 305L460 425" fill="none" stroke="#9BA5AB" stroke-width="2" stroke-linejoin="miter"/>
+<path d="M70 470L88 464L105 455L120 440L150 441L174 439L188 438L204 421L221 402L238 383L255 360" fill="none" stroke="#F1F3F2" stroke-width="3"/>
+<circle cx="255" cy="360" r="5" fill="#F1F3F2" stroke="#202629" stroke-width="2"/>
+<g font-size="14" fill="#BBC3C7"><text x="70" y="502">0 min</text><text x="279" y="502" text-anchor="middle">42 min</text><text x="488" y="502" text-anchor="end">103 min</text></g>
+<rect x="524" y="229" width="260" height="288" rx="6" fill="#242A2E"/>
+<text x="540" y="254" font-size="16" fill="#BBC3C7">Furnace</text>
+<path d="M590 286L684 286L714 307L620 307Z" fill="#657179" stroke="#7A878F"/>
+<path d="M684 286L714 307V430L684 410Z" fill="#303B42" stroke="#647179"/>
+<path d="M590 286L684 286V410H590Z" fill="#465259" stroke="#7A878F"/>
+<rect x="601" y="299" width="71" height="97" rx="5" fill="#242A2E" stroke="#95A1A8"/>
+<rect x="611" y="309" width="49" height="59" rx="3" fill="#47372A"/>
+<path d="M616 324H655 M616 335H655 M616 346H655" stroke="#E8A04B" stroke-width="2" opacity="0.8"/>
+<path d="M661 354V372 M598 410V426 M677 410V426" stroke="#BBC3C7" stroke-width="4"/>
+<path d="M540 443H768" stroke="#465159"/>
+<text x="540" y="470" font-size="16" fill="#BBC3C7">Door</text><text x="768" y="470" font-size="18" text-anchor="end">Closed</text>
+<text x="540" y="498" font-size="16" fill="#BBC3C7">Fan</text><text x="768" y="498" font-size="18" text-anchor="end">1,200 rpm</text>
+<text x="20" y="543" font-size="16" fill="#BBC3C7">Elapsed <tspan fill="#F1F3F2">26 min</tspan></text>
+<text x="253" y="543" font-size="16" fill="#BBC3C7">Program rate <tspan fill="#F1F3F2">35 °C/min</tspan></text>
+<text x="784" y="543" font-size="13" fill="#91A0A8" text-anchor="end">DESIGN CONCEPT · SAMPLE DATA</text>
+<rect x="16" y="561" width="160" height="62" rx="6" fill="#30383D" stroke="#64717A"/>
+<text x="96" y="600" font-size="20" text-anchor="middle" font-weight="600">Ⅱ  Pause</text>
+<rect x="188" y="561" width="160" height="62" rx="6" fill="#663432" stroke="#F06B68"/>
+<text x="268" y="600" font-size="20" text-anchor="middle" font-weight="600">■  Stop</text>
+<rect x="372" y="561" width="412" height="62" rx="6" fill="#242A2E"/>
+<rect x="511" y="565" width="134" height="54" rx="4" fill="#285D7A"/>
+<text x="441" y="599" font-size="18" text-anchor="middle">Graph</text>
+<text x="578" y="599" font-size="18" text-anchor="middle" font-weight="600">Split</text>
+<text x="715" y="599" font-size="18" text-anchor="middle">Furnace</text>
+</g></svg>

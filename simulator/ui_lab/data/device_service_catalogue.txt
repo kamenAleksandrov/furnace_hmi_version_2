@@ -1,0 +1,19 @@
+# Furnace HMI V2 host-only Device catalogue
+#
+# Edit this file to add components or change service intervals. The UI lab
+# reads it at wake-up and renders every component/task through generic views.
+# This is synthetic review data, not approved manufacturer policy.
+#
+# First record: revision|catalogue_revision
+# Component record:
+# component|id|name|part|location|usage|source|installed_instance|task_id|task_name|basis|interval|remaining|state|last_baseline|procedure
+
+revision|DEMO-1
+component|cabinet_fan|Cabinet fan|FAN-DEMO|Electrical cabinet|1,840 h|Confirmed rotating time|fan-instance-01|fan_inspect|Inspect fan|Fan runtime|800 h|160 h remaining|soon|1,200 h|Approved inspection procedure not yet supplied.
+component|cabinet_fan|Cabinet fan|FAN-DEMO|Electrical cabinet|1,840 h|Confirmed rotating time|fan-instance-01|fan_calendar|Scheduled inspection|Calendar|12 months|Due 14 Sep 2026|due|14 Sep 2025|Refer this task to service personnel.
+component|air_filter|Air filter|FILTER-DEMO|Cabinet air inlet|530 h|Fan runtime since service|filter-instance-01|filter_inspect|Inspect filter|Fan runtime|500 h|30 h overdue|due|1,310 fan h|Use the approved filter service procedure when available.
+component|main_contactor|Main contactor|CONTACTOR-DEMO|Electrical cabinet|12,400 cycles|Controller switching count|contactor-instance-01|contactor_inspect|Scheduled inspection|Switching cycles|20,000 cycles|7,600 cycles remaining|ok|Installation|Electrical service personnel only; approved procedure not yet supplied.
+component|thermocouple|Temperature sensor|SENSOR-DEMO|Chamber|1,286 h|Program runtime|sensor-instance-01|sensor_check|Check measurement chain|Calendar|12 months|Due 10 Feb 2027|ok|10 Feb 2026|Refer measurement verification to authorized service personnel.
+component|heater_ssr|Heater SSR|SSR-DEMO|Electrical cabinet|Not measured|No dedicated counter|ssr-instance-01|ssr_inspect|Condition inspection|Condition-based|No fixed interval|No countdown|condition|No record|No worker electrical tests. Refer the approved service procedure to service personnel.
+component|door_seal|Door seal|SEAL-DEMO|Chamber door|1,286 h|Program runtime|seal-instance-01|seal_inspect|Inspect seal condition|Condition-based|No fixed interval|No countdown|condition|No record|Approved worker inspection guidance not yet supplied.
+component|power_supply|Power supply|PSU-DEMO|Electrical cabinet|2,418 h|Powered-on time|psu-instance-01|psu_inspect|Scheduled inspection|Calendar|12 months|Installation date missing|unknown|Unknown|Service personnel must verify the baseline and approved schedule.

@@ -1,5 +1,12 @@
 # Open questions
 
+**2026-09-23 product update:** The [workflow plan](OPERATOR_WORKFLOW_IMPLEMENTATION_PLAN.md)
+records Heating/Hold-only authoring, automatic cooling and Manual cooling at
+48 hours. These resolve corresponding product choices below, pending normative
+baseline reconciliation. Endpoint/estimation, pause/deadline semantics and
+integration remain open in the [controller backlog](CONTROLLER_INTEGRATION_BACKLOG.md).
+Older six-hour/authored-COOL text is not the new requested behavior.
+
 These unresolved items do not block repository foundation work. They must not
 be answered implicitly by placeholders, examples, or simulator behavior.
 
@@ -19,6 +26,7 @@ not resolve the operational and hardware decisions below.
 | RS-422 rate | What final baud rate satisfies latency, throughput, and robustness? | [Transport ADR](../07-decisions/0006-transport-selection.md) measurements |
 | UART/peripheral | Which target UART and software-visible transceiver configuration are used? | Production board/devicetree evidence |
 | Control CPU reboot | What happens to furnace operation during/after controller reboot? | Controller-side safety/operation requirement |
+| Maintenance actions | What are restart assessment deadlines/correlation, final execution and recovery semantics, reset defaults, program deletion scope/atomicity, and HMI pending-write handling? | [Settings proposal](../03-hmi/SETTINGS_SCREEN_PROPOSAL.md#maintenance) and [proposed ADR-0010](../07-decisions/0010-maintenance-request-workflows.md) |
 | HMI MCU | Which MCU/board is the first production target? | Resource/driver/toolchain evaluation |
 | Display | Which first production display, interface, and resolution? | Software-visible hardware contract |
 | Touch | Which first production touch controller/interface? | Zephyr driver and board evaluation |
@@ -31,6 +39,7 @@ not resolve the operational and hardware decisions below.
 | Sensor loss | Which controller safety transition, alarm lifecycle, and HMI presentation apply when a required sensor becomes invalid? | Hazard analysis, controller safety requirements, and protocol design |
 | Program estimate ambient | Confirm units, bounds, storage owner, and controller-returned metadata for the saved ambient input used only for estimation | Domain/protocol design; current intended behavior is recorded in [UX and domain baseline](../03-hmi/UX_AND_DOMAIN_BASELINE.md) |
 | Settings | What is the final setting list, owner, metadata, and permission behavior? | Ownership review and controller capability design |
+| Device component service | Confirm powered-on/fan counter sources, paused Program inclusion, actual parts/manufacturer schedules, per-task due policy, replacement baselines, and authorized service recording outside the worker page | [Device proposal](../03-hmi/DEVICE_SCREEN_PROPOSAL.md) and [proposed ADR-0011](../07-decisions/0011-component-service-catalogue.md) |
 | Service maintenance | How are service time, due period, forecast completion, and maintenance rules derived? | Controller-owned counter/product requirement |
 | Service-period gate | The user requires one controller-issued acknowledgement per configured service period and later maintenance visibility. What are its threshold, re-arm-after-service rule, role/audit retention, hard-block cases, and condition-change behavior between acknowledgement and Start? | Controller policy, product requirements, and protocol lifecycle design |
 | Windows Python | Should the reproducible Windows baseline require upstream-recommended Python 3.12 instead of the locally verified 3.13.3 deviation? | Clean-machine environment reproduction/CI evidence |

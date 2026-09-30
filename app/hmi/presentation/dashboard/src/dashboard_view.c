@@ -431,7 +431,7 @@ bool furnace_hmi_dashboard_view_create(
     lv_obj_set_width(view->chart, lv_pct(100));
     lv_chart_set_type(view->chart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(view->chart, FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS);
-    lv_chart_set_axis_range(view->chart, LV_CHART_AXIS_PRIMARY_Y, 0, 1000);
+    lv_chart_set_axis_range(view->chart, LV_CHART_AXIS_PRIMARY_Y, 0, 250);
     lv_chart_set_div_line_count(view->chart, 4, 6);
     lv_obj_set_style_bg_color(view->chart, lv_color_hex(0x0F181F), LV_PART_MAIN);
     lv_obj_set_style_line_width(view->chart, 2, LV_PART_ITEMS);

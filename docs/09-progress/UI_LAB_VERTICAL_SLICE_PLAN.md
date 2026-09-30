@@ -1,17 +1,18 @@
 # Host-only UI laboratory vertical slice
 
-- Status: In progress (first verification gate passed)
+- Status: Host-only graphite software and native inspection complete; operator approval and production recovery slice pending
 - Started: 2026-09-02
 - Owner: HMI software
 
 ## Outcome and non-goals
 
 Provide a clearly host-only environment in which the reusable HMI can display
-deterministic synthetic controller observations. This pass makes Home a 2.5D
-furnace overview with quick launch, adds Program loading/library/overview/stage
-authoring previews, and gives active programs a dedicated Running page with
-planned/measured graph and visual modes. Device and Settings remain existing
-placeholders while their workflow is deliberately deferred.
+deterministic synthetic controller observations. The current pass makes Home a
+graphite instrument-panel furnace overview with quick launch, applies the same
+visual system to Program loading/library/overview/stage authoring, and gives
+active programs a dedicated Running page with planned/measured graph and
+visual modes. Device and Settings remain existing placeholders while their
+workflow is deliberately deferred.
 
 This slice does not implement the production wire protocol, controller control
 loops, safety behavior, program persistence, controller validation, or embedded
@@ -42,8 +43,9 @@ synthetic behavior is not evidence of furnace performance.
 
 **Working assumptions for this reversible visual slice**
 
-- The development viewport remains 800 x 480, with the existing 640 x 360
-  structural floor.
+- The default development viewport remains 800 x 480, with the existing 640 x
+  360 structural floor; deliberate review variants are 800 x 640 and 1024 x
+  600.
 - The simulator's ambient temperature field is a draft-only estimation input
   captured when a program is saved. A run starts from the current measured
   controller temperature and does not reuse the saved ambient value as a live
@@ -51,6 +53,10 @@ synthetic behavior is not evidence of furnace performance.
 - The first synthetic program uses illustrative HEATING/HOLD/COOL values only;
   no production stage calculator or controller execution semantics are being
   accepted.
+- The current reversible fixture set is intentionally bounded to 0-200 C
+  targets and no more than 30 tenths of a degree C per minute for heating or
+  cooling. These bounds are preview/editor guidance, not controller safety
+  limits or a protocol contract.
 - A controller-reported service condition and acknowledgement preview are
   visual-lab data only. The lab neither evaluates service policy nor emits a
   controller request.
@@ -121,6 +127,43 @@ Device and Settings implementation.
   timing; the UI lab uses illustrated data and never presents it as a
   controller calculation.
 
+## Graphite instrument-panel pass (2026-09-08)
+
+**Facts**
+
+- The host-only explorer uses the review palette: charcoal `#171B1E` background,
+  graphite `#242A2E` panels, slate `#30383D` secondary controls, soft-white
+  `#F1F3F2` main text, silver `#BBC3C7` supporting text, and deep-blue
+  `#285D7A` selected navigation.
+- Shared panel, spacing, corner, typography, and button helpers now cover every
+  existing route: Home, Programs, Program loading/details/stages/editor, Running,
+  Device, Settings, and dialogs.
+- Home and Running group current temperature, target, and remaining time in a
+  clear reading band; current temperature has the largest type. Estimated power
+  and elapsed time have lower visual weight.
+- Running uses stable muted planned and bright measured graph traces. The
+  measured trace stays bright when the controller presentation changes from
+  running to paused; the state accent remains in the status strip, badge, and
+  controls.
+- The furnace visual is width-aware, places fan/door/heater-demand facts around
+  it, and keeps the bottom navigation continuous. Delete is in Program
+  management, separated from the primary Start action.
+- Generic actions use a 48 px minimum height and frequent/run actions use 56 px
+  where space permits. The 800 x 480 default plus 800 x 640 and 1024 x 600
+  presets make viewport assumptions explicit.
+
+**Decision**
+
+The graphite visual system is the accepted reversible presentation direction for
+the host-only lab. It does not add controller authority, production protocol
+semantics, persistence, safety logic, or embedded LVGL display integration.
+
+**Remaining gate**
+
+Manual operator review is still required at each supported viewport, including
+physical touch-target measurement on the selected display. Headless smoke tests
+prove construction and compact-layout structure, not final visual quality.
+
 ## Scenarios and inputs
 
 The first fixture set is `disconnected`, `idle`, `running-normal`, `manual`,
@@ -148,16 +191,17 @@ strictly validated, and bounded.
 | Bounded shared observation | Plain model contains session/revision, provenance/validity, and bounded graph samples | Complete |
 | Semantic fake | Host-only deterministic scenarios expose immutable observation snapshots | Complete |
 | Dashboard presentation | Shared LVGL view shows run data, graph, visual overview, and four-item navigation shell | Complete |
-| Clarified Home/Programs/Running pass | Host-only Home quick launch, Program loading/library/overview/stages/editor, dedicated Running view modes, and trajectory presentation are rendered | Host UI-lab build and 9/9 smoke passed. The September 4 refinement uses New program/Add stage/Program editor terminology, moves editor actions into the bottom-navigation position, adds a compact three-column Stage view, removes the graph's nested box, and uses an owner-only 140 ms navigation glow. The smoke now asserts that the Program-loading graph and its time label stay above navigation at 640 x 360. 800 x 480 operator feedback remains pending. |
+| Clarified Home/Programs/Running pass | Host-only Home quick launch, Program loading/library/overview/stages/editor, dedicated Running view modes, and trajectory presentation are rendered | Graphite visual-system implementation is complete across all current routes. Default 800 x 480, 800 x 640, and 1024 x 600 suites pass 10/10; the smoke asserts the state strip, grouped Running readings/graph, compact shell sizing, and route coverage. Manual operator feedback remains pending. |
 | Scenario input | CLI selection and host key switching select scenarios without widget mutation | Complete |
 | Host isolation | UI-lab preset builds the fake; ordinary host and Zephyr compositions do not | Complete for current compositions |
-| Visual evidence | Window reviewed at 800 x 480 and structural smoke at 640 x 360 | Pending |
+| Visual evidence | Window reviewed at 800 x 480, 800 x 640, and 1024 x 600; structural smoke at 640 x 360 | Author native inspection complete: 165 frames, zero geometry errors; operator approval pending |
 | Recovery tests | Session/reconnect/no-replay and pending-request scenarios exercise the shared client | Pending; protocol design required |
 
 ## Verification
 
 - Build and run `host-msvc-ui-lab-debug` CTest, including all scenario smoke
   cases.
+- Build and test the 800 x 640 and 1024 x 600 viewport presets.
 - Run existing host Debug/Release/MSVC desktop and portable-core suites.
 - Run the Zephyr build/Twister because the shared model and catalog are used by
   the target foundation.
@@ -174,3 +218,13 @@ The slice is additive. Disable `FURNACE_HMI_BUILD_UI_LAB` or remove the
 UI-lab preset/targets and the existing desktop foundation remains usable.
 Shared model code may remain only if its target-facing use is retained; no
 persisted data or migration is introduced.
+
+## Graphite completion execution - 2026-09-09
+
+**Fact:** The follow-up [completion plan](GRAPHITE_UI_COMPLETION_PLAN.md) adds
+actual SDL renderer captures and all-ancestor/text/graph geometry checks, fixes
+shared layout, furnace geometry, editor/modal lifetime, observation validity,
+and coherent program fixtures. Every existing page/dialog was inspected at
+800 x 480, 800 x 640, and 1024 x 600. Detailed results and reproduction are in
+[Graphite UI verification](GRAPHITE_UI_VERIFICATION.md). Production recovery,
+controller acceptance, persistence, and hardware usability are not established.
