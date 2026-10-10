@@ -75,6 +75,34 @@ typedef enum {
 } furnace_hmi_run_phase_t;
 
 /**
+ * Category of the fault the controller reports for the current or last run.
+ * HMI representation only: the controller owns detection, the run outcome,
+ * acknowledgement and recovery, and no wire schema is implied. NONE is the
+ * safe default and also covers faults the HMI cannot classify.
+ */
+typedef enum {
+    FURNACE_HMI_FAULT_KIND_NONE = 0,
+    FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE,
+    FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED,
+    FURNACE_HMI_FAULT_KIND_DOOR_OPEN,
+    FURNACE_HMI_FAULT_KIND_SENSOR,
+    FURNACE_HMI_FAULT_KIND_POWER_INTERRUPTED,
+    FURNACE_HMI_FAULT_KIND_COUNT,
+} furnace_hmi_fault_kind_t;
+
+/**
+ * Kind of the current program stage, as the controller reports it. HMI
+ * representation only (no wire schema); UNKNOWN is the safe default, and the
+ * presentation then shows the controller's stage name instead.
+ */
+typedef enum {
+    FURNACE_HMI_STAGE_KIND_UNKNOWN = 0,
+    FURNACE_HMI_STAGE_KIND_HEATING,
+    FURNACE_HMI_STAGE_KIND_HOLD,
+    FURNACE_HMI_STAGE_KIND_COUNT,
+} furnace_hmi_stage_kind_t;
+
+/**
  * Controller-reported result of evaluating a proposed run against its
  * maintenance/service policy. The HMI can explain this observation and can
  * later submit an acknowledgement request, but it never authorizes a run.
@@ -111,6 +139,7 @@ typedef struct {
     furnace_hmi_machine_mode_t mode;
     furnace_hmi_run_state_t run_state;
     furnace_hmi_run_phase_t run_phase;
+    furnace_hmi_fault_kind_t fault_kind;
 
     uint32_t program_id;
     uint32_t program_revision;
@@ -118,6 +147,7 @@ typedef struct {
     uint8_t stage_index;
     uint8_t stage_count;
     char stage_name[FURNACE_HMI_STAGE_NAME_CAPACITY];
+    furnace_hmi_stage_kind_t stage_kind;
 
     furnace_hmi_i32_value_t current_temperature_c;
     furnace_hmi_i32_value_t target_temperature_c;

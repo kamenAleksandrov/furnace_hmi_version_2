@@ -2,6 +2,131 @@
 
 **P1 implementation update (2026-09-18):** The [client demo build plan](WEB_DEMO_CLIENT_BUILD_PLAN.md) now has its faithful viewport packet implemented in the canonical single HTML. The remaining authoring, simulator, scenario, website-adaptation and release packets are still pending.
 
+## Operator feedback round (2026-10-06)
+
+**Demo page only (parity exception):** the website bar and the tab icon use
+the Telamorph logo exactly as the website shows it (`assets/images/brand/logo.svg`,
+#566e7e and #34393c; the earlier mark was lightened for the dark bar). A faint
+diagonal "Software in development · Not a final product" watermark covers the
+page without taking input. Entering the page shows a short intro (logo,
+Telamorph, HMI Demo V2, Work in progress) that a tap or key skips and
+`?intro=off` leaves out (the smoke test uses `skipDemoIntro()`). The Door
+opened scenario is removed (the HMI alert stays). Scenarios now run the epoxy
+programs; the Program library switch offers 3 programs or none (programs
+created in the session stay listed). Changing the screen size redraws the page,
+so Quick launch fits again.
+
+**HMI (both presentations):** see [status](STATUS.md) and the
+[feedback round plan](OPERATOR_FEEDBACK_2026_10_06_PLAN.md).
+
+**Round 2 (demo page only):** the tiled watermark became one faint line at
+the bottom of the page footer ("Software in development · Not a final
+product"), and the bar pill reads Work in progress (amber) instead of
+Interactive demo.
+
+## Simulated readings and side menu (2026-10-02)
+
+The simulated measured temperature follows the plan within 0.5 C, as a
+controller tracking its setpoint would: a brief lag and a small overshoot
+where the rate changes at a stage corner, then it settles. Scenario profiles
+add the larger deviations of faults. The fullscreen Controls tab is 40 px wide
+with a gentler glow, and the side-menu scrim fades with the slide (demo page
+only; the native lab has no side menu).
+
+## Theme and language readiness (2026-10-05)
+
+The demo's colours are the generated `hmi-theme` CSS tokens and its text the
+generated `hmi-strings` catalogue copy (`t()`, `tp()`, ids passed to
+`button()`/`tell()`); `setHmiTheme(id)` and `setHmiLanguage(tag)` switch at
+runtime. Do not hand-edit the generated blocks; see the
+[readiness plan](THEME_AND_LANGUAGE_READINESS_PLAN.md).
+
+## Settings menu clean-up (2026-10-05)
+
+Settings Maintenance is renamed System (power icon); Connections is listed
+only when the controller enables server/Bluetooth (the demo fixture
+`demoFixtures.connection` is `'disabled'`); Date & time has no Clock source
+card; the brightness gauge shows no percentage; Dim when idle defaults to Off.
+Both presentations; see [status](STATUS.md).
+
+## Device and Settings card pages (2026-10-01)
+
+Device and Settings sub-pages use full-page card grids, a brightness gauge,
+dim and Running view choice dialogs and a Set date & time dialog (the demo
+clock follows the browser clock plus the set offset). Both presentations; see
+the [card pages plan](DEVICE_SETTINGS_CARDS_PLAN.md).
+
+## Showcase page, scenarios and controller alerts (2026-10-01)
+
+**Decision (product owner):** the page around the HMI becomes a client
+showcase in the Telamorph website style (tokens from the website `main.css`,
+ambient glow, frosted panel, website buttons), with Back to website
+(`industrial.html`) and Get a quote (`contact.html?type=industrial`). See the
+[showcase plan](WEB_DEMO_SHOWCASE_PLAN.md).
+
+**Fact (demo wrapper, parity exception):** one control panel beside the HMI
+(below it under 1180 px) holds Scenarios, Playback (status, previous stage,
+pause/play of the simulation clock, next stage, speed Real/60x/300x/1200x with
+300x default, Start example run), Screen (800x480, 800x640, 1024x600; Fit to
+window or Actual pixels; Fullscreen), Program library (12, 7 or no programs),
+On-screen keyboards and Reset demo. Fullscreen hides the website bar, scales
+the HMI to the display and moves the panel into a side menu opened from a
+Controls handle. The device-data, connection and restart fixtures left the
+page; their values now live in `demoFixtures`, and scenarios drive them.
+
+**Fact (scenarios, demo-only):** Complete run, Overheating, Not heating enough,
+Door opened, Sensor failure, Power loss and Connection lost each fast-forward a
+program to its event in about 5 s (power loss ~7 s with a blackout, connection
+lost ~8 s including the restore). Faults go through `reportControllerFault`,
+link changes through `setLinkLost`, exactly as a controller report would.
+
+**Fact (HMI behaviour, both presentations):** the controller alert dialog,
+Running fault state and Return Home, and the link-lost Running state described
+in the [UX baseline](../03-hmi/UX_AND_DOMAIN_BASELINE.md#controller-alerts-proposal-2026-10-01).
+Native: `fault_kind` in the dashboard model, `overtemperature`, `heating-slow`,
+`sensor-fault` and `power-loss` semantic scenarios, and the existing `fault`
+scenario tagged as door opened.
+
+**Website sync:** the HMI page keeps its engineering links between
+`engineering-links` markers; `scripts/sync_hmi_demo.py` in the website repo now
+removes that block (it previously matched the removed selector paragraph).
+
+**Layout update (2026-10-01, product owner):** outside fullscreen the page is
+one window tall (minimum 560 px) and scrolls only when it cannot fit; the
+panel scrolls inside itself. Beside the screen only from 1181 px; below that,
+on phones and in fullscreen the controls are a side menu ordered Screen,
+Playback, Scenarios (folded until opened), On-screen keyboards, Program library.
+It opens from a Controls button in the website bar, or in fullscreen from a
+glowing Controls tab on the right edge. On phones the website links move into
+the menu (Get a quote stays in the bar).
+
+**Second layout update (2026-10-01, product owner):** one panel order
+everywhere (Screen, Playback, Scenarios, On-screen keyboards, Program library);
+Scenarios is always listed, never folded; the HMI floats with no frame ring;
+the website bar is its own frosted box like the panel. The page has one static
+blue glow in the website glow material (glow.css/composite.css colours, 40 px
+blur), centred and anchored to the bottom of the page like a lit floor; the
+earlier drifting blobs and the amber light under the screen were removed. Units now follow the
+[UX baseline](../03-hmi/UX_AND_DOMAIN_BASELINE.md#values-and-validity) (`°C`
+in labels), in both presentations; the Manual readings strip gap is 8 px in
+both so six readings with unit labels fit at 800 px.
+
+**Fixed (both presentations):** stale Device Components/Info pushed the pager
+14 px below the page; the stale banner now shows on Overview only and list tabs
+keep their "Last known" footer marker.
+
+**Known differences (native vs web, unchanged here):** the native modal leaves
+the Running controls uncovered so Stop stays reachable, while the web dialog
+covers the page; a single native dialog button is not centred.
+
+**Verification:** `tools/hmi_web_demo_p1_smoke.cjs` passed (panel, playback,
+three scenarios end to end, alerts, fullscreen side menu, phone fit, no
+exceptions); all seven scenarios and 1600x900, 1024x768, 390x844 and 844x390
+layouts were reviewed in headless Chrome captures. Native MSVC CTest passed at
+800x480, 800x640 and 1024x600 apart from the known local `tools.codebase_index`
+failure, including the new alert checks and captures. Not run: physical touch,
+Safari/Firefox, the website sync/build/deploy.
+
 ## Soft-tile UI adopted (2026-09-29)
 
 **Decision (product owner):** the soft-tile style preview replaces the previous
@@ -36,11 +161,13 @@ embedded by `tools/build_icon_sprite.py`.
   five rows; keyboards group Cancel/Clear left and Apply right, with a blinking
   cursor and centred entry text; the numeric keypad has no sign key.
 
-**Open:** LVGL parity has not been implemented (the AGENTS web/LVGL parity rule
-applies to that port). The UX baseline and program/startup documents still
-describe the previous behaviour; the Start-from-details and stage-dialog changes
-should be recorded there (or in an ADR) before or with the LVGL port. Setpoint and
-heater demand are protocol-listed controller values; the demo synthesises them.
+**Closed (2026-09-30):** LVGL parity is implemented; the
+[LVGL port plan](LVGL_SOFT_TILE_PORT_PLAN.md) is complete and lists the few
+remaining known differences. The UX baseline, screen concepts and
+program/startup model record the changed behaviour. Setpoint and heater demand
+are protocol-listed controller values; the demo synthesises them, and the native
+Manual Setpoint shows "--" until the observation model carries it
+(CTRL-SETPOINT).
 
 **Fact (demo wrapper, not HMI):** the fit now uses the window height left after
 the toolbar, so the HMI scales from phone landscape up to 2x on large screens
@@ -56,6 +183,30 @@ layout pixels, since the demo now scales above 100%. `tools/build_icon_sprite.py
 --check` passes. Viewports 360x740, 740x360, 844x390, 768x1024, 1280x720,
 1366x768 and 1920x1080 were reviewed in headless Chrome. Real touch hardware and
 non-Chromium browsers were not tested.
+
+## Inter typeface (2026-09-30)
+
+**Decision (product owner):** the HMI uses Inter in both presentations. The
+demo embeds the Inter Regular/SemiBold subsets as WOFF2 between its
+`hmi-fonts` markers (generated by `tools/build_fonts.py`; do not edit) and
+applies them to the HMI screen and dialogs only; the demo toolbar keeps the
+system font. Inter is wider than Segoe UI, so the Settings rail icon gap is
+8 px (right padding 4 px) and the Running view switch takes a 1.8 share of its
+row. See the [LVGL port plan](LVGL_SOFT_TILE_PORT_PLAN.md).
+
+**Verification:** `tools/hmi_web_demo_p1_smoke.cjs` passed; a headless-Chrome
+overflow probe found no clipped or wrapped HMI labels on Home, Programs,
+Program details, Device, Settings, both keyboards or Running.
+
+## Program screens ported (2026-09-30)
+
+**Fact:** the native LVGL lab now implements Start program with confirmation on
+Program details, Load from Quick launch only, the Program stages toolbar and the
+stage cards. The UX baseline and program/startup model record the start flow;
+the stage-editor dialog is recorded in the UX baseline and screen concepts and
+implemented natively as of LVGL milestone 4. Web
+fix found while comparing: the program editor's "Edit stages" wrapped in its
+124 px slot, so the compact actions are 140 px.
 
 ## Decision and scope
 

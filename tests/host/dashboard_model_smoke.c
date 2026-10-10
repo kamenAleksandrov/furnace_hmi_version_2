@@ -54,6 +54,28 @@ int main(void)
     }
 
     furnace_hmi_dashboard_state_initialize(&state);
+    if (state.fault_kind != FURNACE_HMI_FAULT_KIND_NONE) {
+        (void)fprintf(stderr, "fault kind did not start as none.\n");
+        return 8;
+    }
+    state.fault_kind = FURNACE_HMI_FAULT_KIND_COUNT;
+    if (furnace_hmi_dashboard_state_is_well_formed(&state)) {
+        (void)fprintf(stderr, "invalid fault kind was accepted.\n");
+        return 9;
+    }
+
+    furnace_hmi_dashboard_state_initialize(&state);
+    if (state.stage_kind != FURNACE_HMI_STAGE_KIND_UNKNOWN) {
+        (void)fprintf(stderr, "stage kind did not start as unknown.\n");
+        return 20;
+    }
+    state.stage_kind = FURNACE_HMI_STAGE_KIND_COUNT;
+    if (furnace_hmi_dashboard_state_is_well_formed(&state)) {
+        (void)fprintf(stderr, "invalid stage kind was accepted.\n");
+        return 21;
+    }
+
+    furnace_hmi_dashboard_state_initialize(&state);
     memset(state.program_name, 'x', sizeof(state.program_name));
     if (furnace_hmi_dashboard_state_is_well_formed(&state)) {
         (void)fprintf(stderr, "unterminated program name was accepted.\n");

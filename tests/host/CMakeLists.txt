@@ -27,6 +27,13 @@ if(NOT TARGET furnace_hmi_ui_strings)
   )
 endif()
 
+if(NOT TARGET furnace_hmi_theme)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/theme"
+    "${CMAKE_CURRENT_BINARY_DIR}/theme"
+  )
+endif()
+
 if(NOT TARGET furnace_hmi_model)
   add_subdirectory(
     "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/model"
@@ -40,12 +47,16 @@ target_link_libraries(furnace_hmi_foundation_smoke PRIVATE furnace_hmi::foundati
 add_executable(furnace_hmi_ui_strings_smoke ui_strings_smoke.c)
 target_link_libraries(furnace_hmi_ui_strings_smoke PRIVATE furnace_hmi::ui_strings)
 
+add_executable(furnace_hmi_theme_smoke theme_smoke.c)
+target_link_libraries(furnace_hmi_theme_smoke PRIVATE furnace_hmi::theme)
+
 add_executable(furnace_hmi_dashboard_model_smoke dashboard_model_smoke.c)
 target_link_libraries(furnace_hmi_dashboard_model_smoke PRIVATE furnace_hmi::model)
 
 if(MSVC)
   target_compile_options(furnace_hmi_foundation_smoke PRIVATE /W4 /WX /permissive-)
   target_compile_options(furnace_hmi_ui_strings_smoke PRIVATE /W4 /WX /permissive-)
+  target_compile_options(furnace_hmi_theme_smoke PRIVATE /W4 /WX /permissive-)
   target_compile_options(furnace_hmi_dashboard_model_smoke PRIVATE /W4 /WX /permissive-)
 else()
   target_compile_options(
@@ -55,12 +66,28 @@ else()
     furnace_hmi_ui_strings_smoke PRIVATE -Wall -Wextra -Wpedantic -Werror
   )
   target_compile_options(
+    furnace_hmi_theme_smoke PRIVATE -Wall -Wextra -Wpedantic -Werror
+  )
+  target_compile_options(
     furnace_hmi_dashboard_model_smoke PRIVATE -Wall -Wextra -Wpedantic -Werror
   )
 endif()
 
 add_test(NAME host.foundation_probe COMMAND furnace_hmi_foundation_smoke)
 add_test(NAME host.ui_strings_catalog COMMAND furnace_hmi_ui_strings_smoke)
+add_test(NAME host.theme_palette COMMAND furnace_hmi_theme_smoke)
+add_test(
+  NAME tools.theme_generated
+  COMMAND "${Python3_EXECUTABLE}" tools/build_theme.py --check
+)
+add_test(
+  NAME tools.strings_generated
+  COMMAND "${Python3_EXECUTABLE}" tools/build_strings.py --check
+)
+add_test(
+  NAME tools.theme_language_lint
+  COMMAND "${Python3_EXECUTABLE}" tools/check_theme_language.py
+)
 add_test(NAME host.dashboard_model COMMAND furnace_hmi_dashboard_model_smoke)
 add_test(
   NAME tools.codebase_index
@@ -113,6 +140,9 @@ set_tests_properties(
   tools.desktop_ui
   tools.ui_lab_workflow
   tools.foundation_workflow
+  tools.theme_generated
+  tools.strings_generated
+  tools.theme_language_lint
   PROPERTIES
     WORKING_DIRECTORY "${FURNACE_HMI_REPOSITORY_ROOT}"
     TIMEOUT 30

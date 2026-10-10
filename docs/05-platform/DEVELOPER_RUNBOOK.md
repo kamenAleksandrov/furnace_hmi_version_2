@@ -90,7 +90,16 @@ python tools\run_ui_lab.py --scenario paused
 python tools\run_ui_lab.py --scenario fault
 python tools\run_ui_lab.py --scenario stale
 python tools\run_ui_lab.py --scenario running-overrun
+python tools\run_ui_lab.py --scenario cooling
+python tools\run_ui_lab.py --scenario overtemperature
+python tools\run_ui_lab.py --scenario heating-slow
+python tools\run_ui_lab.py --scenario sensor-fault
+python tools\run_ui_lab.py --scenario power-loss
 ```
+
+The fault scenarios (`fault`, `overtemperature`, `heating-slow`,
+`sensor-fault`, `power-loss`) open with the controller alert; close it to
+reach the page underneath.
 
 Use `check` to build and test without opening a window:
 
@@ -267,6 +276,27 @@ Zephyr libc and none in repository-owned sources.
 For Zephyr source debugging, select `Zephyr qemu_x86: break at main` in VS Code
 and press **F5**. It builds, starts the generated QEMU debug server, attaches
 the SDK GDB, and stops in the real Zephyr application `main`.
+
+## HMI fonts and icons
+
+The typeface (Tomorrow HMI, see app/hmi/presentation/fonts/README.md) and the icon set are shared by the web demo and the LVGL
+UI. Their LVGL C files and the web demo's embedded copies are generated and
+committed, so ordinary builds need none of the tools below. After changing
+`app/hmi/presentation/icons/svg/` or the font list, regenerate and check:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install fonttools brotli resvg-py   # once
+.\.venv\Scripts\python.exe tools\build_fonts.py                       # typeface: LVGL fonts + web @font-face
+.\.venv\Scripts\python.exe tools\build_lvgl_icons.py                  # icons: LVGL A8 images
+.\.venv\Scripts\python.exe tools\build_icon_sprite.py                 # icons: web inline sprite
+.\.venv\Scripts\python.exe tools\build_fonts.py --check
+.\.venv\Scripts\python.exe tools\build_lvgl_icons.py --check
+.\.venv\Scripts\python.exe tools\build_icon_sprite.py --check
+```
+
+`build_fonts.py` also needs Node.js; it runs `npx lv_font_conv@1.5.2`. See the
+[fonts README](../../app/hmi/presentation/fonts/README.md) and
+[icons README](../../app/hmi/presentation/icons/README.md).
 
 ## Codebase index
 

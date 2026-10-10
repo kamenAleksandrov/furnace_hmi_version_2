@@ -14,6 +14,8 @@
 
 #define LV_USE_DRAW_SW 1
 #define LV_USE_DRAW_SDL 0
+/* Soft-tile edges fade in and out (four stops); the top light adds a core. */
+#define LV_GRADIENT_MAX_STOPS 5
 
 #define LV_USE_SDL 1
 #define LV_SDL_INCLUDE_PATH <SDL.h>

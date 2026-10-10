@@ -33,6 +33,10 @@ SCENARIOS = (
     "stale",
     "running-overrun",
     "cooling",
+    "overtemperature",
+    "heating-slow",
+    "sensor-fault",
+    "power-loss",
 )
 
 

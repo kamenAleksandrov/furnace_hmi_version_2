@@ -19,13 +19,18 @@ browser and ordinary editors.
 - [Open questions](09-progress/OPEN_QUESTIONS.md)
 - [Settings screen proposal](03-hmi/SETTINGS_SCREEN_PROPOSAL.md) and [implementation plan](09-progress/SETTINGS_IMPLEMENTATION_PLAN.md)
 - [Device screen proposal](03-hmi/DEVICE_SCREEN_PROPOSAL.md) and [implementation plan](09-progress/DEVICE_IMPLEMENTATION_PLAN.md)
+- [Device and Settings card pages plan](09-progress/DEVICE_SETTINGS_CARDS_PLAN.md)
+- [Theme and language readiness plan](09-progress/THEME_AND_LANGUAGE_READINESS_PLAN.md), [ADR-0012](07-decisions/0012-theme-and-language-catalogues.md), [theme source](../app/hmi/presentation/theme/README.md) and [string catalogue](../app/hmi/presentation/strings/README.md)
 - [Programs style proposal](03-hmi/PROGRAMS_STYLE_PROPOSAL.md) and [implementation plan](09-progress/PROGRAMS_STYLE_PLAN.md)
 - [Home, Running and editor demo plan](09-progress/HOME_RUNNING_DEMO_PLAN.md)
 - [Running readings refinement](09-progress/RUNNING_READINGS_REFINEMENT_PLAN.md)
 - [Touch keyboard layouts and plan](09-progress/TOUCH_KEYBOARD_PLAN.md)
 - [Decision records](07-decisions/README.md)
 
+- [Operator feedback round 2026-10-06](09-progress/OPERATOR_FEEDBACK_2026_10_06_PLAN.md) (epoxy programs, created programs that run, Maintenance done, Support QR, Device log, website intro and watermark)
 - [HMI web demo and website publishing](09-progress/HMI_WEB_DEMO.md)
+- [Web demo showcase and controller alerts plan](09-progress/WEB_DEMO_SHOWCASE_PLAN.md)
+- [LVGL soft-tile port plan](09-progress/LVGL_SOFT_TILE_PORT_PLAN.md)
 - [Client web demo agent build plan](09-progress/WEB_DEMO_CLIENT_BUILD_PLAN.md)
 
 ## Taxonomy

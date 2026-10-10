@@ -32,6 +32,7 @@ include(CTest)
 add_subdirectory(app/hmi/foundation)
 add_subdirectory(app/hmi/model)
 add_subdirectory(app/hmi/presentation/strings)
+add_subdirectory(app/hmi/presentation/theme)
 
 if(FURNACE_HMI_BUILD_DESKTOP)
   if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/simulator/desktop/CMakeLists.txt")

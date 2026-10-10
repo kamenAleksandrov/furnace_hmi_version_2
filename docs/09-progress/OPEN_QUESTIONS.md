@@ -20,7 +20,7 @@ not resolve the operational and hardware decisions below.
 | Target delta | The UI meaning is °C change per time period, normally °C/min. HEATING may locally drive the estimate from rate or duration; what controller bounds, rounding, preceding-temperature rule, and accepted calculation behavior apply? | Domain requirements and controller/HMI graph consistency review |
 | Run trajectory | Which controller-owned accepted-revision forecast, stage-transition data, and fault/event semantics shall form the fixed initial running-graph domain? | Controller interface and protocol requirements before production graph integration |
 | Manual expiry | What controller transition occurs when a Manual deadline expires? | Controller behavior requirement and ADR if consequential |
-| Faults/alarms | How do acknowledgement, latching, history, recovery, severity, and context behave? | Domain/protocol design |
+| Faults/alarms | How do acknowledgement, latching, history, recovery, severity, and context behave? The HMI alert dialog is a proposal whose Close is local only ([UX baseline](../03-hmi/UX_AND_DOMAIN_BASELINE.md#controller-alerts-proposal-2026-10-01)). | Domain/protocol design |
 | Run Session | What is the exact immutable schema? | Domain/protocol/storage design |
 | Run Session retention | What capacity, retention, export, and eviction policy applies? | Target resources and product requirements |
 | RS-422 rate | What final baud rate satisfies latency, throughput, and robustness? | [Transport ADR](../07-decisions/0006-transport-selection.md) measurements |
@@ -28,13 +28,16 @@ not resolve the operational and hardware decisions below.
 | Control CPU reboot | What happens to furnace operation during/after controller reboot? | Controller-side safety/operation requirement |
 | Maintenance actions | What are restart assessment deadlines/correlation, final execution and recovery semantics, reset defaults, program deletion scope/atomicity, and HMI pending-write handling? | [Settings proposal](../03-hmi/SETTINGS_SCREEN_PROPOSAL.md#maintenance) and [proposed ADR-0010](../07-decisions/0010-maintenance-request-workflows.md) |
 | HMI MCU | Which MCU/board is the first production target? | Resource/driver/toolchain evaluation |
+| Languages | Which languages and scripts must the product ship? Non-Latin scripts need a font beyond Tomorrow HMI (flash budget). | Product decision; [ADR-0012](../07-decisions/0012-theme-and-language-catalogues.md) |
+| Theme and language persistence | Where are the chosen theme and language stored across restarts, and may the theme follow ambient light or time of day? | HMI storage adapter design; product decision |
+| Device catalogue text | The device service catalogue carries English display text (task names, remaining, intervals). Does the controller send codes and values that the HMI words, or per-language text? | [ADR-0011](../07-decisions/0011-component-service-catalogue.md) follow-up |
 | Display | Which first production display, interface, and resolution? | Software-visible hardware contract |
 | Touch | Which first production touch controller/interface? | Zephyr driver and board evaluation |
 | Memory | What are stack, heap/pool, LVGL, graph, protocol, and storage budgets? | [Memory policy ADR](../07-decisions/0008-memory-policy.md) |
 | Telemetry | What are final rates, burst behavior, and coalescing rules by signal? | Measured protocol/control requirements |
 | Dashboard | Which additional statistics are required and how are they grouped? | UX/product requirements |
 | Navigation | What belongs in the currently unknown fourth destination, and is Settings permanently a bottom-navigation destination? | UX/product information architecture |
-| Motion/accessibility | Is a reduced-motion preference required, and which decorative effects may it disable without reducing state visibility or feedback? | UX/accessibility requirement and target performance evidence |
+| Motion/accessibility | Is a reduced-motion preference required, and which decorative effects may it disable without reducing state visibility or feedback? Both presentations show the preference; the recommended scope is in the [UX baseline](../03-hmi/UX_AND_DOMAIN_BASELINE.md#device-and-settings-card-pages-2026-10-01). | UX/accessibility requirement and target performance evidence |
 | PID presentation | Which user-facing control/quality metrics belong on the run screen, and which raw P/I/D diagnostics require a service view or role? | UX, service workflow, and permissions design |
 | Sensor loss | Which controller safety transition, alarm lifecycle, and HMI presentation apply when a required sensor becomes invalid? | Hazard analysis, controller safety requirements, and protocol design |
 | Program estimate ambient | Confirm units, bounds, storage owner, and controller-returned metadata for the saved ambient input used only for estimation | Domain/protocol design; current intended behavior is recorded in [UX and domain baseline](../03-hmi/UX_AND_DOMAIN_BASELINE.md) |
@@ -42,6 +45,10 @@ not resolve the operational and hardware decisions below.
 | Device component service | Confirm powered-on/fan counter sources, paused Program inclusion, actual parts/manufacturer schedules, per-task due policy, replacement baselines, and authorized service recording outside the worker page | [Device proposal](../03-hmi/DEVICE_SCREEN_PROPOSAL.md) and [proposed ADR-0011](../07-decisions/0011-component-service-catalogue.md) |
 | Service maintenance | How are service time, due period, forecast completion, and maintenance rules derived? | Controller-owned counter/product requirement |
 | Service-period gate | The user requires one controller-issued acknowledgement per configured service period and later maintenance visibility. What are its threshold, re-arm-after-service rule, role/audit retention, hard-block cases, and condition-change behavior between acknowledgement and Start? | Controller policy, product requirements, and protocol lifecycle design |
+| Maintenance done | Latest decision (2026-10-06): a quality-of-life tracking aid, not warranty-based. Still open if that changes: who may record a task as done (service personnel only for electrical tasks?), with which identity/audit record, and may it be undone? The HMI requests; the simulators accept every request. | Controller service workflow and permissions design; [Device proposal](../03-hmi/DEVICE_SCREEN_PROPOSAL.md) |
+| Support link | Where does the support link and its QR code come from (device configuration from the controller, or a build-time asset as now), and per market or language? | Product decision; `tools/build_support_qr.py` |
+| Device log | Which events does the controller log, how long is history kept (the HMI shows one month), how is it paged or queried, and how are times stamped across clock changes? | Controller event log/protocol design (CTRL-EVENTS) |
+| Program library | Which programs ship (the epoxy programs are illustrations), how many may the controller store (the labs allow 12), and are created programs persistent? | Product decision; controller storage design (CTRL-PROGRAM) |
 | Windows Python | Should the reproducible Windows baseline require upstream-recommended Python 3.12 instead of the locally verified 3.13.3 deviation? | Clean-machine environment reproduction/CI evidence |
 
 Protocol serialization/framing and source-sharing also remain deferred in

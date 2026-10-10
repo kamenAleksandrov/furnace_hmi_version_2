@@ -61,6 +61,24 @@ add_subdirectory(
   "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/dashboard"
   "${CMAKE_CURRENT_BINARY_DIR}/dashboard_view"
 )
+if(NOT TARGET furnace_hmi_fonts)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/fonts"
+    "${CMAKE_CURRENT_BINARY_DIR}/hmi_fonts"
+  )
+endif()
+if(NOT TARGET furnace_hmi_theme)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/theme"
+    "${CMAKE_CURRENT_BINARY_DIR}/hmi_theme"
+  )
+endif()
+if(NOT TARGET furnace_hmi_icons)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/icons"
+    "${CMAKE_CURRENT_BINARY_DIR}/hmi_icons"
+  )
+endif()
 add_subdirectory(
   "${FURNACE_HMI_REPOSITORY_ROOT}/simulator/semantic_controller"
   "${CMAKE_CURRENT_BINARY_DIR}/semantic_controller"
@@ -70,6 +88,7 @@ add_executable(
   furnace_hmi_ui_lab
   src/main.c
   src/ui_lab_explorer.c
+  src/ui_lab_theme.c
 )
 target_compile_definitions(
   furnace_hmi_ui_lab
@@ -85,6 +104,9 @@ target_link_libraries(furnace_hmi_ui_lab
     furnace_hmi::ui_strings
     furnace_hmi::state_availability_view
     furnace_hmi::dashboard_view
+    furnace_hmi::fonts
+    furnace_hmi::icons
+    furnace_hmi::theme
     furnace_hmi::simulated_controller
     lvgl::lvgl
     SDL2::SDL2

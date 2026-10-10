@@ -198,6 +198,10 @@ This is a host-lab presentation proposal, not an operational state machine:
 - **Program loading** presents the selected accepted program's summary and
   planned trajectory before it offers a Start request. Starting opens the
   dedicated Program-running view only after later controller acceptance.
+  Since 2026-09-30 the Load page is reached from Home Quick launch only; from
+  Program details, **Start program** sends the same request after an HMI
+  confirmation dialog. Either way controller acceptance, not the HMI, starts
+  the run.
 - **Running** is separate from Home. It keeps elapsed/remaining time, stage and
   phase, current and target temperature, estimated power, and controller state
   always visible. Its graph/visual area supports full graph, split, and full

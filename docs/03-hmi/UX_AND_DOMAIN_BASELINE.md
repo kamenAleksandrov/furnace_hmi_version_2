@@ -70,6 +70,14 @@ Every engineering value exposes whether it is measured, commanded, estimated,
 calculated, or configured, plus current/stale/unavailable state. Labels must
 not turn demand-derived estimated power into a measured electrical quantity.
 
+**Decision (product owner, 2026-10-01; both presentations):** temperatures use
+the degree sign, `°C` and `°C/min`. When a value has a label, the unit sits in
+the label and the value is the number alone (`Current °C` / `151`,
+`TARGET °C` / `120`, `RATE °C/min` / `2.0`, `Max. °C` / `180`); unlabelled
+values such as graph axes, stage cards and dialog text keep a `°C` suffix.
+Estimated power follows the same rule (`Est. power kW` / `3.40`). `°` (U+00B0)
+is in both Tomorrow HMI fonts.
+
 Celsius is initially implemented. Keep conversion at the presentation boundary
 where appropriate, without implementing Fahrenheit now. English is initially
 implemented; visible strings use a localization abstraction rather than being
@@ -77,6 +85,30 @@ scattered through screen logic. No user-role/access-control system is required
 at this time.
 
 ## Programs and Manual
+
+**Decision (product owner, 2026-10-06):** the delivered library is three
+epoxy cure programs, Epoxy system 1 (laminating resin with a 60 C post-cure),
+2 (120 C prepreg cure with a flow dwell) and 3 (180 C high-Tg cure in steps),
+within the furnace limits. They are illustrations, not resin datasheet
+values. Programs the operator creates are kept by the controller for the
+session in both lab presentations (no persistence yet) and behave like
+library programs: listed, favourite, start, run, delete.
+
+**Decision (product owner, 2026-10-06):** Stop on a program run cuts the run
+where it stands (the plan ends there) and the controller cools automatically
+on Running, labelled "Stopped · automatic cooling"; Stop during automatic
+cooling marks the run stopped the same way. Pause and Stop give way to
+**Start again** (the same program from the start, at once) and **Return
+Home** (closes the run). Navigation stays locked until one is chosen.
+
+**Decision (product owner, 2026-10-06):** stopping Manual heating (or the
+controller ending it at 48 h) leaves the session on the Manual page in a
+Cooling state: heaters off, the readings show heating time, cooling time and
+its estimate, the reading and the 30 C cooling target, and the forecast is the
+cooling line. The steppers are off; **Exit** goes Home and **Start new**
+returns to the Manual page with the same target and rate. Navigation stays
+locked until one is chosen. The Manual readings show each label over its value
+so all of them fit 800 px.
 
 The planned library experience includes browse, select, create, edit, copy,
 rename, delete, preview, calculation assistance, save, load, and run. Home
@@ -155,6 +187,31 @@ reset, HMI restart, program/history/log/credential/counter clearing,
 controller-setting reset, and controller restart have different owners and
 permissions that remain to be designed.
 
+### Controller alerts (proposal, 2026-10-01)
+
+**Recommendation (reversible presentation; implemented in both presentations):**
+when the observation reports a new controller fault kind, the HMI shows an
+alert dialog over the current page: a warning icon, the fault title, one
+sentence on what the controller did, and **Close**. The same dialog reports
+**Connection lost** when this display loses the controller link, and
+**Connection restored** if that alert is still open when the link returns.
+
+- **Close is a local dismissal only.** It is not an acknowledgement, clears
+  nothing and sends nothing; the fault stays on Running and in Device
+  notifications. Acknowledgement, latching, severity and history remain the
+  open "Faults/alarms" question and belong to the controller.
+- A Program run the controller ended with a fault stays on Running with the
+  graph frozen at the fault; the fault title replaces the stage label (red),
+  Pause disappears and Stop becomes **Return Home**.
+- While the link is lost, Running shows the reading values as `-- stale`, the
+  stage label reads Connection lost, and Pause and Stop are unavailable; nothing
+  is replayed when the link returns.
+- Initial fault kinds: over-temperature, target not reached, door opened,
+  temperature sensor fault, power interrupted. Titles and texts are HMI-local
+  presentations of a controller-reported category; final codes, wording and
+  severities follow controller fault semantics (CTRL-ALERTS).
+- Alerts are not animated (see Motion and navigation feedback).
+
 ## Interaction response
 
 Provide immediate perceptible feedback. For ordinary controller interactions,
@@ -200,6 +257,146 @@ Observed active Program state controls the Running navigation lock; Manual
 retains normal navigation. Modal coverage leaves normal Stop accessible.
 These are host presentation choices and evidence, not production permissions.
 See [native verification](../09-progress/GRAPHITE_UI_VERIFICATION.md).
+
+### Soft-tile Programs presentation (2026-09-30)
+
+**Decision (product owner, 2026-09-29; recorded with the LVGL port):** Program
+details offer **Start program** directly, behind an HMI confirmation dialog
+("Start <name>?", with stage count, curing time and maximum temperature). The
+Load program page remains only for Home Quick launch, with Start program under
+the program facts. This supersedes "management actions separated from
+Load/Start" above: Start now shares the details action row with View stages,
+Edit program and Delete program.
+
+**Invariant (unchanged):** the confirmation is an operator check in the HMI, not
+validation or permission. Confirming sends a start request; only Control CPU
+acceptance starts a run ([ADR-0001](../07-decisions/0001-authority-boundary.md)).
+
+**Fact:** the favourite marker is now the shared star icon (outline or filled),
+replacing the asterisk fallback noted above. Stage cards follow the screen
+concepts (tinted ordinal, kind label and glyph, large target, duration and
+rate). Both presentations implement this; see the
+[LVGL port plan](../09-progress/LVGL_SOFT_TILE_PORT_PLAN.md).
+
+### Stage editor dialog (2026-09-30)
+
+**Decision (product owner, 2026-09-29; recorded with the LVGL port):** the stage
+editor is a fixed-height dialog over the page it was opened from, replacing the
+full-page editor described above. Its top row holds Delete stage, a pager whose
+stage position can be tapped to move the stage, and Add stage (a Heating stage
+20 C above the current one). Heating and Hold use the same three rows, Target,
+Rate and Duration; a Hold locks Target to the inherited temperature and shows
+Rate "None". Deleting asks first. The first validation problem is shown under
+the fields and disables Save all changes. Discard changes asks, then restores
+every stage of the session (edits, moves, adds and deletes); Save all changes
+keeps them in the local draft.
+
+**Invariant (unchanged):** stage edits remain an HMI-local draft; saving does not
+submit anything to the Control CPU, which alone validates and accepts programs.
+
+### Soft-tile Home, Device, Settings, keyboards and dialogs (2026-09-30)
+
+**Fact (both presentations):** Home Quick launch lists favourites, then recent
+programs, and drops entries from the end until Start manual fits, so a taller
+screen shows more. Door and fan read "Closed" / "Open" / "Unknown" and
+"1,450 rpm". Device and Settings lists show up to five 48 px rows per page with
+the shared pager and an "N items" count; Device rows carry a status-coloured
+left edge (amber due, red fault, green up to date, neutral otherwise) and a
+status icon beside the tag. The Display settings page shows Brightness, Dim when
+idle, Reduced motion, Default Running view and Language / units first, and
+Theme under More.
+
+**Fact (both presentations):** confirmation dialogs are 430 px wide (narrower
+screens leave 12 px each side), with equal centred buttons 112-220 px wide.
+Delete program asks "Delete program?" naming the program; confirming shows
+"Deletion request accepted". Keyboard layouts are recorded in the
+[touch keyboard plan](../09-progress/TOUCH_KEYBOARD_PLAN.md#2026-09-30-soft-tile-layout-supersedes-the-action-row-and-keypad-above);
+the numeric keypad has no sign key because no current field accepts a negative
+value.
+
+**Invariant (unchanged):** "Deletion request accepted" is the host preview of a
+Control CPU response. The HMI does not delete programs itself.
+
+### Device and Settings card pages (2026-10-01)
+
+**Decision (product owner; supersedes the five-row lists above for these
+pages):** Device and Settings sub-pages use rectangular cards like the Device
+Overview runtime tiles, in a grid whose rows stretch to fill the page above the
+footer. Each card shows a small label, a large value and a caption. Action
+cards are tappable on their whole surface and carry a lit left edge (soft
+amber; red for destructive actions; on Device the status colour: amber due,
+red fault, green up to date, neutral otherwise). Information cards have no
+edge. The Device log stays a list. The full layout is recorded in the
+[card pages plan](../09-progress/DEVICE_SETTINGS_CARDS_PLAN.md); both
+presentations implement it.
+
+- **Display & interaction** is one page: a full-width Brightness card with a
+  tappable ten-step gauge (10-100 % backlight) between - and +, with no number
+  shown and the heading just above the bars; Dim when idle (default Off) opens a
+  choice of Off, 1, 2, 5, 10 or 30 min; Reduced motion toggles On/Off; Default
+  Running view opens a choice of Graph, Split or Furnace; Language, Units and
+  Theme (Dark) are information. Edits stay in the unsaved form until Save.
+- **Date & time**: a large clock card opens **Set date & time** (day, month,
+  year, hour, minute, plus AM/PM in 12-hour format, each with + and -, and a
+  weekday preview), beside a Time format card. A shorter month or a non-leap
+  year pulls the day back (31 Jan -> 28 Feb). Set date & time is a request to
+  the controller, separate from preference Save; Cancel changes nothing.
+- **Connections** is listed only when the controller reports server/Bluetooth
+  enabled (hidden by default): a wide Furnace controller card over Server and
+  Bluetooth.
+- Settings **System** (named Maintenance until 2026-10-05, renamed so it is
+  not confused with Device Maintenance; power icon): four action cards (Reset
+  settings, Delete programs, Restart display, Attempt furnace restart).
+- **Theme and Language** (2026-10-05) are display preferences like the other
+  Display cards: information while only one exists, a choice dialog once a
+  second theme or language is added. The edited choice previews at once;
+  Save keeps it, Discard and Reset restore. Each language is listed by its own
+  name. Colours and text come from the shared theme and string catalogues
+  ([ADR-0012](../07-decisions/0012-theme-and-language-catalogues.md)).
+- Device **Overview**: the three runtime cards over Service attention, Errors
+  and Last service, each opening its tab. Device **Maintenance** lists every
+  catalogue task as a status card, worst first, six per page; Service history
+  pages its records the same way; Device info shows six cards.
+
+**Decision (product owner, 2026-10-06; supersedes parts of the list above):**
+- A Maintenance task opens its details with a corner X (close only) and
+  **Maintenance done**. Done is a request; when the controller confirms it the
+  task starts a new interval ("Next in <interval>"; a condition-based task
+  stays condition-based), its last baseline becomes today, and a Maintenance
+  record leads Service history and the Overview Last service card. It is
+  unavailable while data is stale or the link is lost. Latest decision: it is a
+  quality-of-life aid for tracking machine health (recommendations), not
+  warranty-based; this may change. Who may record it is open
+  ([open questions](../09-progress/OPEN_QUESTIONS.md), Maintenance done).
+- Device info shows five cards: Model, HMI firmware, Controller firmware,
+  Component catalogue and a two-column Support card. Controller link is
+  removed: link state already shows where it matters (stale banner, "Last
+  known" footers, the link-lost Running state). Support opens the support QR
+  code (dark code on a light plate in every theme) under a scan hint, with the
+  corner X as its only control.
+- The **Device log** replaces "stays a list": an event feed in the style of
+  the Ajax Systems app. Filter tabs (All, Programs, Alarms, Maintenance,
+  System) fill the toolbar; events sit newest first under date headings with
+  their age ("1 Oct 2026 (5 days ago)"); each row shows the type icon in its
+  tone, the time and one line naming the program, alarm or part ("Program
+  completed: Epoxy system 2", "Over-temperature: Epoxy system 3",
+  "Maintenance done: Air filter / Inspect filter"); tapping a row shows its
+  date, time and source. It holds one month; pages hold as many rows as the
+  screen fits. The Overview Errors card opens it on Alarms.
+- **Date format** (2026-10-06) is a display preference on Date & time beside
+  Time format: 6 Oct 2026, 06.10.2026, 06/10/2026, 10/06/2026 or 2026-10-06.
+  Every date on screen follows it; it is saved with the Save bar.
+- Settings **System** (2026-10-06): Delete programs removes every program
+  after one confirmation naming them (the controller answers the request);
+  a single program is deleted from its details. Reset settings
+  resets Display preferences, Date & time formats, or All preferences.
+
+**Recommendation (reduced motion):** the preference turns off decorative
+motion only: button press/glow transitions, the navigation glow and slide-in
+panels. It never hides or delays state, alerts, Stop availability or stale
+indication, which are not animated anyway (see Motion and navigation
+feedback). Whether the product needs it stays open
+([open questions](../09-progress/OPEN_QUESTIONS.md), Motion/accessibility).
 
 ### Running-view presentation refinement
 

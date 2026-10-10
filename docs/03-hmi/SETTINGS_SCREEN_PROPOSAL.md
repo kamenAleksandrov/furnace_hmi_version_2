@@ -147,6 +147,34 @@ control. Reduced motion suppresses decorative transitions only. Touch-feedback
 volume is not an alarm mute. Keep graphite, English, and Celsius as current
 information instead of offering unavailable themes, languages, or units.
 
+**Update (2026-10-01, product owner):** Display & interaction is one card page
+(brightness gauge, dim choices including Off, Reduced motion, Default Running
+view, Language, Units, Theme), and Date & time has a Set date & time dialog in
+both presentations; see the
+[UX baseline](UX_AND_DOMAIN_BASELINE.md#device-and-settings-card-pages-2026-10-01).
+A **light theme** is requested for later; it supersedes "keep graphite as
+current information" above once it exists. The dialog follows the rules in
+Date/time and connection behavior below; timezone and time source remain
+deferred.
+
+**Update (2026-10-05, product owner):** the Settings **Maintenance** tab is
+renamed **System** (power icon) so it is not confused with Device Maintenance;
+its four actions and the [Maintenance](#maintenance) rules below are unchanged.
+**Connections** is hidden by default and listed only when the controller
+reports server/Bluetooth enabled; this supersedes the disabled-reason rows in
+Date/time and connection behavior below, which now apply only if the page is
+shown. Date & time drops the Clock source card (the page subtitle already says
+the controller keeps the time). Brightness shows only the gauge, without a
+percentage, and Dim when idle defaults to Off.
+
+**Update (2026-10-05, product owner):** theme and language must be
+switchable. Both presentations now take colours and text from shared
+catalogues (proposed
+[ADR-0012](../07-decisions/0012-theme-and-language-catalogues.md)); the Theme
+and Language cards become choices when a second option exists and behave as
+display preferences (preview, Save, Discard, Reset). A light theme is the next
+design step; it supersedes "keep graphite as current information" above.
+
 Useful later additions are quick-launch arrangement (favourites already exist),
 an estimation-only ambient default once its ownership is settled, and the
 explicit reset scopes under Maintenance below. Do not introduce an ambiguous
@@ -193,8 +221,8 @@ This section describes the proposed interaction; it is not a production protocol
 
 | Action | Scope and confirmation | Completion / failure |
 | --- | --- | --- |
-| Reset settings | Opens explicit choices: Display & interaction preferences, Program preferences, or both; show exact fields/defaults before Reset preferences | HMI-local recoverable write; keep prior values on failure. Excludes programs, history, controller configuration/clock, credentials, pairing, and counters |
-| Delete programs | Opens selection/review for selected or all library programs; final dialog shows names/count and says deletion cannot be undone | Controller validates IDs/revisions and permissions, persists and reports outcome. Do not remove local rows merely because a request was sent; no effect on immutable run history or active accepted snapshot |
+| Reset settings | Opens explicit choices: Display preferences, Date & time formats, or all preferences (2026-10-06: the Program preferences scope is gone; no page showed those settings); show exact fields/defaults before Reset preferences | HMI-local recoverable write; keep prior values on failure. Excludes programs, history, controller configuration/clock, credentials, pairing, and counters |
+| Delete programs | Opens selection/review for selected or all library programs (2026-10-06: it deletes all programs after one confirmation; single programs are deleted from their details); final dialog shows names/count and says deletion cannot be undone | Controller validates IDs/revisions and permissions, persists and reports outcome. Do not remove local rows merely because a request was sent; no effect on immutable run history or active accepted snapshot |
 | Restart display | Confirm temporary loss of display/controls and disposition of unsaved edits; restart HMI only | Resolve local save/discard first, finish or report pending local writes, then platform restart; reconstruct from a current controller snapshot after startup |
 | Attempt furnace restart | Ask whether restart is appropriate now, then use the three branches below | Send an attempt only after confirmation; final execution/rejection belongs to the Control CPU |
 

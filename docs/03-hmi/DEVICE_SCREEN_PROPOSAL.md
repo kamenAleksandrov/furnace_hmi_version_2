@@ -27,7 +27,7 @@ extends the browser concept and planning documents only.
 **Recommendation:** Device is an inspection workspace. Its initial actions are
 View details, filter, page, and read approved guidance/history. It has no
 interval editing, counter reset, fault clear, actuator test, calibration,
-service-complete action, or hidden administrative unlock. Settings Maintenance
+service-complete action, or hidden administrative unlock. Settings System
 remains the separate home of its already proposed reset/delete/restart flows.
 Read-only UI alone is not a safety mechanism: the controller must still enforce
 permissions and protections against all clients.
@@ -36,6 +36,20 @@ permissions and protections against all clients.
 personnel, not certify repair completion. Recording service completion later
 needs a separately defined controller-authorized workflow and audit record.
 No new role/PIN system is introduced by this proposal.
+
+**Decision (product owner, 2026-10-06; changes the recommendation above):** a
+Maintenance task offers **Maintenance done**. The HMI only requests it; the
+controller records the service, restarts the interval and logs the event. The
+controller must still decide who may record which task (some tasks are for
+electrical service personnel only) and keep the audit record; until that is
+defined the simulators accept every request. See the
+[UX baseline](UX_AND_DOMAIN_BASELINE.md#device-and-settings-card-pages-2026-10-01)
+and [open questions](../09-progress/OPEN_QUESTIONS.md) (Maintenance done).
+
+**Latest decision (product owner, 2026-10-06):** Maintenance done is a
+quality-of-life tracking aid, a recommendation system that helps users follow
+their machine's health. It is not warranty-based and does not certify service.
+The note above stays because this may change.
 
 ## Page structure and style
 
@@ -58,8 +72,18 @@ state locally while navigating. Reference viewport is 800 x 480; also inspect
 | Service history | Controller-recorded inspections, replacements, and service-policy acknowledgements, clearly distinguished |
 | Device info | Device identity, HMI/controller firmware, connection and snapshot validity, catalogue revision, and support reference when configured |
 
+**Update (2026-10-01):** the implemented categories are Overview, Device log,
+Maintenance, Service history and Device info (Components became Device log and
+Notifications became Maintenance on 2026-09-23). Maintenance now shows every
+catalogue task as a status card, worst first, with an active controller fault
+first; tapping a card opens the read-only task details. All tabs except the
+Device log use cards; see the
+[UX baseline](UX_AND_DOMAIN_BASELINE.md#device-and-settings-card-pages-2026-10-01).
+
 Lists use three touch rows per page at the short viewport with fixed Previous /
-Next controls and counts. Large catalogues never require a single huge page or
+Next controls and counts. (Superseded 2026-09-30 by the soft-tile layout: five
+48 px rows per page with the shared pager and an "N items" count; see the
+[UX baseline](UX_AND_DOMAIN_BASELINE.md).) Large catalogues never require a single huge page or
 rebuilding every row. Details use short pages/dialogs; production procedure
 text is bounded and paginated, not an unbounded scrolling manual. Layout
 validation must include long localized labels and large counters.
@@ -237,6 +261,9 @@ parts not in the configured catalogue are absent. An empty catalogue explicitly
 says no components are configured, not that all parts are healthy.
 
 Pages identify loading, unavailable, stale, empty, and retrieval-failed states.
+On link loss Overview carries the last-known snapshot banner; the paged list
+tabs mark staleness in their footer ("Last known") instead, so five rows and the
+pager still fit (both presentations, 2026-10-01).
 A paged catalogue/history read is revision-bound; avoid merging pages across
 catalogue changes. Persistent IDs maintain selection and retired-instance
 history. A removed selected component yields a clear return-to-list state.

@@ -35,6 +35,10 @@ meaning.
 5. Compare the actual screens and transitions, then report any remaining
    parity gap as a concrete follow-up rather than calling the slice complete.
 
+Colours and visible text follow the
+[theme-and-language skill](../theme-and-language/SKILL.md): tokens and
+catalogue strings shared by both presentations, never literals.
+
 ## Allowed exception
 
 A change may remain simulator-only when it is strictly a demo fixture or

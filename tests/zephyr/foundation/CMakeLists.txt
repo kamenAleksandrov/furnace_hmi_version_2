@@ -14,10 +14,12 @@ target_sources(app PRIVATE
   "${FURNACE_HMI_FOUNDATION_DIR}/src/foundation.c"
   "${FURNACE_HMI_MODEL_DIR}/src/dashboard_model.c"
   "${FURNACE_HMI_STRINGS_DIR}/src/ui_strings.c"
+  "${FURNACE_HMI_STRINGS_DIR}/generated/ui_strings_catalogue.c"
 )
 
 target_include_directories(app PRIVATE
   "${FURNACE_HMI_FOUNDATION_DIR}/include"
   "${FURNACE_HMI_MODEL_DIR}/include"
   "${FURNACE_HMI_STRINGS_DIR}/include"
+  "${FURNACE_HMI_STRINGS_DIR}/src"
 )

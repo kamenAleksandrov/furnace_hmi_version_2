@@ -32,3 +32,10 @@ do not close a UI task with only one implementation. The only exception is a
 demo-only simulator fixture or visualization that does not represent an HMI
 screen, navigation rule, control, or user-visible behavior. Use the
 [UI-parity skill](.agents/skills/ui-parity/SKILL.md) for the detailed workflow.
+
+## Themes and languages
+
+UI code never writes a colour value or visible text: colours are theme
+tokens and text comes from the shared string catalogue, in both
+presentations, so themes and languages stay switchable. Use the
+[theme-and-language skill](.agents/skills/theme-and-language/SKILL.md).

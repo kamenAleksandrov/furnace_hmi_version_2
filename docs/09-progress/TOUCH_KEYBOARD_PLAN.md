@@ -137,3 +137,25 @@ above; the former symbol-page screenshots and cycling checks are historical.
 Browser smoke verifies the digit row, absence of a symbols toggle, Caps entry,
 and that text input remains open and intact while waiting. Native geometry and
 the shared UI-lab smoke verify the corresponding LVGL path.
+
+## 2026-09-30 soft-tile layout (supersedes the action row and keypad above)
+
+Both presentations now use the web soft-tile keyboards; the native port is
+recorded in [the LVGL soft-tile port plan](LVGL_SOFT_TILE_PORT_PLAN.md).
+
+- Text keyboard action row, on a 20-column grid: Cancel, Clear, gap, Space,
+  left, right, gap, Apply. Cancel and Clear sit apart from Apply on the left.
+- The heading shows the field title and, for text, a live count such as
+  `20 / 32`; numeric fields show "Numeric entry".
+- The field is a recessed well with an amber bottom edge, centred text, an
+  amber blinking caret and an amber-tinted selection of the opening value.
+- Numeric keypad, with no sign key (no current field accepts a negative
+  value); `.` is dimmed unless the field takes tenths:
+
+```text
+7    8    9    Delete
+4    5    6    (Delete spans two rows)
+1    2    3    .
+0 (two keys)   <    >
+Cancel   Clear   Apply (two keys)
+```

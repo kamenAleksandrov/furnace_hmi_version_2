@@ -38,8 +38,10 @@ yellow interaction accents and distinct semantic colors.
 - At the 48-hour Manual limit, controller simulation ends heating, while
   furnace cooling remains automatic. The HMI returns to Manual setup and shows
   the automatic-cooling notice rather than a separate Manual cooling view.
-- Stage cards show white Heating/Holding type, coloured ordinal, white duration
-  and coloured temperature. Details show Number of stages and Max. temp first,
+- Stage cards (2026-09-30) show a tinted ordinal, the upper-case HEATING or
+  HOLDING kind and a small ramp/hold glyph in the kind colour, the target
+  temperature large in white, then duration and rate (`3 min · 3 C/min`); the
+  card edge takes the kind colour. Details show Stages and Max. temp first,
   then Duration: Curing, Est. cooling and Est. total.
 
 ## Manual setup
@@ -216,6 +218,40 @@ Edit program no longer sits in the title bar. The graph and facts share the
 same three-column grid and gap as that row, so the graph spans exactly the
 first two actions and the facts card sits above Load program. Duration values
 are label/value rows to fit the narrower card.
+
+Program details (2026-09-30, soft-tile; supersedes the two paragraphs above
+for layout): a title row (Back, name, favourite star), then one four-slot action
+row: **Start program**, View stages, Edit program, Delete program. Below it the
+graph spans three slots and the facts sit in the fourth. Start program asks
+first: "Start <name>?" with stages, curing time and maximum, **Cancel** or
+**Start program**. Confirming sends the same start request the Load page sends;
+Cancel changes nothing. The Load page is reached only from Home Quick launch:
+Back returns Home, the graph fills three quarters at full height and **Start
+program** sits under the facts. Program stages shows Back, Edit program and the
+pager above the cards (no heading, no Add stage). Both presentations implement
+this (web demo and native UI lab).
+
+Stage editor (2026-09-30): a 440 px dialog over the page it came from. Top row:
+Delete stage | ‹ position / count › | Add stage; then Heating | Hold; then
+Target (C), Rate (C/min) and Duration (min) as one-piece steppers (a Hold greys
+Target and Rate, Rate reads "None", and the field edges turn purple); then the
+first problem, if any; then Discard changes | Save all changes. Tapping the
+position opens the numeric keypad to move the stage. Both presentations
+implement it.
+
+Running and Manual (2026-09-30, soft-tile; supersedes the placement below): the
+reading line is a tile directly under the Running title and above the graph or
+furnace, in every view. The program graph shows only the start of automatic
+cooling (at most a quarter of the curing time); once measured cooling passes
+that window the reading line offers Show cooling / Hide cooling. Measured
+cooling is a blue dashed line, planned cooling a green dashed line. Manual has
+a readings strip on top (Ready / Heating / Holding / Paused, then Current and
+Est. to target with the idle note, or while running Elapsed, To target,
+Current, Setpoint, Heater demand and Est. power), the forecast graph filling the
+page with a "now" marker, and a controls tile with Start (or Pause and Stop)
+beside one-piece Target and Rate steppers. Graph panels share one caption,
+"Temperature (C) · Time (min)", a legend (Planned, Planned / Measured,
+Predicted, Measured / Predicted) and a time axis from 0.
 
 Running readings: every Running view (Graph, Split, Furnace) shows one line of
 `Label value` readings between the visual and the actions, labels muted and
