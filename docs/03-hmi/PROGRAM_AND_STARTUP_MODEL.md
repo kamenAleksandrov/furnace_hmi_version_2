@@ -173,9 +173,10 @@ all execution semantics remain controller-defined.
 
 ## Explicit Start and hot start
 
-Governing decision: [ADR-0013](../07-decisions/0013-explicit-start-and-hot-start.md)
-(REQ-FUN-018, REQ-FUN-019, PROTO-012). The message semantics are defined once in
-the furnace repository `docs/interfaces/controller-hmi-interface.md` (0.1.0 draft); this section describes only the HMI presentation.
+Governing decisions: [ADR-0013](../07-decisions/0013-explicit-start-and-hot-start.md) and
+[ADR-0014](../07-decisions/0014-live-hot-start-confirmation-and-sensor-faults.md)
+(REQ-FUN-018, REQ-FUN-019, REQ-FUN-021, PROTO-012). The message semantics are defined once in
+the furnace repository `docs/interfaces/controller-hmi-interface.md` (0.2.0 draft); this section describes only the HMI presentation.
 
 1. The operator presses Start (or **Start again**). The HMI sends one Start
    request for the displayed accepted program revision and shows pending state.
@@ -184,13 +185,21 @@ the furnace repository `docs/interfaces/controller-hmi-interface.md` (0.1.0 draf
 3. If the controller returns a **hot-start proposal**, the HMI shows the
    measured temperature with validity, the proposed starting stage, every
    skipped stage, the skipped Hold durations and the controller's warnings,
-   with **Confirm** and **Cancel**. Confirm sends one confirmation for exactly
-   that proposal; the result is shown only when the controller answers.
-4. A rejection (for example "no eligible stage", "stage changed", "expired")
-   is presented from its stable reason code. The HMI never retries, re-arms or
-   waits to start automatically; the operator starts again explicitly.
+   with **Confirm** and **Cancel**. There is no normal timeout: the dialog
+   stays open, with the temperature refreshed at the reporting interval, while
+   live data is valid. When the controller publishes a changed proposal (for
+   example a different starting stage after the furnace cooled), the change is
+   shown clearly and the operator confirms the new proposal; Confirm always
+   refers to the revision on screen, and the result is shown only when the
+   controller answers.
+4. A rejection or invalidation (for example "no eligible stage", "proposal
+   outdated", "live data unavailable", "connection lost") is presented from
+   its stable reason code. Stale or unavailable telemetry is shown as such and
+   disables Confirm. The HMI never retries, re-arms or waits to start
+   automatically; the operator starts again explicitly.
 5. Link loss, HMI restart or controller restart closes the presentation of any
-   open proposal; after reconnection the snapshot shows the controller state.
+   open proposal with an explanation; after reconnection the snapshot shows
+   the controller state and no proposal survives.
 
 All labels and messages use semantic string IDs with typed parameters in the
 shared catalogue, in both presentations.
@@ -199,7 +208,7 @@ Proposed, not approved for implementation: an operator-selected starting
 stage (selection is a parameter of an explicit Start, never a start; an
 ineligible selection returns the permitted temperature range); an
 informational waiting-for-cooling state with an optional cooling-time
-estimate that shows "no reliable estimate" when uncertain and never starts
+estimate (REQ-FUN-023) that shows "no reliable estimate" when uncertain and never starts
 anything; mandatory stages that a hot start may not skip. See furnace START-06
 to START-08 and [open questions](../09-progress/OPEN_QUESTIONS.md).
 

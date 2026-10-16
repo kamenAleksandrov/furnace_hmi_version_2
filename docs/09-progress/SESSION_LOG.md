@@ -1088,3 +1088,21 @@ draft). Documentation only.
 **Verification:** see the commit for the documentation checks that were run.
 UI, simulator, embedded and physical checks were not run because no source
 changed.
+
+## 2026-10-16 - Live hot-start confirmation and sensor faults
+
+**Decision (product owner):** the hot-start confirmation has no normal timeout;
+it stays open while live data is valid, shows proposal changes, and is
+invalidated with an explanation when live data or the link cannot be assured.
+Sensor faults are classified by the controller from validated per-model
+policies and presented as localized structured warnings; degraded operation is
+shown distinctly. The six-hour Manual value is a default, not a maximum.
+
+**Fact:** amended REQ-FUN-005 and REQ-FUN-019; added REQ-FUN-021 to
+REQ-FUN-023; updated PROTO-012 (furnace interface specification 0.2.0) and
+TEST-011; added ADR-0014 (amends ADR-0013), CTRL-SENSOR-FAULT, open-question
+updates and the traceability gap list. Documentation only.
+
+**Verification:** relative-link check and `tools/codebase_index.py --check`
+after regeneration. UI, simulator, embedded and physical checks were not run
+because no source changed.

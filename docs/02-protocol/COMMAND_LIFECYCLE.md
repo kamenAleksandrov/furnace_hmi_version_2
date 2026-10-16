@@ -33,7 +33,7 @@ more explicit outcomes.
 ## Start and hot start
 
 Start, hot-start proposal, confirmation, cancel and rejection follow the single
-controller interface specification in the furnace repository `docs/interfaces/controller-hmi-interface.md` (0.1.0 draft) (PROTO-012,
+controller interface specification in the furnace repository `docs/interfaces/controller-hmi-interface.md` (0.2.0 draft) (PROTO-012,
 [ADR-0013](../07-decisions/0013-explicit-start-and-hot-start.md)). A Start is
 never replayed, queued or armed; a confirmation applies only to its own
 proposal.
