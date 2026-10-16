@@ -9,10 +9,10 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 272 |
-| Git-tracked files | 272 |
+| Repository files | 273 |
+| Git-tracked files | 273 |
 | Git-untracked files | 0 |
-| Manually maintained files | 243 |
+| Manually maintained files | 244 |
 | Generated files | 29 |
 | Modules | 32 |
 | Build targets | 107 |
@@ -55,7 +55,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/04-controller` | 1 | documentation |
 | `docs/05-platform` | 5 | documentation |
 | `docs/06-testing` | 3 | documentation |
-| `docs/07-decisions` | 15 | documentation |
+| `docs/07-decisions` | 16 | documentation |
 | `docs/08-pseudocode` | 1 | documentation |
 | `docs/09-progress` | 23 | documentation |
 | `docs/_generated` | 2 | documentation |
@@ -360,6 +360,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/07-decisions/0011-component-service-catalogue.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/0012-theme-and-language-catalogues.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/0013-explicit-start-and-hot-start.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0014-live-hot-start-confirmation-and-sensor-faults.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/ADR_TEMPLATE.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/README.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/08-pseudocode/README.md` | documentation | `docs/08-pseudocode` | manual | tracked |
