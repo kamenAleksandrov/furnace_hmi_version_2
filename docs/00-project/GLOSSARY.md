@@ -52,3 +52,13 @@ authoritative snapshots. Its wire representation is not yet defined.
 **measured / commanded / estimated / calculated / configured**  
 Different engineering-value semantics that must remain explicit in the model
 and UI. Staleness and unavailability are separate validity qualities.
+
+**hot start**
+A Start requested while the furnace is already warm enough that the
+controller proposes beginning at a later stage, skipping earlier ones. It
+needs an explicit operator confirmation of that proposal (ADR-0013).
+
+**start transaction / start proposal**
+The controller's single-use record of a hot-start proposal, bound to the
+controller session, program revision and proposed stage. Only a matching,
+unexpired confirmation that passes controller revalidation can start heating.

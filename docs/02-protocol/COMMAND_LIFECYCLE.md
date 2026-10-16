@@ -30,6 +30,14 @@ more explicit outcomes.
 - Expire or invalidate pending work on an incompatible session change.
 - Do not replay an uncertain request automatically on reconnect.
 
+## Start and hot start
+
+Start, hot-start proposal, confirmation, cancel and rejection follow the single
+controller interface specification in the furnace repository `docs/interfaces/controller-hmi-interface.md` (0.1.0 draft) (PROTO-012,
+[ADR-0013](../07-decisions/0013-explicit-start-and-hot-start.md)). A Start is
+never replayed, queued or armed; a confirmation applies only to its own
+proposal.
+
 ## Later design questions
 
 Per operation, define idempotency, duplicate recognition, timeout meaning,

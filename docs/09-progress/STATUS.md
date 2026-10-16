@@ -1,5 +1,12 @@
 # Project status
 
+**Fact (2026-10-16, documentation only; product owner request):** recorded the
+explicit-Start and hot-start requirements coordinated with the furnace
+controller: REQ-FUN-018 to REQ-FUN-020, PROTO-012, TEST-011 and
+[ADR-0013](../07-decisions/0013-explicit-start-and-hot-start.md). **Start again**
+is now an explicit Start evaluated by the controller. No UI, simulator, firmware or
+build file changed; the labs still start at once (recorded gap).
+
 **Fact (2026-10-06, feedback round 3; product owner request):** in both
 presentations Stop on a program run now cuts the run where it stands and lets
 the controller cool automatically on Running ("Stopped · automatic cooling"),

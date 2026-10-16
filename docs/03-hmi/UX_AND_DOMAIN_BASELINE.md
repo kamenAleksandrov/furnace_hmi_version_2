@@ -101,6 +101,13 @@ cooling marks the run stopped the same way. Pause and Stop give way to
 **Start again** (the same program from the start, at once) and **Return
 Home** (closes the run). Navigation stays locked until one is chosen.
 
+**Amended (product owner, 2026-10-16, [ADR-0013](../07-decisions/0013-explicit-start-and-hot-start.md)):**
+**Start again** sends an explicit Start request that the controller evaluates
+like any other Start. While the furnace is still hot it may answer with a
+hot-start proposal that skips stages (confirmed or cancelled by the operator)
+or with a rejection; it no longer means "from the start, at once". Nothing
+starts automatically when the furnace has cooled.
+
 **Decision (product owner, 2026-10-06):** stopping Manual heating (or the
 controller ending it at 48 h) leaves the session on the Manual page in a
 Cooling state: heaters off, the readings show heating time, cooling time and

@@ -50,6 +50,9 @@ not resolve the operational and hardware decisions below.
 | Device log | Which events does the controller log, how long is history kept (the HMI shows one month), how is it paged or queried, and how are times stamped across clock changes? | Controller event log/protocol design (CTRL-EVENTS) |
 | Program library | Which programs ship (the epoxy programs are illustrations), how many may the controller store (the labs allow 12), and are created programs persistent? | Product decision; controller storage design (CTRL-PROGRAM) |
 | Windows Python | Should the reproducible Windows baseline require upstream-recommended Python 3.12 instead of the locally verified 3.13.3 deviation? | Clean-machine environment reproduction/CI evidence |
+| Hot start | Is the Hold entry tolerance boundary inclusive, and what value applies per furnace model (initial proposal 5 C)? What is the confirmation expiry? Does a Hold entered by a hot start receive its full duration? Does link loss close an open proposal immediately? How do hot starts apply to Manual mode? | Furnace START-03, START-05, START-09; [ADR-0013](../07-decisions/0013-explicit-start-and-hot-start.md) |
+| Leading Hold | This repository previews a first-stage HOLD as a delayed start; the furnace requires the first stage to be Heating (furnace PROG-02, HMI-DIFF-03). Which applies? | Product owner; furnace requirements |
+| Cooling estimate | What data and reliability criterion would an informational cooling-time estimate use, and who computes it? | Furnace START-08; CTRL-COOLING |
 
 Protocol serialization/framing and source-sharing also remain deferred in
 [ADR-0007](../07-decisions/0007-serialization-and-framing.md) and
