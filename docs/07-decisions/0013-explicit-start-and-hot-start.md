@@ -4,6 +4,7 @@
 - Date: 2026-10-16
 - Owners: product owner; HMI and Control CPU maintainers
 - Governing requirements: REQ-FUN-018, REQ-FUN-019, REQ-FUN-020, PROTO-012, TEST-011; ARCH-INV-001, ARCH-INV-003, ARCH-INV-007; furnace START-01 to START-10
+- Amended by: [ADR-0014](0014-live-hot-start-confirmation-and-sensor-faults.md) (2026-10-16): the confirmation has no normal timeout; it stays open while live data is valid and is invalidated otherwise
 
 ## Context
 

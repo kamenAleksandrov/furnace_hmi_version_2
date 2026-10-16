@@ -1,5 +1,12 @@
 # Project status
 
+**Fact (2026-10-16, Phase 05 documentation only; product owner request):**
+recorded the live hot-start confirmation without a normal timeout, sensor-fault and
+degraded-status presentation, and the Manual six-hour default versus the 48-hour
+maximum: REQ-FUN-005 and REQ-FUN-019 amended, REQ-FUN-021 to REQ-FUN-023 added,
+PROTO-012 and TEST-011 updated, [ADR-0014](../07-decisions/0014-live-hot-start-confirmation-and-sensor-faults.md).
+No UI, simulator, firmware, font or build file changed.
+
 **Fact (2026-10-16, documentation only; product owner request):** recorded the
 explicit-Start and hot-start requirements coordinated with the furnace
 controller: REQ-FUN-018 to REQ-FUN-020, PROTO-012, TEST-011 and
