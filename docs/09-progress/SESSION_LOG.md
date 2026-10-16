@@ -1071,3 +1071,20 @@ LVGL/semantic fixtures, including the graph scale and overrun scenario.
 and CTest run passed all 10/10 tests, including smoke, geometry, and the
 codebase-index check. Website sync, embedded builds, physical touch, and
 production controller validation remain not run.
+
+## 2026-10-16 - Explicit Start and hot-start requirements
+
+**Decision (product owner):** a furnace never begins or resumes heating because
+a temperature threshold was reached; a hot start that skips stages needs an
+explicit, current confirmation bound to the controller's proposal. The Control
+CPU decides eligibility; the HMI presents and requests.
+
+**Fact:** added REQ-FUN-018 to REQ-FUN-020, PROTO-012, TEST-011 and ADR-0013;
+amended the 2026-10-06 **Start again** wording; added the CTRL-START-HOT backlog
+task, open questions, traceability row and glossary terms. The message
+semantics live in the furnace repository's interface specification (0.1.0
+draft). Documentation only.
+
+**Verification:** see the commit for the documentation checks that were run.
+UI, simulator, embedded and physical checks were not run because no source
+changed.
