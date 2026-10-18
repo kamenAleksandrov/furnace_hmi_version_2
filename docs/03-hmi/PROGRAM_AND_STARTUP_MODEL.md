@@ -212,6 +212,32 @@ estimate (REQ-FUN-023) that shows "no reliable estimate" when uncertain and neve
 anything; mandatory stages that a hot start may not skip. See furnace START-06
 to START-08 and [open questions](../09-progress/OPEN_QUESTIONS.md).
 
+## Hold progress
+
+Governing decision: [ADR-0015](../07-decisions/0015-hold-qualification-and-treatment-time.md)
+(REQ-FUN-024, TEST-012). The controller decides when a Hold's treatment timer
+starts: only after the temperature is inside the treatment band and has met the
+stability qualification; earlier time is never credited, also after a hot start.
+Fields and their mapping are in the furnace repository
+`docs/interfaces/controller-hmi-interface.md` (0.4.0 draft, "Hold progress");
+this section describes only the presentation.
+
+| Presentation state | Shown when the controller reports |
+| --- | --- |
+| Approaching Hold temperature | Awaiting, temperature below or above the band |
+| Waiting for stable temperature | Awaiting, no usable measurement yet (none since entry, invalid, stale or time-inconsistent) |
+| Stability qualification in progress | Qualifying, with the elapsed qualification time |
+| Active Hold treatment | Treating; the treatment countdown shows the remaining treatment time |
+| Treatment interrupted or out of tolerance | Interrupted, with the condition that caused it |
+| Hold completed | Completed |
+
+The treatment countdown is shown only during active treatment. Elapsed stage
+time and credited treatment time are separate readings; the HMI computes
+neither. An interrupted treatment never shows progress or completion; what
+follows an interruption is an open controller policy (furnace PROF-12). Labels
+are semantic string IDs with typed duration parameters in the shared catalogue,
+in both presentations.
+
 ## Service-period acknowledgement
 
 `ServiceRunCondition` is controller-owned observation, not a local setting. A

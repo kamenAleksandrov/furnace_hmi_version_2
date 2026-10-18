@@ -1,5 +1,12 @@
 # Project status
 
+**Fact (2026-10-18, documentation only; product owner request):** recorded the
+approved Hold timing policy (treatment timer only after qualification, no credit
+before it, full duration after a hot start) and its presentation: REQ-FUN-024,
+TEST-012, [ADR-0015](../07-decisions/0015-hold-qualification-and-treatment-time.md),
+CTRL-HOLD-QUALIFICATION and the open questions. No UI, simulator, firmware, font
+or build file changed.
+
 **Fact (2026-10-16, Phase 05 documentation only; product owner request):**
 recorded the live hot-start confirmation without a normal timeout, sensor-fault and
 degraded-status presentation, and the Manual six-hour default versus the 48-hour

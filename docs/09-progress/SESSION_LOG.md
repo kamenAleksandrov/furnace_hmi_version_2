@@ -1106,3 +1106,22 @@ updates and the traceability gap list. Documentation only.
 **Verification:** relative-link check and `tools/codebase_index.py --check`
 after regeneration. UI, simulator, embedded and physical checks were not run
 because no source changed.
+
+## 2026-10-18 - Hold qualification and treatment-time presentation
+
+**Decision (product owner):** a Hold's treatment timer starts only after the
+temperature is inside the treatment band and has met the stability
+qualification; time before it is never credited, also after a hot start. The
+HMI distinguishes approaching, waiting for stable temperature, qualifying,
+active treatment, interrupted and completed, never shows the treatment
+countdown before qualification, and keeps elapsed stage time and credited
+treatment time apart.
+
+**Fact:** added REQ-FUN-024, TEST-012, ADR-0015, the Hold progress section of
+`PROGRAM_AND_STARTUP_MODEL.md`, CTRL-HOLD-QUALIFICATION, an open-question row
+and the traceability gap. Fields follow the furnace interface specification
+0.4.0 draft. Documentation only.
+
+**Verification:** relative-link check and `tools/codebase_index.py --check`
+after regeneration. UI, simulator, embedded and physical checks were not run
+because no source changed.
