@@ -1125,3 +1125,22 @@ and the traceability gap. Fields follow the furnace interface specification
 **Verification:** relative-link check and `tools/codebase_index.py --check`
 after regeneration. UI, simulator, embedded and physical checks were not run
 because no source changed.
+
+## 2026-10-20 - Program execution presentation
+
+**Decision (product owner):** Heating stages complete on measured arrival, the
+controller holds the ramp back when the furnace lags and reports it, a Heating
+stage whose target is already reached is passed, an interrupted Hold keeps its
+credited time and requalifies, the operator pauses deliberately and resumes
+explicitly after revalidation, and a run ends with a distinct outcome that never
+claims accepted curing without an approved acceptance policy.
+
+**Fact:** added REQ-FUN-025, TEST-013, ADR-0016 (amends ADR-0015), the Program
+execution section and the requalification wording of the Hold progress section
+in `PROGRAM_AND_STARTUP_MODEL.md`, CTRL-RUN-EXECUTION, open-question rows and the
+traceability gap; amended REQ-FUN-024 and TEST-012. Fields follow the furnace
+interface specification 0.5.0 draft. Documentation only.
+
+**Verification:** relative-link check and `tools/codebase_index.py --check`
+after regeneration. UI, simulator, embedded and physical checks were not run
+because no source changed.
