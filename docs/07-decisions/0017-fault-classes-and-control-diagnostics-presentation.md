@@ -5,6 +5,7 @@
 - Owners: product owner; HMI and Control CPU maintainers
 - Governing requirements: REQ-FUN-026, REQ-FUN-025, REQ-FUN-022, REQ-FUN-011, REQ-FUN-013, TEST-014; ARCH-INV-002; furnace FAULT-03, FAULT-04, RUN-12, CTRL-09, CTRL-10, GUARD-05
 - Amends: [ADR-0016](0016-program-execution-presentation.md) (a protective trip no longer appears as a fault pause)
+- Amended by: [ADR-0018](0018-fault-manager-and-hold-approach-presentation.md) (acknowledgement and recovery requests become explicit controller commands)
 
 ## Context
 

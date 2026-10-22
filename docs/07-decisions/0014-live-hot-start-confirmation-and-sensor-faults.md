@@ -5,6 +5,7 @@
 - Owners: product owner; HMI and Control CPU maintainers
 - Governing requirements: REQ-FUN-005, REQ-FUN-019, REQ-FUN-021, REQ-FUN-022, REQ-FUN-023, PROTO-012, TEST-011; ARCH-INV-002, ARCH-INV-003; furnace START-03, START-05, START-09, START-11, SENS-01 to SENS-06, MAN-01
 - Amends: [ADR-0013](0013-explicit-start-and-hot-start.md) (the confirmation has no normal timeout)
+- Amended by: [ADR-0018](0018-fault-manager-and-hold-approach-presentation.md) (a failure of a required sensor is a latched critical fault)
 
 ## Context
 
