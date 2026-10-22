@@ -5,6 +5,7 @@
 - Owners: product owner; HMI and Control CPU maintainers
 - Governing requirements: REQ-FUN-024, REQ-FUN-025, REQ-FUN-006, PROTO-012, TEST-012, TEST-013; REQ-FUN-011, REQ-FUN-013; ARCH-INV-002, ARCH-INV-003; furnace PROF-01, PROF-02, PROF-08, PROF-12, PROF-13, PROF-16, START-15, RUN-07 to RUN-11, GUARD-01
 - Amends: [ADR-0015](0015-hold-qualification-and-treatment-time.md) (a Hold interruption is now recoverable)
+- Amended by: [ADR-0017](0017-fault-classes-and-control-diagnostics-presentation.md) (critical faults and protective trips latch and are not fault pauses)
 
 ## Context
 

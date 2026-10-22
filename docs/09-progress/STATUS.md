@@ -1,5 +1,15 @@
 # Project status
 
+**Fact (2026-10-22, documentation only; product owner request):** recorded the
+approved fault classes and their presentation (recoverable fault pause with
+explicit Resume; latched critical fault and protective trip with Stop only;
+acknowledgement never restarts heating; transition deviations reported;
+control diagnostics only in a service view): REQ-FUN-026, TEST-014,
+[ADR-0017](../07-decisions/0017-fault-classes-and-control-diagnostics-presentation.md),
+ADR-0016 amended, CTRL-FAULT-CLASSES, the Program execution section and the open
+questions. Fields follow the furnace interface specification 0.6.0 draft. No UI,
+simulator, firmware, font or build file changed.
+
 **Fact (2026-10-20, documentation only; product owner request):** recorded the
 approved program execution behavior and its presentation (temperature-driven
 Heating completion, ramp holdback, already reached Heating stages, recoverable
