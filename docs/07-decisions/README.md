@@ -36,3 +36,4 @@ and use [the template](ADR_TEMPLATE.md).
 | [ADR-0013](0013-explicit-start-and-hot-start.md) | Accepted (product-owner mandate); message draft Proposed | Explicit Start only; controller-proposed hot start with bound confirmation |
 | [ADR-0014](0014-live-hot-start-confirmation-and-sensor-faults.md) | Accepted (product-owner mandate); message draft Proposed | Live hot-start confirmation without normal timeout; sensor-fault and degraded-status presentation |
 | [ADR-0015](0015-hold-qualification-and-treatment-time.md) | Accepted (product-owner mandate); field list Proposed | Hold qualification before treatment timing; elapsed versus credited time presentation |
+| [ADR-0016](0016-program-execution-presentation.md) | Accepted (product-owner mandate); field and command lists Proposed | Program execution, ramp holdback, Pause and outcome presentation; recoverable Hold interruption |

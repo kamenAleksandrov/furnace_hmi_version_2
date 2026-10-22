@@ -1,5 +1,14 @@
 # Project status
 
+**Fact (2026-10-20, documentation only; product owner request):** recorded the
+approved program execution behavior and its presentation (temperature-driven
+Heating completion, ramp holdback, already reached Heating stages, recoverable
+Hold interruption, operator Pause and explicit Resume, distinct outcomes, no
+curing acceptance without a policy): REQ-FUN-025, TEST-013, REQ-FUN-024 and
+TEST-012 amended, [ADR-0016](../07-decisions/0016-program-execution-presentation.md),
+CTRL-RUN-EXECUTION and the open questions. No UI, simulator, firmware, font or
+build file changed.
+
 **Fact (2026-10-18, documentation only; product owner request):** recorded the
 approved Hold timing policy (treatment timer only after qualification, no credit
 before it, full duration after a hot start) and its presentation: REQ-FUN-024,

@@ -4,6 +4,7 @@
 - Date: 2026-10-18
 - Owners: product owner; HMI and Control CPU maintainers
 - Governing requirements: REQ-FUN-024, PROTO-012, TEST-012; REQ-FUN-011, REQ-FUN-013; ARCH-INV-002; furnace PROF-03, PROF-07, PROF-09 to PROF-13, START-09, NFR-07
+- Amended by: [ADR-0016](0016-program-execution-presentation.md) (2026-10-20: an interruption keeps the credited time and requalifies; the open "deviation policy" below is resolved in that part)
 
 ## Context
 
