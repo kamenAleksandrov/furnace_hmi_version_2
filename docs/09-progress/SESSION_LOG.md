@@ -1144,3 +1144,22 @@ interface specification 0.5.0 draft. Documentation only.
 **Verification:** relative-link check and `tools/codebase_index.py --check`
 after regeneration. UI, simulator, embedded and physical checks were not run
 because no source changed.
+
+## 2026-10-22 - Fault classes and control diagnostics presentation
+
+**Decision (product owner):** faults are recoverable, critical or independent
+protective trips; a recoverable fault pauses with an explicit, revalidated
+Resume; a critical fault or protective trip latches, refuses Resume and only
+Stop ends the run until an approved recovery procedure exists; acknowledging a
+fault never restarts heating; stage-transition deviations are reported, not
+smoothed.
+
+**Fact:** added REQ-FUN-026, TEST-014, ADR-0017 (amends ADR-0016), the latched
+fault, stage transition and control diagnostics items of the Program execution
+section in `PROGRAM_AND_STARTUP_MODEL.md`, CTRL-FAULT-CLASSES, an open-question
+row and the traceability gap. Fields follow the furnace interface specification
+0.6.0 draft. Documentation only.
+
+**Verification:** relative-link check and `tools/codebase_index.py --check`
+after regeneration. UI, simulator, embedded and physical checks were not run
+because no source changed.

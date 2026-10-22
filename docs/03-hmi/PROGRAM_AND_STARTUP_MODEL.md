@@ -241,9 +241,10 @@ duration parameters in the shared catalogue, in both presentations.
 
 ## Program execution
 
-Governing decision: [ADR-0016](../07-decisions/0016-program-execution-presentation.md)
-(REQ-FUN-025, TEST-013). Fields, commands and event codes are in the furnace
-interface specification (0.5.0 draft, "Program execution"); this section
+Governing decisions: [ADR-0016](../07-decisions/0016-program-execution-presentation.md)
+(REQ-FUN-025, TEST-013) and [ADR-0017](../07-decisions/0017-fault-classes-and-control-diagnostics-presentation.md)
+(REQ-FUN-026, TEST-014). Fields, commands and event codes are in the furnace
+interface specification (0.6.0 draft, "Program execution"); this section
 describes only the presentation.
 
 - **Heating:** setpoint and process temperature side by side; "ramp held back"
@@ -258,9 +259,21 @@ describes only the presentation.
   shown only when the controller answers. A paused run shows "paused by
   operator" or the fault reasons. A rejected Resume lists the blocking
   conditions. The HMI never resumes on its own.
+- **Latched faults:** a run in the faulted state (critical fault or protective
+  trip) is shown distinctly from any pause, with its class and reasons and
+  without a Resume action; Stop is the only run command, and recovery needs an
+  approved procedure (none exists yet). A protective trip is shown as an action
+  of the independent protection that the HMI cannot clear. Acknowledging a
+  fault message never resumes or restarts heating.
+- **Stage transitions:** a transition deviation reported by the controller is
+  listed as a review reason with its measured value; a step of the requested
+  setpoint at a stage change is shown as recorded, not smoothed.
+- **Control diagnostics:** the heating-power request, control error and
+  saturation flags appear only in a diagnostics or service view, never as a
+  decision input and never as proof that power flowed.
 - **End of run:** the outcome is shown as completed, completed with deviations
   requiring review (with the review reasons), stopped, interrupted by a fault,
-  or prevented by protection. Curing is never shown as accepted while the
+  interrupted by a critical fault, or prevented by protection. Curing is never shown as accepted while the
   controller reports it as not assessed.
 
 ## Service-period acknowledgement
