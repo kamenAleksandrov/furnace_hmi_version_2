@@ -1163,3 +1163,22 @@ row and the traceability gap. Fields follow the furnace interface specification
 **Verification:** relative-link check and `tools/codebase_index.py --check`
 after regeneration. UI, simulator, embedded and physical checks were not run
 because no source changed.
+
+## 2026-10-22 - Fault manager and Hold approach presentation
+
+**Decision (product owner):** one controller fault manager owns fault
+classification, latches, acknowledgement, recovery eligibility and history;
+acknowledgement, recovery and Resume are separate; a failure of a sensor
+required for control or protection is critical until a validated degraded
+policy exists; the Hold setpoint approaches its target at the preceding ramp
+rate (Option B).
+
+**Fact:** added REQ-FUN-027, TEST-015, ADR-0018 (amends ADR-0014 and ADR-0017),
+the fault list and Hold approach items of the Program execution section in
+`PROGRAM_AND_STARTUP_MODEL.md`, CTRL-FAULT-MANAGER, an open-question row and the
+traceability gap; amended REQ-FUN-022. Fields follow the furnace interface
+specification 0.7.0 draft. Documentation only.
+
+**Verification:** relative-link check and `tools/codebase_index.py --check`
+after regeneration. UI, simulator, embedded and physical checks were not run
+because no source changed.

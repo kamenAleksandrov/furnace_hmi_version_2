@@ -1,6 +1,16 @@
 # Project status
 
 **Fact (2026-10-22, documentation only; product owner request):** recorded the
+controller fault manager and its presentation (fault entries, acknowledgement
+and recovery as separate requests, inhibition reasons, event history), the
+corrected rule that a required-sensor failure is a latched critical fault, and
+the Hold setpoint approach: REQ-FUN-027, TEST-015, REQ-FUN-022 amended,
+[ADR-0018](../07-decisions/0018-fault-manager-and-hold-approach-presentation.md) (amends ADR-0014 and ADR-0017),
+CTRL-FAULT-MANAGER, the Program execution section and the open questions.
+Fields follow the furnace interface specification 0.7.0 draft. No UI,
+simulator, firmware, font or build file changed.
+
+**Fact (2026-10-22, documentation only; product owner request):** recorded the
 approved fault classes and their presentation (recoverable fault pause with
 explicit Resume; latched critical fault and protective trip with Stop only;
 acknowledgement never restarts heating; transition deviations reported;

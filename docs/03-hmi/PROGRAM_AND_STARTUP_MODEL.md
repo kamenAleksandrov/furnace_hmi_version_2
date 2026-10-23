@@ -243,9 +243,10 @@ duration parameters in the shared catalogue, in both presentations.
 
 Governing decisions: [ADR-0016](../07-decisions/0016-program-execution-presentation.md)
 (REQ-FUN-025, TEST-013) and [ADR-0017](../07-decisions/0017-fault-classes-and-control-diagnostics-presentation.md)
-(REQ-FUN-026, TEST-014). Fields, commands and event codes are in the furnace
-interface specification (0.6.0 draft, "Program execution"); this section
-describes only the presentation.
+(REQ-FUN-026, TEST-014) and [ADR-0018](../07-decisions/0018-fault-manager-and-hold-approach-presentation.md)
+(REQ-FUN-027, TEST-015). Fields, commands and event codes are in the furnace
+interface specification (0.7.0 draft, "Program execution" and "Fault
+management"); this section describes only the presentation.
 
 - **Heating:** setpoint and process temperature side by side; "ramp held back"
   with the tracking deviation and holdback time while the controller holds the
@@ -268,6 +269,15 @@ describes only the presentation.
 - **Stage transitions:** a transition deviation reported by the controller is
   listed as a review reason with its measured value; a step of the requested
   setpoint at a stage change is shown as recorded, not smoothed.
+- **Fault list:** the controller's fault entries with class, condition,
+  latch, acknowledgement and recovery eligibility, and the reasons heating is
+  inhibited. Acknowledge and recovery are requests with visible results;
+  acknowledgement never hides what still inhibits heating, and a recovery
+  request currently always reports that no approved procedure exists. A
+  failed required sensor is a latched critical fault.
+- **Hold approach:** after an early arrival the Hold setpoint moves on toward
+  its target at the ramp rate; it is shown moving, not as a stalled Hold, and
+  qualification may already run during it.
 - **Control diagnostics:** the heating-power request, control error and
   saturation flags appear only in a diagnostics or service view, never as a
   decision input and never as proof that power flowed.
