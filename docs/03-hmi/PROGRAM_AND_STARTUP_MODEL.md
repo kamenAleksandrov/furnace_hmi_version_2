@@ -244,8 +244,9 @@ duration parameters in the shared catalogue, in both presentations.
 Governing decisions: [ADR-0016](../07-decisions/0016-program-execution-presentation.md)
 (REQ-FUN-025, TEST-013) and [ADR-0017](../07-decisions/0017-fault-classes-and-control-diagnostics-presentation.md)
 (REQ-FUN-026, TEST-014) and [ADR-0018](../07-decisions/0018-fault-manager-and-hold-approach-presentation.md)
-(REQ-FUN-027, TEST-015). Fields, commands and event codes are in the furnace
-interface specification (0.7.0 draft, "Program execution" and "Fault
+(REQ-FUN-027, TEST-015) and [ADR-0019](../07-decisions/0019-duration-decisions-and-runtime-presentation.md)
+(REQ-FUN-028, TEST-016). Fields, commands and event codes are in the furnace
+interface specification (0.8.0 draft, "Program execution" and "Fault
 management"); this section describes only the presentation.
 
 - **Heating:** setpoint and process temperature side by side; "ramp held back"
@@ -278,13 +279,28 @@ management"); this section describes only the presentation.
 - **Hold approach:** after an early arrival the Hold setpoint moves on toward
   its target at the ramp rate; it is shown moving, not as a stalled Hold, and
   qualification may already run during it.
+- **Duration:** a Start proposal above the advisory duration shows the
+  recommended, estimated and maximum durations and asks for an explicit
+  acknowledgement; the maximum is never offered as overridable. While running,
+  the accepted duration, runtime used and runtime limit are separate readings;
+  an overrun is a warning and a stop at the runtime limit is final.
+- **Quality decision:** a run awaiting a decision shows what happened, that the
+  cure may be affected, the recommended actions and the remaining time, with
+  exactly Continue and Stop as requests; a timeout is a fault pause with
+  heating off. Faults are grouped by category; equipment and safety faults
+  never offer Continue. No role, login or override exists.
+- **Measurement:** tolerated Hold excursions and the Start measurement
+  qualification are shown as information; the execution temperature is
+  labelled as chamber temperature.
 - **Control diagnostics:** the heating-power request, control error and
   saturation flags appear only in a diagnostics or service view, never as a
   decision input and never as proof that power flowed.
 - **End of run:** the outcome is shown as completed, completed with deviations
   requiring review (with the review reasons), stopped, interrupted by a fault,
-  interrupted by a critical fault, or prevented by protection. Curing is never shown as accepted while the
-  controller reports it as not assessed.
+  interrupted by a critical fault, prevented by protection, or stopped at the
+  runtime limit. Curing is never shown as accepted while the
+  controller reports it as not assessed; a completed program means the
+  chamber-temperature requirements were met, not a verified cure.
 
 ## Service-period acknowledgement
 

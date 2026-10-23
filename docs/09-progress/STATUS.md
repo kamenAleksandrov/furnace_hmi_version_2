@@ -1,5 +1,17 @@
 # Project status
 
+**Fact (2026-10-23, documentation only; product owner request):** recorded the
+approved duration, quality-decision and runtime presentation: advisory versus
+maximum program duration with acknowledgement at Start, accepted duration,
+overrun and runtime limit, a bounded quality decision with Continue or Stop,
+fault categories, tolerated Hold excursions, the Start measurement
+qualification, chamber temperature as the process measurement, completion not
+shown as a verified cure, and no roles: REQ-FUN-028, TEST-016,
+[ADR-0019](../07-decisions/0019-duration-decisions-and-runtime-presentation.md) (amends ADR-0018),
+CTRL-DURATION-DECISIONS, the Program execution section, the command lifecycle
+and the open questions. Fields follow the furnace interface specification
+0.8.0 draft. No UI, simulator, firmware, font or build file changed.
+
 **Fact (2026-10-22, documentation only; product owner request):** recorded the
 controller fault manager and its presentation (fault entries, acknowledgement
 and recovery as separate requests, inhibition reasons, event history), the

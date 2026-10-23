@@ -33,10 +33,13 @@ more explicit outcomes.
 ## Start and hot start
 
 Start, hot-start proposal, confirmation, cancel and rejection follow the single
-controller interface specification in the furnace repository `docs/interfaces/controller-hmi-interface.md` (0.2.0 draft) (PROTO-012,
+controller interface specification in the furnace repository `docs/interfaces/controller-hmi-interface.md` (0.8.0 draft) (PROTO-012,
 [ADR-0013](../07-decisions/0013-explicit-start-and-hot-start.md)). A Start is
 never replayed, queued or armed; a confirmation applies only to its own
-proposal.
+proposal. Since 0.8.0 a proposal may require a duration acknowledgement whose
+accepted duration travels with the confirmation, and a run awaiting a quality
+decision accepts `RUN_CONTINUE` or `RUN_STOP`; neither is ever replayed
+automatically ([ADR-0019](../07-decisions/0019-duration-decisions-and-runtime-presentation.md)).
 
 ## Later design questions
 
