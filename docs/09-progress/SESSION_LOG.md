@@ -1182,3 +1182,23 @@ specification 0.7.0 draft. Documentation only.
 **Verification:** relative-link check and `tools/codebase_index.py --check`
 after regeneration. UI, simulator, embedded and physical checks were not run
 because no source changed.
+
+## 2026-10-23 - Duration, quality decisions and runtime presentation
+
+**Decision (product owner):** no roles; quality-only faults may continue after
+an explicit decision during a bounded wait that holds the setpoint; equipment
+and safety faults never; advisory durations are acknowledged and the maximum is
+never overridable; accepted programs run their full schedule; a hard runtime
+limit stops a run that cannot complete; chamber temperature is the process
+measurement; completion is not a verified cure.
+
+**Fact:** added REQ-FUN-028, TEST-016, ADR-0019 (amends ADR-0018), the
+Duration, Quality decision and Measurement items of the Program execution
+section in `PROGRAM_AND_STARTUP_MODEL.md`, the 0.8.0 note in
+`COMMAND_LIFECYCLE.md`, CTRL-DURATION-DECISIONS, an open-question row and the
+traceability gap. Fields follow the furnace interface specification 0.8.0
+draft. Documentation only.
+
+**Verification:** relative-link check and `tools/codebase_index.py --check`
+after regeneration. UI, simulator, embedded and physical checks were not run
+because no source changed.

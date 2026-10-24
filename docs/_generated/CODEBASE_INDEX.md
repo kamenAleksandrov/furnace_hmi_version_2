@@ -9,10 +9,10 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 277 |
-| Git-tracked files | 276 |
-| Git-untracked files | 1 |
-| Manually maintained files | 248 |
+| Repository files | 278 |
+| Git-tracked files | 278 |
+| Git-untracked files | 0 |
+| Manually maintained files | 249 |
 | Generated files | 29 |
 | Modules | 32 |
 | Build targets | 107 |
@@ -55,7 +55,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/04-controller` | 1 | documentation |
 | `docs/05-platform` | 5 | documentation |
 | `docs/06-testing` | 3 | documentation |
-| `docs/07-decisions` | 20 | documentation |
+| `docs/07-decisions` | 21 | documentation |
 | `docs/08-pseudocode` | 1 | documentation |
 | `docs/09-progress` | 23 | documentation |
 | `docs/_generated` | 2 | documentation |
@@ -364,7 +364,8 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/07-decisions/0015-hold-qualification-and-treatment-time.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/0016-program-execution-presentation.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/0017-fault-classes-and-control-diagnostics-presentation.md` | documentation | `docs/07-decisions` | manual | tracked |
-| `docs/07-decisions/0018-fault-manager-and-hold-approach-presentation.md` | documentation | `docs/07-decisions` | manual | untracked |
+| `docs/07-decisions/0018-fault-manager-and-hold-approach-presentation.md` | documentation | `docs/07-decisions` | manual | tracked |
+| `docs/07-decisions/0019-duration-decisions-and-runtime-presentation.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/ADR_TEMPLATE.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/README.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/08-pseudocode/README.md` | documentation | `docs/08-pseudocode` | manual | tracked |
