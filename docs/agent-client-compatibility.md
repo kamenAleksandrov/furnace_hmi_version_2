@@ -75,11 +75,38 @@ small checks after a client update; do not run a multi-agent benchmark.
   both Windows validation worktrees. Its contents list was empty, so this alone
   is not proof of loading. The firmware live CLI initialization roster included
   all four custom names and only permitted read/native delegation tools.
-- The Claude invariant-lookup attempt then failed with HTTP 429
-  `usage_limit_reached`; zero subagents spawned. The client reported reset at
-  20:00 Europe/Sofia on 2026-10-26. Live invocation, model inheritance and
-  per-invocation selection therefore remain UNVERIFIED in Claude. No quota or
-  permission bypass was attempted. Repeat the small check after quota resets.
+- The initial Claude lookup failed with HTTP 429 `usage_limit_reached`,
+  with zero subagents spawned. After the owner confirmed the reset, three
+  bounded native CLI sessions completed successfully: one repository-explorer
+  in each repository, then sequential read-only checks of implementation-worker,
+  verification-analyst and engineering-reviewer in the HMI snapshot. All four
+  role types were invoked by their configured names; no generic substitutes.
+- Native Claude traces report five children spawned and completed, zero failed,
+  maximum depth one and zero nested spawns. Both startup rosters list all four
+  custom roles. Every spawn omits model/effort overrides; forwarded child message
+  metadata independently matches each parent's actual model, confirming model
+  inheritance. Numeric effort values are not exposed, so only omission of an
+  effort override is established. Explicit alternative-model selection and
+  cheaper routing were not tested or claimed.
+- The Claude children used only Read/Grep (the other-role checks used Read only),
+  with no permission denials. The worker test assessed readiness only; it did
+  not authorize implementation or prove the normally write-capable worker cannot
+  write. The parent CLI restricted its tool pool to read/native delegation tools.
+  Both Windows test worktrees stayed clean. No quota/permission bypass occurred.
+- The supervisor checked the returned SAFE-02/03/04 references at firmware
+  requirements.md:47-49 and the HMI authority boundary at AGENTS.md:6-7, then
+  checked the role/policy references from the three configuration-only checks.
+  The role-review summary noted that its default context-reading instructions
+  were wider than the smoke task's assigned files. The supervisor had completed
+  repository preflight and governing-record inspection; the checks made no
+  engineering decisions, so no project instruction was weakened or changed.
+- Successful Claude commands used `claude -p <bounded-prompt>` with
+  `--output-format stream-json --verbose --forward-subagent-text`,
+  `--no-session-persistence`, `--tools Read,Glob,Grep,Agent`, the matching
+  `--allowedTools`, `--permission-mode dontAsk`, `--strict-mcp-config` and an
+  empty MCP configuration. The explorer sessions had a client budget cap of
+  2 USD each; the three-role session had 3 USD. All exited zero. These were
+  small invocation checks, not a benchmark or production verification.
 - Initial Codex execution against a WSL UNC path failed on read-only Windows
   sandbox path access; it did not prove role invocation. No permissions were
   relaxed. Separate committed Windows validation worktrees were used next.
@@ -110,11 +137,15 @@ were preserved. No engineering-skill conflict was found. The two-repository
 request authorizes these HMI configuration edits only; ordinary firmware tasks
 still treat the HMI as a read-only reference.
 
-Client logs expose token usage and, in Claude, cost fields. The Claude attempt
-reported no inference usage; Codex logs have scoped token measurements without
-a verified monetary total. Actual model identifiers stay in local client logs,
+Client logs expose token usage and, in Claude, cost fields. The initial rejected
+Claude attempt reported no inference usage; the successful reruns expose scoped
+usage/cost fields, not a verified subscription bill. Codex logs have scoped token
+measurements without a verified monetary total. Actual model identifiers stay in local client logs,
 not repository policy or configuration. No savings estimate is asserted.
 Raw logs: Windows `%TEMP%/agent-opt-01-validation/` (local, untracked).
+Reset reruns: `claude-fw-reset.jsonl`, `claude-hmi-reset.jsonl`,
+`claude-other-roles-reset.jsonl`; structured checks:
+`claude-reset-summary.json`. Actual model names remain outside repository files.
 
 ## Changed-file manifest
 

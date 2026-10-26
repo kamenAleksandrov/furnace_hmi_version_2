@@ -29,7 +29,11 @@ The firmware-side trace is WI-L01; HMI product work items are unchanged.
 ## Handoff
 
 Configuration and static checks complete; Codex read-only delegation passed.
-Claude live invocation remains blocked by account quota; HMI canonical index
-verification remains blocked by missing build metadata. See the compatibility
+After the owner-confirmed quota reset, Claude explorer checks passed in both
+repositories and the three other role types passed sequential read-only
+configuration checks. Native traces establish successful invocation, inherited
+models and no nested delegation. No implementation or product review was
+performed. HMI canonical index verification remains blocked by missing build
+metadata. See the compatibility
 record for exact paths, commands and evidence. PR remains a draft while these
 validation gaps are outstanding. No product work item or maturity advanced.
