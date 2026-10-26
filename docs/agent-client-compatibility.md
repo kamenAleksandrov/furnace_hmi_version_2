@@ -147,3 +147,16 @@ docs/INDEX.md
 docs/agent-client-compatibility.md
 docs/agent-delegation.md
 ```
+
+## Firmware verification gate
+
+`scripts/verify.sh` all stages PASS on committed clean firmware revision
+`264a1b90782a`: env, docs, sources, format, tests, sca. The summary states
+`verified 264a1b90782a with 0 uncommitted path(s)`. 768/768 executed test cases
+passed; 27/27 build configuration checks passed, seven configurations built
+only. GCC analyzer: zero project findings; 12 distinct Zephyr/third-party
+findings are informational. Output: west-workspace
+`verify-out/agent-opt-01/`. This is host/reference-build evidence, not hardware
+verification. Only this result/handoff documentation changes after that run;
+the final firmware docs stage is rerun before push. HMI runtime builds are
+not claimed.
