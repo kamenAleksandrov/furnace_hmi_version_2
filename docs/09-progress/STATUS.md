@@ -1,5 +1,12 @@
 # Project status
 
+**Fact (2026-10-26, AGENT-OPT-01; configuration validation in progress):**
+Added native Claude/Codex roles and a [shared delegation policy](../agent-delegation.md),
+kept the six existing domain reviewers and required review gates. See
+[execution record](AGENT_OPT_01.md) and [client evidence](../agent-client-compatibility.md).
+Production UI/firmware/simulator behavior and development phases are unchanged.
+
+
 **Fact (2026-10-26, documentation only; product owner request):** recorded the
 required diagnostic presentation after the furnace diagnostics audit: a
 controller-backed Device log viewer with filters, paging and export where

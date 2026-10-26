@@ -1,0 +1,4 @@
+# Native project settings; model and effort inherit unless selected at invocation.
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 2

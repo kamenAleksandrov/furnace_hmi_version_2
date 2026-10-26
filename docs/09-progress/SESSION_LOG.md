@@ -1,5 +1,13 @@
 # Session log
 
+## 2026-10-26 - AGENT-OPT-01 native agents
+
+Owner requested model-agnostic native delegation in both repositories. Four
+roles supplement existing specialists; safety, authority and review gates stay
+with their canonical owners. [Plan](AGENT_OPT_01.md) and
+[actual client evidence](../agent-client-compatibility.md) track verification.
+
+
 ## 2026-09-27 - Program editor rework, equal borders and operator text sweep
 
 **Fact:** The light strip is 12 px (native: negative bottom margin cancels the row
