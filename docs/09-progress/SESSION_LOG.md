@@ -1,5 +1,18 @@
 # Session log
 
+## 2026-10-26 - AGENT-OPT-01 native agents
+
+Owner requested model-agnostic native delegation in both repositories. Four
+roles supplement existing specialists; safety, authority and review gates stay
+with their canonical owners. [Plan](AGENT_OPT_01.md) and
+[actual client evidence](../agent-client-compatibility.md) track verification.
+After the owner-confirmed quota reset, all four Claude role types were invoked
+successfully in bounded read-only checks (five children across three sessions).
+Forwarded child metadata confirms the parent's model, with no overrides;
+worktrees stayed clean and no nested delegation occurred. The HMI generated
+index check still needs canonical build metadata.
+
+
 ## 2026-09-27 - Program editor rework, equal borders and operator text sweep
 
 **Fact:** The light strip is 12 px (native: negative bottom margin cancels the row

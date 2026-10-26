@@ -1,5 +1,11 @@
 # Roadmap
 
+## AGENT-OPT-01 (2026-10-26)
+
+Agent configuration maintenance only; product work order is unchanged.
+[Plan and handoff](AGENT_OPT_01.md), [policy](../agent-delegation.md).
+
+
 ## Operator workflow redesign (2026-09-23)
 
 **Fact:** [Plan](OPERATOR_WORKFLOW_IMPLEMENTATION_PLAN.md) and

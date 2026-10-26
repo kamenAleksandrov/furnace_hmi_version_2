@@ -1,5 +1,19 @@
 # Project status
 
+**Fact (2026-10-26, AGENT-OPT-01; configuration only; native delegation validated):**
+Added native Claude/Codex roles and a [shared delegation policy](../agent-delegation.md),
+kept the six existing domain reviewers and required review gates. See
+[execution record](AGENT_OPT_01.md) and [client evidence](../agent-client-compatibility.md).
+Codex native custom delegation and changed-document link checks passed.
+After quota reset, Claude explorer checks passed in both repositories; the
+other three role types passed read-only configuration checks. Native traces
+confirm model inheritance, five completed children and no nested spawns.
+The canonical generated index check remains blocked by missing build metadata
+in this worktree. See the
+client evidence for exact commands, changed paths and follow-up.
+Production UI/firmware/simulator behavior and development phases are unchanged.
+
+
 **Fact (2026-10-26, documentation only; product owner request):** recorded the
 required diagnostic presentation after the furnace diagnostics audit: a
 controller-backed Device log viewer with filters, paging and export where

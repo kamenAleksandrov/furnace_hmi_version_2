@@ -39,3 +39,12 @@ UI code never writes a colour value or visible text: colours are theme
 tokens and text comes from the shared string catalogue, in both
 presentations, so themes and languages stay switchable. Use the
 [theme-and-language skill](.agents/skills/theme-and-language/SKILL.md).
+
+## Native subagent orchestration
+
+Delegate beneficial bounded work using the native roles and the shared
+[delegation policy](docs/agent-delegation.md). Apply its capability/risk selection
+at every invocation; keep at most two subagents active, avoid nested agents,
+and report actual selection versus inheritance. Keep required domain and human
+review gates. See [client compatibility](docs/agent-client-compatibility.md) for
+current controls, validation and limitations.
