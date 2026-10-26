@@ -1,5 +1,16 @@
 # Project status
 
+**Fact (2026-10-26, documentation only; product owner request):** recorded the
+required diagnostic presentation after the furnace diagnostics audit: a
+controller-backed Device log viewer with filters, paging and export where
+supported, a system-health view in which unknown is never shown as healthy,
+and separate controller-validated recording-schedule controls, without
+accounts: REQ-FUN-029, TEST-017,
+[ADR-0020](../07-decisions/0020-diagnostics-presentation.md),
+CTRL-HEALTH, CTRL-RECORDING-SCHEDULES, CTRL-EVENT-LOG and the Device-log open
+question. Furnace references: DIAG-06…DIAG-14, API-10, WI-H12 (Phase 21),
+WI-H13 (Phase 25). No UI, simulator, firmware, font or build file changed.
+
 **Fact (2026-10-23, documentation only; product owner request):** recorded the
 approved duration, quality-decision and runtime presentation: advisory versus
 maximum program duration with acknowledgement at Start, accepted duration,
