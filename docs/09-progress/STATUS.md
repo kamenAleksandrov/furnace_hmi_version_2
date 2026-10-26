@@ -1,9 +1,13 @@
 # Project status
 
-**Fact (2026-10-26, AGENT-OPT-01; configuration validation in progress):**
+**Fact (2026-10-26, AGENT-OPT-01; configuration only; live validation partial):**
 Added native Claude/Codex roles and a [shared delegation policy](../agent-delegation.md),
 kept the six existing domain reviewers and required review gates. See
 [execution record](AGENT_OPT_01.md) and [client evidence](../agent-client-compatibility.md).
+Codex native custom delegation and changed-document link checks passed.
+Claude live delegation is blocked by account quota; the canonical generated
+index check is blocked by missing build metadata in this worktree. See the
+client evidence for exact commands, changed paths and follow-up.
 Production UI/firmware/simulator behavior and development phases are unchanged.
 
 

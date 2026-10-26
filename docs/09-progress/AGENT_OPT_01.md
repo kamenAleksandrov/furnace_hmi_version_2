@@ -25,3 +25,11 @@ Actual client behavior and limitations are in
 from role names. No architecture decision is introduced. Rollback is a Git
 revert of configuration/documentation commits, with no runtime state migration.
 The firmware-side trace is WI-L01; HMI product work items are unchanged.
+
+## Handoff
+
+Configuration and static checks complete; Codex read-only delegation passed.
+Claude live invocation remains blocked by account quota; HMI canonical index
+verification remains blocked by missing build metadata. See the compatibility
+record for exact paths, commands and evidence. PR remains a draft while these
+validation gaps are outstanding. No product work item or maturity advanced.

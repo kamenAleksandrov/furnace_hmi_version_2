@@ -19,7 +19,7 @@ It grants no product, hardware, installation or merge approval.
    and a supported effort appropriate to it. If cost or capability is unknown,
    do not invent a ranking. Use supported inheritance/defaults when discovery or
    per-invocation selection is unavailable. Role selection is not model selection.
-5. Give one bounded task: repository/worktree, approved requirement and WI IDs
+5. Complete the repository workspace preflight and pass its result. Give one bounded task: repository/worktree, approved requirement and WI IDs
    where applicable, input files, output/edit scope, acceptance checks, forbidden
    actions, evidence required and stop/escalation conditions. Pass needed context
    explicitly rather than assuming the worker sees the parent's conversation.
@@ -57,11 +57,12 @@ supplement them. Do not replace required reviewers with a generic review.
 
 ## Resource, worktree and permission boundaries
 
-Use at most two concurrent subagents, no nested delegation, and one writing agent
-per worktree. Give independent writers separate worktrees beside the repository,
-following its workspace topology; the supervisor integrates. Never race edits,
-repeat implementations without a reason, or run duplicate full verification.
-Read-only agents may share a stable tree while no writer changes their inputs.
+Use at most two concurrent subagents and no nested delegation. Preserve the
+repository one-agent-per-worktree rule: give parallel tasks separate worktrees
+beside the repository, following its workspace topology. The supervisor
+integrates. Never race edits, repeat implementations without a reason, or run
+duplicate full verification. Read-only smoke checks use a stable snapshot while
+the supervisor waits; do not run a writer against their inputs.
 
 Agent prompts describe behavior; filesystem permissions, sandbox and tool
 allowlists enforce access. A role called read-only does not itself enforce it.

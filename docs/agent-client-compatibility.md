@@ -64,8 +64,86 @@ trust or permissions silently. Do not use bypass-permission flags.
 Client versions and observations are dated evidence, not model pins. Repeat
 small checks after a client update; do not run a multi-agent benchmark.
 
-## Validation evidence
+## Observed validation (2026-10-26)
 
-Validation is in progress. Final observed results and exact command summaries
-will be recorded here before handoff. Raw client logs remain local outside Git;
-they may contain account-specific model names and session metadata.
+- Parsed 4 firmware and 10 HMI Codex TOML roles plus both project configs;
+  required fields are present, with no model/effort pins or per-role sandbox key.
+  Parsed all 8 Claude frontmatters using the installed workspace PyYAML: valid,
+  inherited model, no nested Agent/Task tool. The four general-role definitions
+  match between repositories. Shared policy copies compare byte for byte.
+- `claude plugin validate .claude/agents --json --strict` returned success in
+  both Windows validation worktrees. Its contents list was empty, so this alone
+  is not proof of loading. The firmware live CLI initialization roster included
+  all four custom names and only permitted read/native delegation tools.
+- The Claude invariant-lookup attempt then failed with HTTP 429
+  `usage_limit_reached`; zero subagents spawned. The client reported reset at
+  20:00 Europe/Sofia on 2026-10-26. Live invocation, model inheritance and
+  per-invocation selection therefore remain UNVERIFIED in Claude. No quota or
+  permission bypass was attempted. Repeat the small check after quota resets.
+- Initial Codex execution against a WSL UNC path failed on read-only Windows
+  sandbox path access; it did not prove role invocation. No permissions were
+  relaxed. Separate committed Windows validation worktrees were used next.
+- `codex --strict-config -C <validation-worktree> -a never exec -s read-only
+  --json <bounded-read-only-prompt>` completed successfully in each repository.
+  Firmware returned SAFE-02/03/04 references; the supervisor checked the cited
+  requirement lines. HMI returned AGENTS.md and SYSTEM_CONTEXT.md authority
+  references; the supervisor checked agreement with Control CPU ownership.
+- The HMI native session store independently confirms child role
+  repository-explorer, depth one, the same actual model and effort as its parent,
+  and a read-only managed filesystem sandbox. No overrides were supplied.
+  The firmware test was ephemeral; its CLI reported completion, while no
+  persistent child identity was retained. No cheaper routing is claimed.
+- Windows validation worktrees remained clean. Diffs against each main base
+  contain agent configuration, guidance, planning/evidence and documentation
+  only. No product source, build definition, hardware register or skill changed.
+- HMI changed-document relative links: 174 links in 13 Markdown files PASS,
+  using the existing firmware check_docs validator against the HMI changed set.
+  `python3 tools/codebase_index.py --check` in the isolated HMI worktree is
+  BLOCKED: canonical host-debug and zephyr-qemu_x86 CMake File API and compile
+  databases are absent there. The canonical generated index was preserved;
+  no degraded index is substituted. Refresh/check it with valid build inputs
+  using the HMI runbook before declaring complete HMI index verification.
+
+The supervising agent also used one inherited-model, read-only audit worker for
+existing HMI reviewers/skills. It found the required named review gates, which
+were preserved. No engineering-skill conflict was found. The two-repository
+request authorizes these HMI configuration edits only; ordinary firmware tasks
+still treat the HMI as a read-only reference.
+
+Client logs expose token usage and, in Claude, cost fields. The Claude attempt
+reported no inference usage; Codex logs have scoped token measurements without
+a verified monetary total. Actual model identifiers stay in local client logs,
+not repository policy or configuration. No savings estimate is asserted.
+Raw logs: Windows `%TEMP%/agent-opt-01-validation/` (local, untracked).
+
+## Changed-file manifest
+
+Against the task base (`3de05c5`):
+
+```text
+.claude/agents/engineering-reviewer.md
+.claude/agents/implementation-worker.md
+.claude/agents/repository-explorer.md
+.claude/agents/verification-analyst.md
+.claude/settings.json
+.codex/agents/architect.toml
+.codex/agents/decision-challenger.toml
+.codex/agents/embedded-reviewer.toml
+.codex/agents/engineering-reviewer.toml
+.codex/agents/error-auditor.toml
+.codex/agents/implementation-worker.toml
+.codex/agents/protocol-reviewer.toml
+.codex/agents/repository-explorer.toml
+.codex/agents/software-critic.toml
+.codex/agents/verification-analyst.toml
+.codex/config.toml
+AGENTS.md
+CLAUDE.md
+docs/09-progress/AGENT_OPT_01.md
+docs/09-progress/ROADMAP.md
+docs/09-progress/SESSION_LOG.md
+docs/09-progress/STATUS.md
+docs/INDEX.md
+docs/agent-client-compatibility.md
+docs/agent-delegation.md
+```
