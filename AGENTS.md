@@ -48,3 +48,15 @@ at every invocation; keep at most two subagents active, avoid nested agents,
 and report actual selection versus inheritance. Keep required domain and human
 review gates. See [client compatibility](docs/agent-client-compatibility.md) for
 current controls, validation and limitations.
+
+## Standing authorization and cost policy (owner, 2026-10-27)
+
+For authorized development and planning tasks the owner authorizes autonomous
+native delegation, pushing feature branches and opening pull requests (draft
+while blockers remain, stacked on an unmerged dependency) without asking first.
+Never merge, force-push, rewrite shared history, delete unreviewed work or
+invent product, architecture or safety decisions without explicit owner
+authorization. Delegate only within the current subscription entitlement: no
+paid usage, no billing or authentication changes; stop and report at the limit.
+Details, the workflow and the final-report contents are in the
+[delegation policy](docs/agent-delegation.md).

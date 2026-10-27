@@ -17,7 +17,10 @@ Choose an available per-invocation model and effort only if exposed by the
 current Agent/Task tool. This CLI has no verified automatic account model-list
 interface for the supervising model. Use the current session choices or inherit;
 do not build discovery automation or encode a permanent alias/ranking here.
-Overrides from local/managed settings can affect resolution. Check actual usage
+Project agents are read when a session starts: a session started before
+`.claude/agents/` existed in its directory does not offer the roles until it
+is restarted (observed 2026-10-27, AGENT-OPT-02). Check the offered agent
+types at the start of each task. Overrides from local/managed settings can affect resolution. Check actual usage
 or the task display instead of assuming the requested model ran. See the
 [official subagent documentation](https://code.claude.com/docs/en/sub-agents)
 and [model settings](https://code.claude.com/docs/en/model-config).
