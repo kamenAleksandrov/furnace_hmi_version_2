@@ -45,7 +45,11 @@ presentations, so themes and languages stay switchable. Use the
 Delegate beneficial bounded work using the native roles and the shared
 [delegation policy](docs/agent-delegation.md). Apply its capability/risk selection
 at every invocation; keep at most two subagents active, avoid nested agents,
-and report actual selection versus inheritance. Keep required domain and human
+and report actual selection versus inheritance. For routine work, select an
+included lightweight model with suitable effort when supported; otherwise do
+small tasks directly. Inherited delegation needs a concrete benefit or required
+independence, not merely available concurrency. Give every worker an exact
+revision, bounded question, output, exclusions and escalation conditions. Keep required domain and human
 review gates. See [client compatibility](docs/agent-client-compatibility.md) for
 current controls, validation and limitations.
 

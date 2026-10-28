@@ -33,3 +33,14 @@ Every finding identifies evidence and distinguishes an error or requirement
 conflict from a risk, trade-off, or preference. The parent/decision owner
 reconciles conflicting findings, fixes or explicitly resolves concrete errors,
 records consequential decisions, and reports checks that were not run.
+
+## Scope and reuse of review evidence
+
+Apply the [shared delegation policy](../agent-delegation.md) to every assignment:
+name the revision, changed behavior, exact risk/question, relevant source/tests,
+output and escalation conditions. The required roles above remain required.
+Record prior review scope/assumptions and reuse only conclusions still valid for
+unchanged behavior. After a localized correction, regress and review the changed
+failure paths; repeat a broad review only when new risks or invalidated
+assumptions justify it. Give specialists distinct questions, and retain required
+independence and qualified human review.

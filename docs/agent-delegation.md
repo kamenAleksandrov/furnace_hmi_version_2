@@ -1,154 +1,167 @@
 # Native agent delegation policy
 
-AGENT-OPT-01, extended by AGENT-OPT-02 (standing authorization and
-subscription-only usage). The firmware copy of this file is canonical; the HMI keeps an
-identical, reviewed local copy so either repository works independently. Change
-both copies together and compare their bytes. This policy supplements each
-repository's AGENTS.md, requirements, accepted ADRs, skills and review gates.
-It grants no product, hardware, installation or merge approval.
+AGENT-OPT-01/02/03. The firmware copy is canonical; keep the HMI copy byte-identical
+so each repository works independently. This supplements AGENTS.md, approved
+requirements, ADRs, skills and review gates; it grants no product or safety approval.
 
-## Decide at each delegation
+## Decide before every delegation
 
-1. Delegate only when parallelism, independent review or isolating bulky output
-   outweighs the extra context, tokens and coordination. Do small tasks directly.
-2. Assess complexity, consequence, uncertainty and required capabilities using the
-   task categories below; these describe tasks, not permanent model tiers.
-3. Inspect the current client's exposed subagent tools and available choices.
-   Account-visible choices or a successful invocation are evidence of availability;
-   documentation and a bundled catalogue alone are not. Never invent a model ID.
-4. Choose the most economical available model reasonably capable of the task,
-   and a supported effort appropriate to it. If cost or capability is unknown,
-   do not invent a ranking. Use supported inheritance/defaults when discovery or
-   per-invocation selection is unavailable. Role selection is not model selection.
-5. Complete the repository workspace preflight and pass its result. Give one bounded task: repository/worktree, approved requirement and WI IDs
-   where applicable, input files, output/edit scope, acceptance checks, forbidden
-   actions, evidence required and stop/escalation conditions. Pass needed context
-   explicitly rather than assuming the worker sees the parent's conversation.
-6. Inspect actual source, tests and command output; resolve contradictions and
-   integrate as supervisor. Escalate incomplete or unreliable work to stronger
-   available capabilities or human engineering review; never accept a claim on
-   the strength of its model label.
+1. Assess the exact task's complexity, consequences and uncertainty. Delegate
+   only when independence, parallelism or context isolation outweighs another
+   agent's instructions, context and coordination. Do small tasks directly;
+   available concurrency is not a reason to spawn.
+2. Check the authenticated client's subscription entitlement, included allowance
+   and exposed model/effort choices. A catalogue or documented alias is not proof
+   of entitlement. Unknown billing means stop affected inference, not a trial
+   against a potentially paid service.
+3. Prefer the least resource-intensive sufficiently capable included model and
+   suitable modest reasoning for routine work; use greater capability for the
+   risks that require it. Select model and effort explicitly where supported,
+   using current choices rather than invented IDs or a permanent ranking.
+4. If safe selection is unavailable, first do routine work in the main agent.
+   Inheritance is a compatibility fallback, not the default reason to spawn
+   another high-end instance. Use it only when delegation still has a concrete
+   benefit or required independence, and included allowance is confirmed;
+   record that reason. Never silently label inheritance as optimization.
+5. For intended delegation, inspect the offered project roles; if unavailable,
+   report the limitation. Do not invoke an agent merely to discover whether it
+   loaded. Apply the assignment contract below, including workspace preflight.
+6. Inspect actual returned evidence and integrate as supervisor. Verify the
+   actual model/effort when exposed; distinguish requested, actual, inherited
+   and unknown values. If scope or required capability grows, stop the bounded
+   investigation, report why, and reassess scope/model/review before continuing.
 
-## Match the task to the required capability
+## Match capability to the task
+
+These are task categories, not fixed model tiers or rankings.
 
 | Task | Examples | Selection and review |
 | --- | --- | --- |
-| Routine | Read-only exploration, requirements search, documentation, straightforward transformations, log summaries, roadmap checks | Prefer efficient lower-cost choices when exposed and suitable; check references and results. |
-| Intermediate | Bounded C17 or HMI implementation, unit tests, serialization, localized debugging, noncritical refactoring | Choose capabilities that can reliably handle the language, state and test scope without unnecessary effort. |
-| High consequence | Actuator inhibition, sensor faults, overtemperature, concurrency, persistent critical-fault recovery, control safety, protocol authority and arbitration | Use sufficiently capable reasoning, inspect the real source and failure paths, and apply rigorous independent review. Required qualified human review remains mandatory. |
+| Routine | Searches, requirements lookup, simple documentation consistency, log summaries, traceability lookup, straightforward exploration | Prefer an included lightweight choice and modest supported effort; otherwise usually work directly. Check references. |
+| Intermediate | Bounded C17/HMI implementation, unit tests, substantial documentation edits, localized debugging, noncritical refactoring | Choose efficient capabilities that can reliably handle the actual state, language and acceptance checks. Strongest-model use is not automatic. |
+| High consequence | Heater authorization, actuator inhibition, fault/sensor supervision, concurrency, persistent recovery, uncommanded heating, control safety, protocol authority | Use sufficiently capable reasoning and required independent/domain/human review, focused on changed behavior and its failure paths. Correctness takes priority over conserving allowance. |
 
-Classify by consequence, not file extension: a small HMI command change may be
-high consequence. A lower-capability worker is never the sole authority for a
-safety-sensitive change. No agent can approve a safety allocation or conformity.
+A small HMI command change can be high consequence. Lower-capability work is
+never the sole authority for safety-sensitive changes. No model approves a
+safety allocation, product decision or regulatory conformity.
 
-## Reusable roles
+## Bounded assignment contract
 
-- **repository-explorer:** read-only source, requirement and test investigation;
-  return exact file/symbol references, findings and uncertainty; no product decisions.
-- **implementation-worker:** implement a bounded approved task with the existing
-  test-first workflow; no independent safety or architecture changes.
-- **verification-analyst:** inspect logs, benchmark/mutation evidence, traceability,
-  negative cases and regression claims; identify weak assertions and missing proof.
-- **engineering-reviewer:** read actual source and tests for concurrency, state,
-  authority, faults and architecture; classify concrete findings and residual risks.
+Supply one task, not an invitation to rediscover the repository:
 
-Keep engineering instructions in their canonical documents and skills. The HMI's
-existing domain reviewers and REVIEW_POLICY remain applicable; these four roles
-supplement them. Do not replace required reviewers with a generic review.
+```text
+Repository / worktree / branch / exact revision:
+Workspace preflight and relevant governing records already checked:
+Task and exact question:
+Files / functions / requirement and WI IDs / changed diff:
+Relevant prior review revision, conclusions and unresolved risks:
+Expected concise output and acceptance evidence:
+Allowed actions and explicit out-of-scope areas:
+Escalate or stop when: missing authority, contradictory evidence, new risk,
+  inadequate capability/allowance, or required investigation exceeds scope.
+```
 
-## Standing authorization (owner, AGENT-OPT-02, 2026-10-27)
+Use targeted searches and changed-file diffs. Read adjacent code when needed
+to trace the relevant mechanism; if that materially expands the task, return
+the evidence and request a revised scope. Never ignore a credible safety issue
+because it lies outside the assigned paths. Stop when sufficient evidence
+answers the question. Return actionable findings with file/line references,
+uncertainties and checked/not-checked boundaries, not full files or raw logs.
 
-The product owner authorizes and encourages autonomous native delegation and
-pull requests for authorized development and planning tasks; no further
-permission is needed for either. Merging is never included.
+The native roles remain narrow: repository-explorer investigates read-only;
+implementation-worker implements an approved bounded contract test-first;
+verification-analyst assesses evidence and gaps; engineering-reviewer inspects
+actual source/tests for identified risks. Canonical skills retain engineering
+instructions. HMI specialist roles and REVIEW_POLICY remain required.
 
-- **Delegation:** decide when delegation improves quality, efficiency or context
-  management, and choose roles and capability as above. Keep high-consequence
-  architecture, safety decisions and final integration with appropriately
-  capable review. Before starting, confirm that the client loaded the project
-  roles (they are read at session start); if they are unavailable, report it
-  instead of silently ignoring this policy.
-- **Branches and pull requests:** for each authorized task:
-  1. check the repository state, latest `main`, active branches and unmerged
-     dependencies;
-  2. work on a named feature branch in its own worktree;
-  3. implement with tests, verify and review;
-  4. update requirements, documentation, work-item maturity, the progress
-     dashboard and status where applicable;
-  5. commit every intended change;
-  6. check the final diff against the correct target branch, with no unrelated
-     changes;
-  7. push the branch and open a pull request when the work is ready for review.
+## Reuse review evidence without weakening independence
 
-  A phase built on an unmerged phase is a stacked pull request against that
-  branch, never against an outdated baseline. Open a **draft** pull request,
-  naming the blockers, while important issues remain; report failing tests or
-  safety-critical defects prominently and never claim readiness. Changes to
-  both repositories get separate branches and pull requests.
-- **Never without explicit owner authorization:** merging a pull request,
-  force-pushing or rewriting shared history, deleting branches or worktrees
-  with unreviewed work, inventing product, architecture or safety decisions,
-  changing approved scope or settled requirements, energizing or operating
-  equipment, flashing unapproved hardware, bypassing protection or unapproved
-  hardware experiments.
-- **Final phase report:** implemented functionality and work items; tests,
-  benchmarks and verification; defects found and corrected; remaining risks,
-  uncertainties and hardware dependencies; branch, final commit and pull request
-  URL with draft or ready status; dependencies on other unmerged pull requests;
-  roadmap progress and maturity changes; and the delegation summary of the
-  compact phase handoff below.
+- Record the prior reviewed revision, scope, assumptions, findings and checks.
+  Reuse only conclusions still applicable to unchanged behavior. A previous
+  review is neither blanket approval nor a reason to skip required reviewers.
+- Implement and run targeted tests; independent reviewers inspect actual changed
+  source/tests and the affected failure paths, not only a worker's summary.
+- After fixing confirmed findings, rerun relevant regressions and request a
+  bounded final review of corrections/new risks where justified. Do not restart
+  a full architecture/phase review for a localized fix with no new such risk.
+- Give mandatory specialists distinct questions. Overlapping additional reviews
+  need a clear benefit. Expand review when changed interfaces, concurrency,
+  protective behavior or invalidated assumptions introduce new risks.
+- Qualified human engineering review and all existing safety/release gates
+  remain mandatory; token conservation never waives them.
 
-## Subscription-only usage (owner, AGENT-OPT-02, 2026-10-27)
+## Context and verification economy
 
-Autonomous delegation is authorized; autonomous spending is prohibited. These
-rules bind the supervising agent and every subagent.
+Prefer fresh sessions for independent phases and fresh-context workers where
+supported; pass committed plans and concise handoffs instead of old transcripts.
+Do not copy successful build logs or whole documentation trees into every task.
+Let local scripts perform mechanical checks and pass machine-readable summaries,
+failing cases and exact evidence paths to the model. Load more only to resolve
+an identified uncertainty. Avoid arbitrary hard token ceilings that could cut
+necessary safety review; escalating an unexpectedly broad investigation is the
+control. Do not run large multi-agent benchmarks for configuration validation.
 
-1. Use only models available through the currently authenticated client's
-   existing subscription entitlement; confirm availability where possible and
-   never use a model merely because a catalogue lists it.
-2. Prefer the least resource-intensive suitable model. Inheriting the parent's
-   model is acceptable while it stays within the included allowance.
-   Correctness comes first: use a stronger included model where safety-critical
-   work requires it.
-3. No API-key billing, pay-as-you-go inference, purchased or extra-usage
-   credits, paid third-party model providers or paid cloud services. Never
-   change the authentication method, enable paid overages, buy credits or
-   switch billing accounts.
-4. If billing status or entitlement is uncertain, do not invoke that model or
-   service. If the subscription limit is reached, stop the affected activity
-   and report it; never switch to paid usage. Any task that would need payment
-   requires the owner's explicit approval first.
-5. Report the models actually used and whether they were selected explicitly
-   or inherited.
+Preserve repository verification gates. Reuse successful evidence for unchanged
+scope; repeat a full gate only for a relevant change, failure, uncertainty or
+an explicit repository gate (including the firmware pre-push gate), not because
+another agent finished. Run one full gate per worktree at a time.
+
+## Standing authorization and Git workflow (AGENT-OPT-02)
+
+The owner authorizes autonomous native delegation, branch pushes and PR creation
+for authorized development/planning tasks, without asking again. For each task:
+inspect current state, latest main, open PRs and dependencies; use a named branch
+and isolated worktree; implement the approved scope with tests; verify/review;
+update canonical documentation, work-item evidence/maturity and dashboard only
+where justified; commit all intended changes; inspect the final diff against the
+correct base; push and open a separate PR for each affected repository.
+
+Stack on unmerged dependencies. Open a draft with explicit blockers while
+important issues remain; report failures and never imply readiness. Never merge,
+force-push, rewrite shared history, delete unreviewed work or invent product,
+architecture or safety decisions without explicit owner authorization.
+
+## Subscription-only usage (AGENT-OPT-02/03)
+
+Autonomous delegation is authorized; autonomous spending is prohibited.
+
+- Use only the current authenticated subscription's included model allowance.
+  Choose more capable included models when correctness requires them.
+- No API-key/pay-as-you-go inference, purchased or extra-usage credits, paid
+  overages, paid third-party providers or paid cloud services. Never change
+  authentication, billing/account settings, buy credits or enable overages.
+- At allowance exhaustion, stop affected inference and report it; do not switch
+  providers or billing routes or keep retrying through paid fallback.
+- If entitlement or paid-fallback status cannot be confidently established,
+  finish unaffected local/static work and record the blocker. Catalogue entries,
+  pricing estimates, a dollar budget flag or a role name do not establish it.
+- Measure and report usage only when exposed reliably, with its scope; cached
+  tokens, subscription allowance and monetary spend are different quantities.
+  Do not invent savings or treat client list-price estimates as a subscription bill.
 
 ## Resource, worktree and permission boundaries
 
-Use at most two concurrent subagents and no nested delegation. Preserve the
-repository one-agent-per-worktree rule: give parallel tasks separate worktrees
-beside the repository, following its workspace topology. The supervisor
-integrates. Never race edits, repeat implementations without a reason, or run
-duplicate full verification. Read-only smoke checks use a stable snapshot while
-the supervisor waits; do not run a writer against their inputs.
+Keep at most two concurrent subagents and no nested delegation. Preserve one
+agent per worktree; parallel tasks get separate worktrees beside the repository
+under its workspace topology. The supervisor integrates; never race edits or
+run duplicate implementations without a reason. Read-only smoke checks use a
+stable snapshot while the supervisor waits; no concurrent writer on their inputs.
 
-Agent prompts describe behavior; filesystem permissions, sandbox and tool
-allowlists enforce access. A role called read-only does not itself enforce it.
-Use supported parent sandbox/permission controls for hard restrictions. Do not
-relax permissions to make a smoke test pass; report denied or unavailable tools.
-
-Keep execution and verification local; no mandatory cloud CI. Do not flash,
-energize, physically test, bypass protection, change approved architecture,
-advance work-item maturity without evidence, or merge PRs without the required
-owner authorization and procedures. Existing safety, Git and verification rules
-apply to every worker. This task authorizes agent configuration only; development
-phase sequencing and hardware blockers stay unchanged.
+Prompts describe behavior; supported sandbox, permissions and tool allowlists
+enforce access. Role labels do not create filesystem restrictions. Never relax
+permissions to pass a test. Keep execution/verification local, with no mandatory
+cloud CI. No heater energization, unauthorized flashing/physical tests, protective
+bypass, unapproved architecture changes or unsupported maturity advancement.
+Existing hardware blockers, phase sequencing, skills and safety rules still apply.
 
 ## Compact phase handoff
 
-Report delegated tasks and roles, actual model if exposed, explicit selection
-versus inheritance/default (or unknown), significant corrections, supervisor
-verification and failed/unavailable delegation. Report tokens or cost only from
-reliable client measurements with their scope; no inferred savings. If the actual
-model is hidden, say so. If nobody delegated, say that briefly.
+Report scope/work items and functionality, actual verification/benchmarks,
+corrected defects, remaining risks/uncertainties/hardware dependencies, branch,
+final commit, PR URL/status and unmerged dependencies, roadmap/maturity changes.
+For delegation add tasks/roles, actual model/effort if exposed, explicit versus
+inherited/unknown selection, reason for an inheritance exception, significant
+findings, supervisor verification and failed/unavailable delegation. If none
+was beneficial, say so. Keep raw logs out of the handoff; link exact evidence.
 
-Client-specific behavior, commands and observed evidence belong in
-[agent-client-compatibility.md](agent-client-compatibility.md).
+Client controls and observed limitations: [agent-client-compatibility.md](agent-client-compatibility.md).

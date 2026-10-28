@@ -1,5 +1,12 @@
 # Roadmap
 
+## AGENT-OPT-03 (2026-10-28)
+
+Agent-efficiency maintenance under the [shared policy](../agent-delegation.md),
+stacked on AGENT-OPT-02 PR 10. Product work order/maturity are unchanged;
+[client evidence](../agent-client-compatibility.md) records validation.
+
+
 ## AGENT-OPT-01 (2026-10-26)
 
 Agent configuration maintenance only; product work order is unchanged.

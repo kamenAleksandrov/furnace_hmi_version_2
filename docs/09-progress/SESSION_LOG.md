@@ -1,5 +1,14 @@
 # Session log
 
+## 2026-10-28 - AGENT-OPT-03 delegation efficiency
+
+Owner authorized bounded adaptive delegation and subscription conservation.
+Policy/role guidance now makes routine direct work the fallback when safe
+efficient selection is unavailable, and limits review to the relevant delta
+while preserving required independent/domain/human gates. No product behavior
+changed. [Scope, dependencies and actual evidence](../agent-client-compatibility.md).
+
+
 ## 2026-10-27 - AGENT-OPT-02 standing authorization and cost policy
 
 Owner made autonomous delegation and pull-request creation standing practice

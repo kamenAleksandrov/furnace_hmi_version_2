@@ -1,4 +1,5 @@
-# Native project settings; model and effort inherit unless selected at invocation.
+# Native project limits; choose model/effort at invocation under the shared policy.
+# No permanent model ranking/pins; inheritance is a justified fallback.
 [agents]
 enabled = true
 max_concurrent_threads_per_session = 2
