@@ -97,8 +97,72 @@ role prompts change, with no model/effort pins; client permission/tool lists and
 the two-child cap are preserved. The supported Claude purchase-command hiding
 control is added; it is not an overage enforcement guarantee.
 
-Native validation results and static/gate outcomes will be recorded here before
-handoff. Actual model IDs remain in local logs/final reporting, not repo defaults.
+### AGENT-OPT-03 observed results
+
+- Static checks PASS: 4 firmware and 10 HMI Codex TOML roles, 8 Claude YAML
+  roles, required fields, no role model/effort pins, unchanged tool/permission
+  lists, two-child cap, one Claude spawn layer and the purchase-command guard.
+  The six HMI specialist definitions are unchanged against their stacked base.
+  Both shared policy copies are byte-identical. Only configuration/docs changed.
+- Subscription preflight: Claude auth status reports claude.ai Pro/first-party,
+  with no API-key/provider override. Native usage metadata reports included
+  allowance available, extra usage/spend disabled, organization-level disabling
+  and zero usage-credit spend; after-test state still reports disabled/zero.
+  These are client records, not an independently audited subscription invoice.
+- Codex native account/read reports ChatGPT Plus. Native account/rateLimits/read
+  permits ordinary included usage; both windows have allowance and paid credits
+  are absent with balance zero before/after. Current native model/list supplied
+  the runtime choice and supported low reasoning. No API-key inference, credit
+  purchase, paid provider, allowance reset, billing or auth-setting change.
+- Exactly one project repository-explorer completed per client, no nested
+  delegation, at committed snapshots: firmware `2a3b2c6` (Codex), HMI `7b6bfbd`
+  (Claude). The single question covered scope expansion and the concurrency cap;
+  product code, requirements, architecture, other documents, edits and builds
+  were excluded. Each response stayed on the assigned policy file. The
+  supervisor checked the actual text/lines, not only worker summaries.
+- Claude explicitly passed a current lightweight family alias and `effort: low`
+  on the native Agent invocation. Forwarded child messages independently confirm
+  the actual selected model. A separate actual-effort readback was not exposed:
+  low is a verified request, not an independently measured effective setting.
+  The child used one targeted Grep and two bounded Read calls. Native counters
+  report one completed child, depth one, zero failures/nested spawns/denials.
+- Codex explicitly selected an efficient current offered model and low reasoning
+  for a fresh-context custom-role spawn. The persisted native child metadata
+  independently confirms role, actual model and low effort, with depth one and
+  read-only managed filesystem controls. Its one tool call read only the policy.
+  Neither child was merely assigned a role and assumed to be cheaper.
+- Supervisor corrections: the Codex worker's conclusions were right but its
+  line numbers were wrong; the supervisor corrected the citations against the
+  actual file. Claude's unsolicited pause/numeric-limit "gap" was rejected:
+  the policy already says stop/reassess scope/model/review, and the owner
+  explicitly forbids arbitrary hard token limits. No broad repeat review was
+  commissioned; these checks establish invocation/scope, not engineering quality
+  or safety correctness of unreviewed production work.
+- Both native test trees remained clean, and no production source changed.
+  Actual model identifiers and scoped usage remain in local client logs and the
+  final report, outside version-independent repository defaults. There is no
+  comparable quality-controlled usage baseline, so no savings are asserted.
+- HMI changed-document relative links PASS (131 links in 12 Markdown files).
+  The canonical HMI codebase-index check remains unavailable in this isolated
+  worktree without its canonical host/Zephyr build metadata. No file paths were
+  added/removed in the HMI delta and no generated index was hand-edited. This
+  does not claim that the complete index check passed.
+
+Reproduction used fresh native CLI parents and one custom role each, with the
+assignment contract in the shared policy. Claude flags: `-p <bounded-prompt>`,
+`--model <current-included-alias> --effort low --output-format stream-json
+--verbose --forward-subagent-text --no-session-persistence`, Read/Glob/Grep/native
+Agent tool allowlists, `--permission-mode dontAsk` and an empty strict MCP config.
+Codex: `--strict-config -C <snapshot> -m <included-parent> -c
+model_reasoning_effort=low -a never exec -s read-only --json <bounded-prompt>`;
+unneeded apps/plugins/memories were disabled for this test only. No user-global
+model settings changed. No dollar budget flag was used as a billing safeguard.
+
+Local evidence: Windows `%TEMP%/agent-opt-03/`: `claude-smoke.jsonl`,
+`codex-smoke.jsonl`, `native-validation-summary.json`, native child metadata,
+subscription preflight and before/after allowance records. The ordinary firmware
+pre-push gate follows the committed final documentation; its exact result and
+revision are reported in the PR/final handoff. No HMI runtime build is claimed.
 
 ## Observed validation (2026-10-26)
 

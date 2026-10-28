@@ -7,6 +7,13 @@ Policy/role guidance now makes routine direct work the fallback when safe
 efficient selection is unavailable, and limits review to the relevant delta
 while preserving required independent/domain/human gates. No product behavior
 changed. [Scope, dependencies and actual evidence](../agent-client-compatibility.md).
+One small native read-only explorer check per client completed with explicit
+runtime model selection; native metadata confirmed actual selected models and
+Codex low effort. Claude's actual effort was not separately exposed. Static
+checks, clean test trees and changed-document links passed. Supervisor corrected
+citations and rejected an unsupported numeric-limit suggestion. No product
+changes, billing/auth changes or claimed savings. Canonical index inputs remain
+unavailable here, so that complete check is not claimed.
 
 
 ## 2026-10-27 - AGENT-OPT-02 standing authorization and cost policy

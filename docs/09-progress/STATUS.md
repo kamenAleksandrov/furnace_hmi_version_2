@@ -7,7 +7,11 @@ review reuse and concise evidence handoffs. Existing specialist/human review
 gates remain required. [Policy](../agent-delegation.md),
 [execution record and client results](../agent-client-compatibility.md).
 Branch is stacked on unmerged AGENT-OPT-02 PR 10; no product requirement, UI,
-simulator, firmware, phase or work-item maturity changed. Validation in progress.
+simulator, firmware, phase or work-item maturity changed. Static checks and one native explorer per
+client passed with explicit choices; selected models were confirmed. Codex
+actual low effort was exposed; Claude low was requested, without independent
+actual-effort readback. Citation/unsupported-gap claims were corrected by the
+supervisor. The canonical index-metadata gap remains; no savings are claimed.
 
 
 **Fact (2026-10-27, AGENT-OPT-02; configuration only):** the product owner
