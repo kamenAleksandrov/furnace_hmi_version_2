@@ -1,71 +1,168 @@
 # Native agent client compatibility
 
-AGENT-OPT-01; checked 2026-10-26. Configuration only. Installed Windows clients:
-Codex CLI 0.162.0-alpha.17.2; Claude Code 2.1.300. No native Linux client was
-found in WSL PATH; firmware development and verification still use WSL.
+AGENT-OPT-03; checked 2026-10-28 against installed Windows Codex CLI
+0.164.0-alpha.11.1 and Claude Code 2.1.300 and current official documentation.
+Earlier AGENT-OPT-01/02 results below remain dated historical evidence, not proof
+of current model entitlement. Firmware development/verification stays in WSL;
+Windows native-client smoke tests use isolated committed Windows worktrees.
 
 ## Claude Code
 
-Four project agents live in `.claude/agents/` as Markdown with YAML frontmatter.
-They use `model: inherit`, with no effort pin. Read-only roles allow only
-Read/Glob/Grep; the worker additionally allows local shell/edit/Skill tools and
-must be assigned its own writing worktree. The parent applies permissions.
-The shared settings cap normal native subagent concurrency at two and spawning
-depth at one. These limits do not govern separate sessions or all client modes.
+Project Markdown/YAML roles retain `model: inherit` only as a compatibility
+fallback, with no effort pin. Choose current supported aliases and effort on
+the native Agent/Task invocation when the account includes them. If safe
+selection is unavailable, do a small routine task directly rather than spawn
+another inherited high-end session. No permanent family preference is encoded.
 
-Choose an available per-invocation model and effort only if exposed by the
-current Agent/Task tool. This CLI has no verified automatic account model-list
-interface for the supervising model. Use the current session choices or inherit;
-do not build discovery automation or encode a permanent alias/ranking here.
-Project agents are read when a session starts: a session started before
-`.claude/agents/` existed in its directory does not offer the roles until it
-is restarted (observed 2026-10-27, AGENT-OPT-02). Check the offered agent
-types at the start of each task. Overrides from local/managed settings can affect resolution. Check actual usage
-or the task display instead of assuming the requested model ran. See the
-[official subagent documentation](https://code.claude.com/docs/en/sub-agents)
-and [model settings](https://code.claude.com/docs/en/model-config).
+The installed client supports per-invocation model aliases and effort. It has
+no verified general account-model enumeration tool for the supervisor; inspect
+current authenticated choices/entitlement instead of deriving access from docs.
+Local/managed settings can override requests; check native traces/task metadata.
+Fresh sessions load the project role directory; creating that directory after
+session start may require a restart. See [subagents](https://code.claude.com/docs/en/sub-agents)
+and [model configuration](https://code.claude.com/docs/en/model-config).
+
+Read-only roles still allow Read/Glob/Grep; the implementation worker also has
+writing/shell tools and needs its own assigned worktree. Limits remain two
+children and one spawn layer. `DISABLE_EXTRA_USAGE_COMMAND=1` in project settings
+hides the purchase/usage-credits command. It does **not** disable server-side
+overages or prove a model is included: check subscription auth, allowance and
+paid-fallback state before inference; stop if uncertain. No authentication or
+account billing setting is changed. See [environment variables](https://code.claude.com/docs/en/env-vars)
+and [authentication](https://code.claude.com/docs/en/authentication).
 
 ## Codex
 
-Four standalone TOML agents live in `.codex/agents/`; name, description and
-developer_instructions define roles. Model and reasoning effort are omitted.
-`.codex/config.toml` enables agents and caps concurrent subagent threads at two.
-The policy prohibits nested delegation. No global model settings are changed.
+Standalone TOML roles retain name, description and developer_instructions;
+model/effort are omitted so they cannot override runtime choices. Native spawn
+model/effort controls depend on the current client. Use a fresh-context worker
+where supported, rather than carrying the full transcript; some full-history
+fork modes require inheritance. Do not silently equate role selection with
+model selection. For routine fallback, apply the direct-work decision first.
 
-Use only choices exposed by the active spawn tool. Per-invocation model/effort
-selection is client-dependent; a full-history fork may require inheritance.
-The installed `codex debug models` refreshes a catalogue, but a catalogue entry
-alone does not prove account access or price. If discovery/selection is absent,
-inherit the parent/applicable defaults and disclose that fallback.
+The installed native app-server has read-only account/read,
+account/rateLimits/read and model/list methods. Account plan, included allowance
+and paid-credit/fallback state must accompany current offered model choices;
+a bundled/debug catalogue alone is not entitlement. These are diagnostic native
+capabilities, not a new model-discovery service or an automatic routing framework.
+See [app-server](https://learn.chatgpt.com/docs/app-server) and
+[authentication](https://learn.chatgpt.com/docs/auth).
 
-Custom-agent sandbox_mode does not override the parent in this client: the old
-HMI declarations were removed to avoid a false enforcement claim. A read-only
-role is behavioral; use a read-only parent session for hard filesystem controls.
-See [official subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
-and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+Native configuration still enables agents and caps concurrent children at two;
+no model or reasoning default is added. Custom-agent model settings, if added,
+would override runtime resolution, which is why these files leave them unset.
+Permissions/provider/MCP remain inherited from the parent; a role cannot create
+its own read-only filesystem sandbox. Preserve parent controls and never relax
+them to pass a test. See [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
 
-## Reproduce a harmless check
+## Efficient harmless validation
 
-Start a fresh session in the intended repository/worktree. Native project config
-may depend on client trust; report ignored configuration rather than changing
-trust or permissions silently. Do not use bypass-permission flags.
+One small read-only delegation per client is enough for this policy change.
+Use a fresh parent and one project repository-explorer, at a committed revision,
+with one policy question, named files, concise output and explicit exclusions.
+Choose an included efficient option and appropriate effort at invocation where
+supported; otherwise record inheritance and the reason this invocation check
+cannot be replaced by doing the task directly. Do not benchmark, exhaust quota,
+use paid fallback or impose a hard token ceiling that could truncate review.
 
-1. Check installed versions: `claude --version`, `codex --version`.
-2. Run `claude plugin validate .claude/agents --json --strict` and parse every
-   TOML using Python's tomllib. A validator exit alone is not live discovery proof.
-3. In Claude, allow only read tools and native Agent/Task for this test. Ask the
-   repository-explorer to locate three heating-inhibit invariants (firmware) or
-   the controller-authority boundary (HMI), with exact file references. Do not
-   pass model/effort overrides. Confirm the initialization roster and actual
-   subagent events. If account quota prevents inference, stop and record it.
-4. In Codex use a read-only parent (`codex -s read-only`) and request the same
-   project role. Confirm the spawn result, role, references and exposed model.
-   Missing roles or denied filesystem access are failed tests, not success.
-5. Compare Git status and production paths with the baseline. Do not edit
-   production source, install clients, run hardware or retry by weakening access.
+Inspect auth/provider and allowance before inference; no API-key inference or
+billing/auth changes. A currency budget flag is not proof of subscription-only
+execution. Inspect native role/spawn/result/model/effort metadata, compare the
+response to the actual assigned lines, and check Git status/production paths.
+If unavailable, exhausted or entitlement/paid fallback cannot be established,
+record the blocker and finish static checks without trying a paid route.
 
-Client versions and observations are dated evidence, not model pins. Repeat
-small checks after a client update; do not run a multi-agent benchmark.
+## AGENT-OPT-03 scope and execution record (2026-10-28)
+
+Configuration/documentation only, supporting WI-L01 with no maturity or phase
+advance. Governing records: AGENTS.md, shared delegation policy, standing
+AGENT-OPT-02 authorization and HMI REVIEW_POLICY. Inspect clients and dependencies;
+update the identical policies and narrow role guidance; validate static controls
+and one native delegation per client if eligible; run repository gates; publish
+separate PRs without merging. Rollback is a normal Git revert with no runtime
+state migration. No new hardware fact or blocker is introduced.
+
+Previous inefficiencies: the owner's reported 133,000-token and combined
+298,000-token reviews are observations, not independently audited savings
+baselines. Existing policy broadly accepted inheritance; role prompts lacked
+specific investigation stop/escalation rules; fresh-context assignment and
+review-evidence reuse were underspecified. The new rules address these causes
+without claiming that they explain every token in those sessions.
+
+Firmware base: main `ceb993cf3e67`. HMI base: `chore/agent-opt-02`
+`f26f7dbe48a8`, dependency [HMI PR 10](https://github.com/kamenAleksandrov/furnace_hmi_version_2/pull/10).
+The firmware open Phase 16 PRs 25/26 are unrelated and unchanged. Existing
+specialist roles and mandatory review gates remain intact. Only the four common
+role prompts change, with no model/effort pins; client permission/tool lists and
+the two-child cap are preserved. The supported Claude purchase-command hiding
+control is added; it is not an overage enforcement guarantee.
+
+### AGENT-OPT-03 observed results
+
+- Static checks PASS: 4 firmware and 10 HMI Codex TOML roles, 8 Claude YAML
+  roles, required fields, no role model/effort pins, unchanged tool/permission
+  lists, two-child cap, one Claude spawn layer and the purchase-command guard.
+  The six HMI specialist definitions are unchanged against their stacked base.
+  Both shared policy copies are byte-identical. Only configuration/docs changed.
+- Subscription preflight: Claude auth status reports claude.ai Pro/first-party,
+  with no API-key/provider override. Native usage metadata reports included
+  allowance available, extra usage/spend disabled, organization-level disabling
+  and zero usage-credit spend; after-test state still reports disabled/zero.
+  These are client records, not an independently audited subscription invoice.
+- Codex native account/read reports ChatGPT Plus. Native account/rateLimits/read
+  permits ordinary included usage; both windows have allowance and paid credits
+  are absent with balance zero before/after. Current native model/list supplied
+  the runtime choice and supported low reasoning. No API-key inference, credit
+  purchase, paid provider, allowance reset, billing or auth-setting change.
+- Exactly one project repository-explorer completed per client, no nested
+  delegation, at committed snapshots: firmware `2a3b2c6` (Codex), HMI `7b6bfbd`
+  (Claude). The single question covered scope expansion and the concurrency cap;
+  product code, requirements, architecture, other documents, edits and builds
+  were excluded. Each response stayed on the assigned policy file. The
+  supervisor checked the actual text/lines, not only worker summaries.
+- Claude explicitly passed a current lightweight family alias and `effort: low`
+  on the native Agent invocation. Forwarded child messages independently confirm
+  the actual selected model. A separate actual-effort readback was not exposed:
+  low is a verified request, not an independently measured effective setting.
+  The child used one targeted Grep and two bounded Read calls. Native counters
+  report one completed child, depth one, zero failures/nested spawns/denials.
+- Codex explicitly selected an efficient current offered model and low reasoning
+  for a fresh-context custom-role spawn. The persisted native child metadata
+  independently confirms role, actual model and low effort, with depth one and
+  read-only managed filesystem controls. Its one tool call read only the policy.
+  Neither child was merely assigned a role and assumed to be cheaper.
+- Supervisor corrections: the Codex worker's conclusions were right but its
+  line numbers were wrong; the supervisor corrected the citations against the
+  actual file. Claude's unsolicited pause/numeric-limit "gap" was rejected:
+  the policy already says stop/reassess scope/model/review, and the owner
+  explicitly forbids arbitrary hard token limits. No broad repeat review was
+  commissioned; these checks establish invocation/scope, not engineering quality
+  or safety correctness of unreviewed production work.
+- Both native test trees remained clean, and no production source changed.
+  Actual model identifiers and scoped usage remain in local client logs and the
+  final report, outside version-independent repository defaults. There is no
+  comparable quality-controlled usage baseline, so no savings are asserted.
+- HMI changed-document relative links PASS (131 links in 12 Markdown files).
+  The canonical HMI codebase-index check remains unavailable in this isolated
+  worktree without its canonical host/Zephyr build metadata. No file paths were
+  added/removed in the HMI delta and no generated index was hand-edited. This
+  does not claim that the complete index check passed.
+
+Reproduction used fresh native CLI parents and one custom role each, with the
+assignment contract in the shared policy. Claude flags: `-p <bounded-prompt>`,
+`--model <current-included-alias> --effort low --output-format stream-json
+--verbose --forward-subagent-text --no-session-persistence`, Read/Glob/Grep/native
+Agent tool allowlists, `--permission-mode dontAsk` and an empty strict MCP config.
+Codex: `--strict-config -C <snapshot> -m <included-parent> -c
+model_reasoning_effort=low -a never exec -s read-only --json <bounded-prompt>`;
+unneeded apps/plugins/memories were disabled for this test only. No user-global
+model settings changed. No dollar budget flag was used as a billing safeguard.
+
+Local evidence: Windows `%TEMP%/agent-opt-03/`: `claude-smoke.jsonl`,
+`codex-smoke.jsonl`, `native-validation-summary.json`, native child metadata,
+subscription preflight and before/after allowance records. The ordinary firmware
+pre-push gate follows the committed final documentation; its exact result and
+revision are reported in the PR/final handoff. No HMI runtime build is claimed.
 
 ## Observed validation (2026-10-26)
 
@@ -150,7 +247,7 @@ Reset reruns: `claude-fw-reset.jsonl`, `claude-hmi-reset.jsonl`,
 `claude-other-roles-reset.jsonl`; structured checks:
 `claude-reset-summary.json`. Actual model names remain outside repository files.
 
-## Changed-file manifest
+## AGENT-OPT-01 changed-file manifest (historical)
 
 Against the task base (`3de05c5`):
 
