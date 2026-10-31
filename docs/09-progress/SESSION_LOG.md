@@ -1,5 +1,16 @@
 # Session log
 
+## 2026-10-27 - AGENT-OPT-02 standing authorization and cost policy
+
+Owner made autonomous delegation and pull-request creation standing practice
+for authorized tasks in both repositories, never merging without approval and
+never spending beyond the current subscription. Added to the shared
+[delegation policy](../agent-delegation.md) and AGENTS.md. The supervising
+Claude Code session that applied it had started before the project roles
+existed in its directory, so no subagent was delegated; the client record now
+says to check the offered agent types at the start of each task.
+
+
 ## 2026-10-26 - AGENT-OPT-01 native agents
 
 Owner requested model-agnostic native delegation in both repositories. Four

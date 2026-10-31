@@ -1,5 +1,17 @@
 # Project status
 
+**Fact (2026-10-27, AGENT-OPT-02; configuration only):** the product owner
+granted standing authorization for autonomous native delegation, pushing
+feature branches and opening pull requests (draft while blockers remain,
+stacked on unmerged dependencies); merging always needs explicit owner
+authorization, and delegation stays within the current subscription
+entitlement with no paid usage. Recorded in the
+[shared delegation policy](../agent-delegation.md) (byte-identical to the
+furnace copy) and AGENTS.md; the [client evidence](../agent-client-compatibility.md)
+notes that project agents are read at session start. Owner prompt: furnace
+`prompts/agent-opt-02-standing-authorization.md`. Production UI/firmware/simulator
+behavior and development phases are unchanged.
+
 **Fact (2026-10-26, AGENT-OPT-01; configuration only; native delegation validated):**
 Added native Claude/Codex roles and a [shared delegation policy](../agent-delegation.md),
 kept the six existing domain reviewers and required review gates. See
