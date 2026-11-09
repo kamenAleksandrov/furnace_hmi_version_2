@@ -9,12 +9,12 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 279 |
-| Git-tracked files | 279 |
+| Repository files | 294 |
+| Git-tracked files | 294 |
 | Git-untracked files | 0 |
-| Manually maintained files | 250 |
+| Manually maintained files | 265 |
 | Generated files | 29 |
-| Modules | 32 |
+| Modules | 34 |
 | Build targets | 107 |
 | Compile units | 13 |
 | Boards | 1 |
@@ -34,19 +34,21 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Module | Files | Kinds |
 | --- | ---: | --- |
-| `.` | 10 | build, configuration, documentation, other |
+| `.` | 11 | build, configuration, documentation, other |
 | `.agents/skills/architecture-planning` | 1 | agent-configuration |
 | `.agents/skills/documentation-maintenance` | 1 | agent-configuration |
 | `.agents/skills/protocol-design` | 1 | agent-configuration |
 | `.agents/skills/theme-and-language` | 1 | agent-configuration |
 | `.agents/skills/ui-parity` | 1 | agent-configuration |
-| `.codex/agents` | 6 | agent-configuration |
+| `.claude` | 5 | configuration, documentation |
+| `.codex/agents` | 10 | agent-configuration |
+| `.codex/config.toml` | 1 | agent-configuration |
 | `.vscode` | 5 | configuration |
 | `app/hmi/foundation` | 3 | build, header, source |
 | `app/hmi/model` | 4 | build, header, source |
 | `app/hmi/presentation` | 91 | build, configuration, documentation, header, other, source |
 | `app/zephyr` | 4 | build, configuration, source |
-| `docs` | 1 | documentation |
+| `docs` | 3 | documentation |
 | `docs/.obsidian` | 4 | documentation |
 | `docs/00-project` | 5 | documentation |
 | `docs/01-architecture` | 3 | documentation |
@@ -57,7 +59,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/06-testing` | 3 | documentation |
 | `docs/07-decisions` | 22 | documentation |
 | `docs/08-pseudocode` | 1 | documentation |
-| `docs/09-progress` | 23 | documentation |
+| `docs/09-progress` | 25 | documentation |
 | `docs/_generated` | 2 | documentation |
 | `docs/images` | 27 | documentation |
 | `simulator/desktop` | 5 | build, header, source |
@@ -194,12 +196,22 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `.agents/skills/protocol-design/SKILL.md` | agent-configuration | `.agents/skills/protocol-design` | manual | tracked |
 | `.agents/skills/theme-and-language/SKILL.md` | agent-configuration | `.agents/skills/theme-and-language` | manual | tracked |
 | `.agents/skills/ui-parity/SKILL.md` | agent-configuration | `.agents/skills/ui-parity` | manual | tracked |
+| `.claude/agents/engineering-reviewer.md` | documentation | `.claude` | manual | tracked |
+| `.claude/agents/implementation-worker.md` | documentation | `.claude` | manual | tracked |
+| `.claude/agents/repository-explorer.md` | documentation | `.claude` | manual | tracked |
+| `.claude/agents/verification-analyst.md` | documentation | `.claude` | manual | tracked |
+| `.claude/settings.json` | configuration | `.claude` | manual | tracked |
 | `.codex/agents/architect.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/decision-challenger.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/embedded-reviewer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/engineering-reviewer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/error-auditor.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/implementation-worker.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/protocol-reviewer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/repository-explorer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/software-critic.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/verification-analyst.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/config.toml` | agent-configuration | `.codex/config.toml` | manual | tracked |
 | `.editorconfig` | other | `.` | manual | tracked |
 | `.gitattributes` | other | `.` | manual | tracked |
 | `.gitignore` | other | `.` | manual | tracked |
@@ -209,6 +221,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `.vscode/settings.json` | configuration | `.vscode` | manual | tracked |
 | `.vscode/tasks.json` | configuration | `.vscode` | manual | tracked |
 | `AGENTS.md` | documentation | `.` | manual | tracked |
+| `CLAUDE.md` | documentation | `.` | manual | tracked |
 | `CMakeLists.txt` | build | `.` | manual | tracked |
 | `CMakePresets.json` | configuration | `.` | manual | tracked |
 | `LICENSE` | documentation | `.` | manual | tracked |
@@ -370,6 +383,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/07-decisions/ADR_TEMPLATE.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/README.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/08-pseudocode/README.md` | documentation | `docs/08-pseudocode` | manual | tracked |
+| `docs/09-progress/AGENT_OPT_01.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/CONTROLLER_INTEGRATION_BACKLOG.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/DEVICE_IMPLEMENTATION_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/DEVICE_SETTINGS_CARDS_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
@@ -381,6 +395,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/09-progress/OPEN_QUESTIONS.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/OPERATOR_FEEDBACK_2026_10_06_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/OPERATOR_WORKFLOW_IMPLEMENTATION_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/PHASE21_CONTROLLER_CLIENT_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/PROGRAMS_STYLE_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/ROADMAP.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/RUNNING_READINGS_REFINEMENT_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
@@ -396,6 +411,8 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/INDEX.md` | documentation | `docs` | manual | tracked |
 | `docs/_generated/CODEBASE_INDEX.md` | documentation | `docs/_generated` | generated | tracked |
 | `docs/_generated/README.md` | documentation | `docs/_generated` | manual | tracked |
+| `docs/agent-client-compatibility.md` | documentation | `docs` | manual | tracked |
+| `docs/agent-delegation.md` | documentation | `docs` | manual | tracked |
 | `docs/images/concept/Screenshot_20260901-172703.png` | documentation | `docs/images` | manual | tracked |
 | `docs/images/concept/Screenshot_20260901-172716.png` | documentation | `docs/images` | manual | tracked |
 | `docs/images/concept/Screenshot_20260901-172742.png` | documentation | `docs/images` | manual | tracked |
