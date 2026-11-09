@@ -1,5 +1,14 @@
 # Project status
 
+**Fact (2026-11-10, Phase 21 started; documentation only):** the product owner
+started Phase 21, connecting the HMI to the controller (furnace `main` at
+`721f3cb`, protocol 0.16). Decided: the controller's codec as a pinned, checked
+copy (ADR-0009 accepted); its wire format (ADR-0007 accepted); a simulated
+serial cable between two native_sim programs until the boards arrive, the
+production link still open (ADR-0006); the web demo and the LVGL application
+stay the same visually and in behavior, the demo simulating the back end and
+safety. Plan: [Phase 21 plan](PHASE21_CONTROLLER_CLIENT_PLAN.md). No code changed.
+
 **Fact (2026-10-28, AGENT-OPT-03; configuration/documentation only):**
 bounded assignments, explicit subscription-included model/effort choices where
 supported, direct routine work before inherited delegation, revision-bound
