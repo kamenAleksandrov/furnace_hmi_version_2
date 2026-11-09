@@ -26,6 +26,14 @@ the [developer runbook](DEVELOPER_RUNBOOK.md).
 | Device Tree Compiler | 1.7.2 | Checksum-verified project-local MSYS2 binary package |
 | VS Code | 1.132.0 | Project recommendations and tasks are under `.vscode/` |
 
+**Phase 21 (2026-11-10): WSL for native_sim.** native_sim is Linux-only.
+Zephyr tests that target it (`furnace_hmi.wire.conformance`) run with Twister
+in WSL (Ubuntu 24.04), with a Zephyr 4.4.0 workspace at the same pinned commit
+as `west.yml`, at present the furnace firmware's workspace. Whether the LVGL
+application also runs there, through SDL and WSLg, is the evidence gate at the
+start of Phase 21's M21-2; until then the Windows environment above stays the
+recorded one.
+
 All project-owned production and foundation sources are C. The pinned LVGL
 desktop CMake integration enables a C++ compiler (and ASM outside MSVC)
 internally even though this proof has no project C++ sources; those are host

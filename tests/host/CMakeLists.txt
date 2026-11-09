@@ -73,6 +73,34 @@ else()
   )
 endif()
 
+if(NOT TARGET furnace_hmi_wire)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/protocol/wire"
+    "${CMAKE_CURRENT_BINARY_DIR}/wire"
+  )
+endif()
+
+# The pinned copy of the controller's codec against the controller's golden vectors
+# (ADR-0007, ADR-0009). The vector table is a copied, generated controller artifact.
+set(FURNACE_HMI_CONFORMANCE_DIR "${FURNACE_HMI_REPOSITORY_ROOT}/tests/conformance/wire")
+add_executable(furnace_hmi_wire_conformance
+  "${FURNACE_HMI_CONFORMANCE_DIR}/host_main.c"
+  "${FURNACE_HMI_CONFORMANCE_DIR}/wire_conformance.c"
+  "${FURNACE_HMI_CONFORMANCE_DIR}/wire_vectors_gen.c"
+)
+target_include_directories(furnace_hmi_wire_conformance PRIVATE "${FURNACE_HMI_CONFORMANCE_DIR}")
+target_link_libraries(furnace_hmi_wire_conformance PRIVATE furnace_hmi::wire)
+if(MSVC)
+  target_compile_options(furnace_hmi_wire_conformance PRIVATE /W4 /WX /permissive-)
+else()
+  target_compile_options(furnace_hmi_wire_conformance PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME host.wire_conformance COMMAND furnace_hmi_wire_conformance)
+add_test(
+  NAME tools.controller_wire_copy
+  COMMAND "${Python3_EXECUTABLE}" "${FURNACE_HMI_REPOSITORY_ROOT}/tools/sync_controller_wire.py" --check
+)
+
 add_test(NAME host.foundation_probe COMMAND furnace_hmi_foundation_smoke)
 add_test(NAME host.ui_strings_catalog COMMAND furnace_hmi_ui_strings_smoke)
 add_test(NAME host.theme_palette COMMAND furnace_hmi_theme_smoke)

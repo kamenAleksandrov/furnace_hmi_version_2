@@ -1,5 +1,12 @@
 # Project status
 
+**Fact (2026-11-10, Phase 21 M21-1):** the controller's wire codec is copied
+into `app/hmi/protocol/wire` at controller revision `721f3cb` (ADR-0009), with a
+manifest of hashes and `tools/sync_controller_wire.py`. The controller's golden
+vectors pass in CTest under MSVC 19.44 (`/W4 /WX /permissive-`, 14 of 14 tests)
+and MSYS2 GCC (`-Werror`, 16 of 16), and in Twister on native_sim (WSL, Zephyr
+4.4.0). `qemu_x86` was not run. No UI behavior changed.
+
 **Fact (2026-11-10, Phase 21 started; documentation only):** the product owner
 started Phase 21, connecting the HMI to the controller (furnace `main` at
 `721f3cb`, protocol 0.16). Decided: the controller's codec as a pinned, checked
