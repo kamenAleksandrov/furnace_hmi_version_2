@@ -27,7 +27,7 @@ UART instance, MCU vendor SDK, compiler packing, or SDL test transport.
 
 ## Source sharing
 
-Whether HMI and Control CPU share one protocol package, generated definitions,
-or independently versioned implementations is deferred in
-[ADR-0009](../07-decisions/0009-protocol-source-sharing.md). Layering does not
-prejudge that repository decision.
+The HMI uses a pinned, checked copy of the controller's codec
+([ADR-0009](../07-decisions/0009-protocol-source-sharing.md)). The copy is the
+serialized-representation and framing layer only; the semantic layer above it
+is the HMI's own, and the codec's structures do not reach the model.

@@ -26,10 +26,10 @@ and use [the template](ADR_TEMPLATE.md).
 | [ADR-0003](0003-protocol-layering.md) | Accepted principle | Separate semantics, representation, framing, and transport |
 | [ADR-0004](0004-desktop-simulator.md) | Accepted | Maintain a project-owned LVGL desktop simulator |
 | [ADR-0005](0005-lvgl-single-owner.md) | Accepted | Give LVGL one GUI execution owner |
-| [ADR-0006](0006-transport-selection.md) | Proposed | Production UART/RS-422 transport baseline |
-| [ADR-0007](0007-serialization-and-framing.md) | Deferred | Select serialization, framing, and integrity |
+| [ADR-0006](0006-transport-selection.md) | Proposed; development link accepted | Production link open; simulated serial cable during development |
+| [ADR-0007](0007-serialization-and-framing.md) | Accepted for the 0.x draft series | The controller's wire format, with reopen triggers |
 | [ADR-0008](0008-memory-policy.md) | Deferred | Set bounded memory/allocation policy |
-| [ADR-0009](0009-protocol-source-sharing.md) | Deferred | Select HMI/controller protocol source-sharing model |
+| [ADR-0009](0009-protocol-source-sharing.md) | Accepted | A pinned, checked copy of the controller's codec |
 | [ADR-0010](0010-maintenance-request-workflows.md) | Proposed | Separate maintenance actions and controller-validated restart attempts |
 | [ADR-0011](0011-component-service-catalogue.md) | Proposed | Generic configured component service catalogue and read-only worker Device view |
 | [ADR-0012](0012-theme-and-language-catalogues.md) | Proposed | Generated theme and string catalogues shared by both presentations |
