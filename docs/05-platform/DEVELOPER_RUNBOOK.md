@@ -270,7 +270,10 @@ Pop-Location
 ```
 
 `QEMU_BIN_PATH` is required for Twister to execute the QEMU test rather than
-only build it. The current GCC analysis has two recorded warnings in upstream
+only build it. In a worktree whose `.deps` is a junction to another checkout,
+Zephyr names objects after the junction's target, and Twister's default output
+directory exceeds the Windows path limit (`ar` fails to read an object): pass a
+short `--outdir`, such as `C:\t`. The current GCC analysis has two recorded warnings in upstream
 Zephyr libc and none in repository-owned sources.
 
 For Zephyr source debugging, select `Zephyr qemu_x86: break at main` in VS Code
