@@ -32,6 +32,11 @@
 #define GUI_MAX_SLEEP_MS UINT32_C(10)
 /* At least one tick, so that native_sim time advances. */
 #define GUI_MIN_SLEEP_MS UINT32_C(1)
+/*
+ * The link thread publishes at least every 200 ms. Nothing for this long means
+ * it is stuck (for example in a blocked write): what is shown is then stale.
+ */
+#define GUI_MAILBOX_STALE_MS UINT32_C(1000)
 
 static furnace_hmi_state_availability_view_t availability_view;
 static furnace_hmi_controller_observation_t observation;
@@ -75,12 +80,22 @@ int main(void)
     (void)lv_timer_handler();
     (void)display_blanking_off(display);
 
+    uint32_t last_taken = k_uptime_get_32();
+
     for (;;) {
+        furnace_hmi_state_availability_t wanted = shown;
+        const uint32_t now = k_uptime_get_32();
         uint32_t sleep_ms;
 
-        if (furnace_hmi_controller_link_take(&observation, &seen) &&
-            observation.availability != shown) {
-            shown = observation.availability;
+        if (furnace_hmi_controller_link_take(&observation, &seen)) {
+            last_taken = now;
+            wanted = observation.availability;
+        } else if (shown == FURNACE_HMI_STATE_AVAILABILITY_CURRENT &&
+                   (uint32_t)(now - last_taken) >= GUI_MAILBOX_STALE_MS) {
+            wanted = FURNACE_HMI_STATE_AVAILABILITY_STALE;
+        }
+        if (wanted != shown) {
+            shown = wanted;
             if (!show_availability(shown)) {
                 printk("State-availability view creation failed.\n");
                 return 13;

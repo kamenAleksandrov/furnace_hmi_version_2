@@ -88,8 +88,8 @@ static void trace(const furnace_hmi_controller_observation_t *o)
     printk("hmi-link: link=%s availability=%s client=%08x session=%02x%02x%02x%02x "
            "changes=%u fw=%u boot=%u proto=%u.%u hello=%u status=%u temp=%d validity=%u "
            "age=%u measurement=%u qualified=%u run_state=%u run=%u inhibited=%u latched=%u "
-           "unack=%u faults=%u fresh=%u ready=%u requests=%u request_state=%u gaps=%u "
-           "regressions=%u dropped=%u\n",
+           "unack=%u faults=%u outdated=%u fresh=%u ready=%u requests=%u request_state=%u "
+           "gaps=%u regressions=%u incomplete=%u caps_rejected=%u dropped=%u\n",
            link_names[o->link], availability_names[o->availability],
            (unsigned int)o->client_session_id, o->session_id[0], o->session_id[1],
            o->session_id[2], o->session_id[3], (unsigned int)o->controller_session_changes,
@@ -99,10 +99,11 @@ static void trace(const furnace_hmi_controller_observation_t *o)
            (unsigned int)o->temperature_age_ms, o->measurement_state,
            (unsigned int)o->measurement_qualified_s, o->run_state, (unsigned int)o->run_id,
            o->heating_inhibited ? 1U : 0U, o->latched_class, o->unacknowledged_faults,
-           o->faults_valid ? (unsigned int)o->fault_count : 0U, o->session_fresh ? 1U : 0U,
-           o->store_readiness, (unsigned int)o->snapshots_requested, o->snapshot_request,
-           (unsigned int)o->event_gaps, (unsigned int)o->status_regressions,
-           (unsigned int)o->frames_dropped);
+           o->faults_valid ? (unsigned int)o->fault_count : 0U, o->faults_outdated ? 1U : 0U,
+           o->session_fresh ? 1U : 0U, o->store_readiness, (unsigned int)o->snapshots_requested,
+           o->snapshot_request, (unsigned int)o->event_gaps,
+           (unsigned int)o->status_regressions, (unsigned int)o->snapshots_incomplete,
+           (unsigned int)o->capabilities_rejected, (unsigned int)o->frames_dropped);
 }
 
 static void link_main(void *p1, void *p2, void *p3)

@@ -135,6 +135,8 @@ typedef struct {
 
     /* FAULT_LIST of the newest complete snapshot. */
     bool faults_valid;
+    /** A fault changed, or a snapshot was lost or incomplete: the list is being asked for again. */
+    bool faults_outdated;
     uint8_t fault_count;
     furnace_hmi_controller_fault_t faults[FURNACE_HMI_CONTROLLER_MAX_FAULTS];
 
@@ -153,8 +155,12 @@ typedef struct {
     uint32_t frames_ignored;
     uint32_t snapshots_requested;
     uint32_t event_gaps;
-    /** Snapshots whose status_sequence was below one already held: a repeated session ID. */
+    /** After a reconnect, a STATUS or snapshot older than the status held: a repeated session ID. */
     uint32_t status_regressions;
+    /** Snapshots whose FAULT_LIST pages were missing or inconsistent: not applied. */
+    uint32_t snapshots_incomplete;
+    /** CAPABILITIES with link intervals outside the HMI's bounds: refused. */
+    uint32_t capabilities_rejected;
     uint32_t write_shortfalls;
 } furnace_hmi_controller_observation_t;
 

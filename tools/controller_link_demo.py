@@ -47,6 +47,7 @@ REPO = Path(__file__).resolve().parent.parent
 SYNC = REPO / "app" / "hmi" / "protocol" / "wire" / "CONTROLLER_SYNC.json"
 
 STATUS = 0x8003
+FAULT_LIST = 0x8043
 CLIENT_READ_MESSAGES = {0x0001: "HELLO", 0x0003: "HEARTBEAT", 0x0004: "SNAPSHOT_REQUEST",
                         0x0005: "CAPABILITIES_REQUEST"}
 PTY_LINE = re.compile(rb"(\S+) connected to pseudotty: (/dev/pts/\d+)")
@@ -94,6 +95,10 @@ class ControllerStatus:
     sequence: int
     temperature: int
     validity: int
+    run_state: int
+    inhibited: int
+    latched: int
+    unacknowledged: int
     at: float
     process: int
 
@@ -115,6 +120,7 @@ class Relay:
     out_buffers: dict = field(default_factory=dict)
     controller_ready: bool = False
     controller_starts: int = 0
+    fault_total: int | None = None
 
     # -- processes ------------------------------------------------------------------------
 
@@ -225,13 +231,22 @@ class Relay:
 
     def from_controller(self, data: bytes) -> None:
         for msg_type, payload, _ in self.to_hmi_tap.feed(data):
-            if msg_type == STATUS and len(payload) >= 37:
+            if msg_type == STATUS and len(payload) >= 39:
+                # Wire format 0.16 STATUS: id128, u32 x3, measured (i32, enum8, u32), enum8
+                # operating_mode, array[8] restrictions (u8 count first), group fault_status,
+                # group start_status (10 bytes), then run_status starting with run_state.
+                faults = 39 + payload[38]
+                if len(payload) < faults + 31:
+                    continue
                 self.statuses.append(ControllerStatus(
                     session=payload[0:4].hex(),
                     sequence=int.from_bytes(payload[16:20], "little"),
                     temperature=int.from_bytes(payload[28:32], "little", signed=True),
-                    validity=payload[32], at=time.monotonic(),
-                    process=self.controller_starts))
+                    validity=payload[32], inhibited=payload[faults], latched=payload[faults + 2],
+                    unacknowledged=payload[faults + 11], run_state=payload[faults + 30],
+                    at=time.monotonic(), process=self.controller_starts))
+            elif msg_type == FAULT_LIST and len(payload) >= 10 and payload[9] == 0:
+                self.fault_total = payload[8]
         if self.connected and self.master_fd is not None:
             os.write(self.master_fd, data)
 
@@ -295,9 +310,13 @@ def main() -> int:
         if not sent:
             return False, f"no controller STATUS {sequence} of session {t.get('session')}"
         s = sent[-1]
-        ok = int(t["temp"]) == s.temperature and int(t["validity"]) == s.validity
+        ok = (int(t["temp"]) == s.temperature and int(t["validity"]) == s.validity
+              and int(t["run_state"]) == s.run_state and int(t["inhibited"]) == s.inhibited
+              and int(t["latched"]) == s.latched and int(t["unack"]) == s.unacknowledged)
         return ok, (f"session {s.session}, STATUS {s.sequence}: temperature {s.temperature / 10:.1f}"
-                    f" (validity {s.validity}) as the controller sent it")
+                    f" (validity {s.validity}), run state {s.run_state}, heating inhibited "
+                    f"{s.inhibited}, latched class {s.latched}, unacknowledged {s.unacknowledged}"
+                    f", as the controller sent them")
 
     try:
         relay.open_hmi_end()
@@ -313,12 +332,11 @@ def main() -> int:
         if ok:
             same, detail = matches_controller(t)
             record("authentic STATUS", same, detail)
-            record("fault and run state",
-                   all(k in t for k in ("inhibited", "latched", "faults", "run_state",
-                                        "measurement", "qualified")),
-                   f"run_state {t.get('run_state')}, faults {t.get('faults')}, inhibited "
-                   f"{t.get('inhibited')}, measurement {t.get('measurement')}, qualified "
-                   f"{t.get('qualified')} s, session fresh {t.get('fresh')}")
+            record("fault list as sent",
+                   relay.fault_total is not None and t.get("outdated") == "0"
+                   and int(t.get("faults", "-1")) == relay.fault_total,
+                   f"{t.get('faults')} entries in the HMI, FAULT_LIST total {relay.fault_total} "
+                   f"from the controller; outdated {t.get('outdated')}")
         session_before = t.get("session")
 
         # 2. cut
@@ -370,10 +388,12 @@ def main() -> int:
                f"sent: {relay.client_messages}; other: {relay.forbidden or 'none'}")
         gaps = [b.at - a.at for a, b in zip(relay.statuses, relay.statuses[1:])
                 if a.process == b.process]
-        record("controller undisturbed", bool(gaps) and max(gaps) < 1.0,
+        record("controller STATUS cadence", bool(gaps) and max(gaps) < 0.5,
                f"{len(relay.statuses)} STATUS frames from {relay.controller_starts} controller "
-               f"processes; longest gap within one process {max(gaps) if gaps else 0:.2f} s, "
-               f"through the cut, the corruption and the HMI restart (interval 0.2 s)")
+               f"processes; longest gap within one process {max(gaps) if gaps else 0:.2f} s "
+               f"(interval 0.2 s, threshold 0.5 s) through the cut, the corruption and the HMI "
+               f"restart. This is the controller's link service; its control timing is the "
+               f"controller's own verification, not repeated here")
     finally:
         relay.stop_hmi()
         relay.stop_controller()

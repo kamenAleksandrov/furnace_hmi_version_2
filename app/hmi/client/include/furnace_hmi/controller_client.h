@@ -21,6 +21,14 @@ extern "C" {
 #define FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS 3000U
 /** Bytes one poll reads at most, so that a poll is bounded work. */
 #define FURNACE_HMI_CLIENT_POLL_BYTES 512U
+/*
+ * Bounds on the controller's link intervals (CAPABILITIES), provisional HMI
+ * values: outside them the capabilities are refused and the link never becomes
+ * current. link_silence_ms must also exceed status_interval_ms.
+ */
+#define FURNACE_HMI_CLIENT_MAX_STATUS_INTERVAL_MS 60000U
+#define FURNACE_HMI_CLIENT_MAX_HEARTBEAT_INTERVAL_MS 60000U
+#define FURNACE_HMI_CLIENT_MAX_LINK_SILENCE_MS 600000U
 
 typedef struct {
     furnace_hmi_byte_port_t port;
@@ -56,13 +64,31 @@ typedef struct {
     uint32_t last_hello_ms;
     uint32_t last_send_ms;
     uint32_t sync_started_ms;
+    uint32_t snapshot_requested_ms;
     bool hello_sent;
     uint32_t next_request_id;
+    uint32_t capabilities_request_id;
+    /** The controller answered a request of this client session: its ID is not a reused one. */
+    bool client_session_confirmed;
 
-    /* The snapshot being received. */
+    /*
+     * The status_sequence held when the link fell silent. After reconnecting to
+     * the same session ID, nothing of that session can be older: something older
+     * is another session that drew the same ID.
+     */
+    bool reconnect_baseline_active;
+    uint32_t reconnect_baseline;
+
+    /* The snapshot being received, and its FAULT_LIST pages. */
     bool snapshot_active;
+    bool pending_fault_pages_ok;
+    bool pending_fault_pages_seen;
+    uint8_t pending_fault_total;
+    uint32_t pending_fault_sequence;
+    uint32_t pending_fault_request_id;
     uint8_t pending_fault_count;
     furnace_hmi_controller_fault_t pending_faults[FURNACE_HMI_CONTROLLER_MAX_FAULTS];
+    /** The newest FAULT_EVENT since the snapshot was asked for. */
     uint32_t newest_fault_event_seen;
     bool event_sequences_known;
 } furnace_hmi_controller_client_t;

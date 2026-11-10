@@ -10,8 +10,9 @@ the two run as separate processes in WSL.
 - It handles disconnect, reconnect, controller restart (also with a repeated
   session ID), HMI restart and corruption, and it sends no command that changes
   the controller.
-- Evidence: 23 client scenarios, in CTest and in Zephyr; `tools/controller_link_demo.py`
-  passes 10 of 10 end-to-end checks.
+- Evidence: 35 client scenarios, in CTest and in Zephyr; `tools/controller_link_demo.py`
+  passes 10 of 10 end-to-end checks against controller main `721f3cb`. The protocol
+  review's findings were fixed test-first.
 - The operator screens are not connected yet (M21-2b, M21-5).
 
 **Fact (2026-11-10, Phase 21 M21-2):** the HMI runs as a Zephyr application on

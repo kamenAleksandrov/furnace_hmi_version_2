@@ -26,7 +26,9 @@
 #define HELLO_OK 0U
 #define HELLO_VERSION_UNSUPPORTED 1U
 #define REJECT_DUPLICATE_REQUEST 4U
-#define REJECT_QUEUE_FULL 5U
+#define REJECT_NOT_CONNECTED 1U
+#define REJECT_STALE_SESSION 2U
+#define REJECT_MALFORMED 6U
 #define SENT_CAPACITY 64U
 
 typedef struct {
@@ -226,7 +228,7 @@ static void send_hello_ack_of_version(uint8_t minor, uint8_t result)
     (void)fx.controller_port.write(fx.controller_port.context, encoded, len);
 }
 
-static void send_capabilities(uint32_t request_id, uint8_t session)
+static void fill_capabilities(uint32_t request_id, uint8_t session)
 {
     struct furnace_wire_capabilities *c = &fx.out.u.capabilities;
 
@@ -246,6 +248,11 @@ static void send_capabilities(uint32_t request_id, uint8_t session)
     c->status_interval_ms = 200U;
     c->heartbeat_interval_ms = 500U;
     c->link_silence_ms = 3000U;
+}
+
+static void send_capabilities(uint32_t request_id, uint8_t session)
+{
+    fill_capabilities(request_id, session);
     send_out();
 }
 
@@ -287,11 +294,13 @@ static void send_status(uint32_t sequence, int32_t temperature, uint8_t validity
     send_out();
 }
 
-static void send_fault_list(uint32_t status_sequence, uint8_t total, uint8_t first, uint8_t count)
+static void send_fault_list(uint32_t request_id, uint32_t status_sequence, uint8_t total,
+                            uint8_t first, uint8_t count)
 {
     struct furnace_wire_fault_list *l = &fx.out.u.fault_list;
 
     start_out(FURNACE_WIRE_MSG_FAULT_LIST);
+    l->request_id = request_id;
     l->status_sequence = status_sequence;
     l->total = total;
     l->first_index = first;
@@ -352,7 +361,7 @@ static void synchronize(uint8_t session, uint32_t status_sequence)
     send_hello_ack(HELLO_OK, session);
     send_capabilities(0U, session);
     send_status(status_sequence, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, session);
-    send_fault_list(status_sequence, 1U, 0U, 1U);
+    send_fault_list(0U, status_sequence, 1U, 0U, 1U);
     send_snapshot_end(0U, status_sequence, 3U, 5U);
     advance(10U);
 }
@@ -482,7 +491,7 @@ static void reconnect_same_session(void)
     EXPECT(obs()->snapshot_request == FURNACE_HMI_REQUEST_PENDING, "pending");
     EXPECT(obs()->availability == FURNACE_HMI_STATE_AVAILABILITY_STALE, "stale until complete");
     send_status(30U, 1250, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
-    send_fault_list(30U, 0U, 0U, 0U);
+    send_fault_list(1U, 30U, 0U, 0U, 0U);
     send_snapshot_end(1U, 30U, 3U, 5U);
     advance(10U);
     EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "connected");
@@ -507,7 +516,7 @@ static void controller_restart(void)
     EXPECT(obs()->link == FURNACE_HMI_LINK_SYNCHRONIZING, "synchronizing");
     send_capabilities(0U, SESSION_B);
     send_status(1U, 200, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_B);
-    send_fault_list(1U, 0U, 0U, 0U);
+    send_fault_list(0U, 1U, 0U, 0U, 0U);
     send_snapshot_end(0U, 1U, 0U, 0U);
     advance(10U);
     EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "connected to the new session");
@@ -530,7 +539,7 @@ static void restart_with_repeated_session_id(void)
     send_hello_ack(HELLO_OK, SESSION_A);
     send_capabilities(0U, SESSION_A);
     send_status(1U, 205, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
-    send_fault_list(1U, 0U, 0U, 0U);
+    send_fault_list(0U, 1U, 0U, 0U, 0U);
     send_snapshot_end(0U, 1U, 0U, 0U);
     advance(10U);
     EXPECT(obs()->controller_session_changes == 1U, "seen as another controller session");
@@ -542,7 +551,7 @@ static void restart_with_repeated_session_id(void)
     EXPECT(!obs()->capabilities_valid, "capabilities asked for again");
     send_capabilities(obs()->snapshot_request_id - 1U, SESSION_A);
     send_status(2U, 210, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
-    send_fault_list(2U, 0U, 0U, 0U);
+    send_fault_list(obs()->snapshot_request_id, 2U, 0U, 0U, 0U);
     send_snapshot_end(obs()->snapshot_request_id, 2U, 0U, 0U);
     advance(10U);
     EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED && obs()->temperature_decicelsius == 210 &&
@@ -691,18 +700,24 @@ static void duplicate_on_first_request(void)
 
 static void rejected_request(void)
 {
+    size_t mark;
+
     begin("rejected request");
     synchronize(SESSION_A, 10U);
     advance(3200U);
     send_hello_ack(HELLO_OK, SESSION_A);
     advance(10U);
-    send_command_rejected(1U, REJECT_QUEUE_FULL);
+    mark = fx.sent_count;
+    send_command_rejected(1U, REJECT_MALFORMED);
     advance(10U);
     EXPECT(obs()->snapshot_request == FURNACE_HMI_REQUEST_REJECTED &&
-               obs()->snapshot_reject_reason == REJECT_QUEUE_FULL,
+               obs()->snapshot_reject_reason == REJECT_MALFORMED,
            "rejected");
     EXPECT(obs()->client_session_id == FIRST_CLIENT_ID, "same client session");
     EXPECT(obs()->availability == FURNACE_HMI_STATE_AVAILABILITY_STALE, "still stale");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_SNAPSHOT_REQUEST) == 0U, "no retry at once");
+    advance(FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS + 100U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_SNAPSHOT_REQUEST) == 1U, "asked again after the timeout");
     end();
 }
 
@@ -727,8 +742,8 @@ static void fault_list_paged(void)
     send_hello_ack(HELLO_OK, SESSION_A);
     send_capabilities(0U, SESSION_A);
     send_status(10U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
-    send_fault_list(10U, 20U, 0U, 16U);
-    send_fault_list(10U, 20U, 16U, 4U);
+    send_fault_list(0U, 10U, 20U, 0U, 16U);
+    send_fault_list(0U, 10U, 20U, 16U, 4U);
     send_snapshot_end(0U, 10U, 3U, 5U);
     advance(10U);
     EXPECT(obs()->faults_valid && obs()->fault_count == 20U, "20 entries");
@@ -799,9 +814,246 @@ static void clock_wrap(void)
     end();
 }
 
+/* ---- scenarios from the M21-3 protocol review -------------------------------------------- */
+
+/* A periodic STATUS newer than the snapshot arrives before its end: normal (spec: Snapshot). */
+static void periodic_status_within_snapshot(void)
+{
+    begin("periodic status within a snapshot");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_capabilities(0U, SESSION_A);
+    send_status(10U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_status(11U, 1240, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_list(0U, 10U, 1U, 0U, 1U);
+    send_snapshot_end(0U, 10U, 3U, 5U);
+    advance(10U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "connected");
+    EXPECT(obs()->controller_session_changes == 0U && obs()->status_regressions == 0U,
+           "no session change");
+    EXPECT(obs()->status_sequence == 11U && obs()->temperature_decicelsius == 1240,
+           "the newer status kept");
+    end();
+}
+
+/* A refresh while connected whose end is lost: asked again; the list is marked outdated. */
+static void lost_end_while_connected(void)
+{
+    size_t mark;
+
+    begin("lost snapshot end while connected");
+    synchronize(SESSION_A, 10U);
+    send_fault_event(4U);
+    advance(10U);
+    EXPECT(obs()->faults_outdated, "list outdated while refreshed");
+    EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "status still current");
+    mark = fx.sent_count;
+    for (uint32_t i = 0U; i < 16U; i++) {
+        send_status(11U + i, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+        advance(200U);
+    }
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_SNAPSHOT_REQUEST) == 1U, "asked again after the timeout");
+    send_status(30U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_list(obs()->snapshot_request_id, 30U, 2U, 0U, 2U);
+    send_snapshot_end(obs()->snapshot_request_id, 30U, 4U, 5U);
+    advance(10U);
+    EXPECT(!obs()->faults_outdated && obs()->fault_count == 2U, "list refreshed");
+    end();
+}
+
+static void lost_fault_page(void)
+{
+    begin("lost fault list page");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_capabilities(0U, SESSION_A);
+    send_status(10U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_list(0U, 10U, 20U, 16U, 4U); /* page 0 lost */
+    send_snapshot_end(0U, 10U, 3U, 5U);
+    advance(10U);
+    EXPECT(obs()->snapshots_incomplete == 1U, "counted");
+    EXPECT(!obs()->faults_valid && obs()->link == FURNACE_HMI_LINK_SYNCHRONIZING,
+           "not applied, not current");
+    advance(FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS + 100U);
+    EXPECT(obs()->snapshot_request == FURNACE_HMI_REQUEST_PENDING, "asked again");
+    end();
+}
+
+static void missing_only_page(void)
+{
+    begin("missing only fault list page");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_capabilities(0U, SESSION_A);
+    send_status(10U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_snapshot_end(0U, 10U, 3U, 5U);
+    advance(10U);
+    EXPECT(obs()->snapshots_incomplete == 1U && !obs()->faults_valid,
+           "no list is not an empty list");
+    EXPECT(obs()->availability != FURNACE_HMI_STATE_AVAILABILITY_CURRENT, "not current");
+    end();
+}
+
+static void superseded_snapshot(void)
+{
+    uint32_t first;
+
+    begin("superseded snapshot");
+    synchronize(SESSION_A, 10U);
+    send_fault_event(4U);
+    advance(10U);
+    first = obs()->snapshot_request_id;
+    for (uint32_t i = 0U; i < 16U; i++) {
+        send_status(11U + i, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+        advance(200U);
+    }
+    EXPECT(obs()->snapshot_request_id != first, "a newer request");
+    send_fault_list(first, 20U, 3U, 0U, 3U);
+    send_snapshot_end(first, 20U, 4U, 5U);
+    advance(10U);
+    EXPECT(obs()->faults_outdated && obs()->fault_count == 1U, "the superseded end ignored");
+    send_fault_list(obs()->snapshot_request_id, 27U, 2U, 0U, 2U);
+    send_snapshot_end(obs()->snapshot_request_id, 27U, 4U, 5U);
+    advance(10U);
+    EXPECT(!obs()->faults_outdated && obs()->fault_count == 2U, "the newer end applied");
+    end();
+}
+
+static void events_during_first_snapshot(void)
+{
+    size_t mark;
+
+    begin("events during the first snapshot");
+    mark = fx.sent_count;
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_capabilities(0U, SESSION_A);
+    send_status(10U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_event(4U); /* after the snapshot's instant: fault sequence 3 */
+    send_run_event(5U);   /* already in the snapshot */
+    send_fault_list(0U, 10U, 1U, 0U, 1U);
+    send_snapshot_end(0U, 10U, 3U, 5U);
+    advance(10U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "connected");
+    EXPECT(obs()->run_event_sequence == 5U && obs()->event_gaps == 0U, "run event in the snapshot");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_SNAPSHOT_REQUEST) == 1U && obs()->faults_outdated,
+           "the later fault asks for the list again");
+    end();
+}
+
+static void request_id_exhausted(void)
+{
+    size_t mark;
+
+    begin("request ID exhausted");
+    synchronize(SESSION_A, 10U);
+    fx.client.next_request_id = UINT32_MAX;
+    mark = fx.sent_count;
+    send_fault_event(4U);
+    advance(10U);
+    EXPECT(obs()->client_session_id != FIRST_CLIENT_ID, "a new client session");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_HELLO) == 1U, "HELLO with it");
+    EXPECT(fx.last_snapshot_request.envelope.request_id != UINT32_MAX, "2^32-1 never sent");
+    end();
+}
+
+static void absurd_intervals(void)
+{
+    begin("absurd link intervals");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    fill_capabilities(0U, SESSION_A);
+    fx.out.u.capabilities.link_silence_ms = 0U;
+    send_out();
+    fill_capabilities(0U, SESSION_A);
+    fx.out.u.capabilities.link_silence_ms = UINT32_MAX;
+    send_out();
+    send_status(10U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_list(0U, 10U, 0U, 0U, 0U);
+    send_snapshot_end(0U, 10U, 3U, 5U);
+    advance(10U);
+    EXPECT(obs()->capabilities_rejected == 2U, "both refused");
+    EXPECT(!obs()->capabilities_valid, "no capabilities accepted");
+    EXPECT(obs()->availability != FURNACE_HMI_STATE_AVAILABILITY_CURRENT, "never current");
+    end();
+}
+
+static void rejections_send_hello(void)
+{
+    size_t mark;
+
+    begin("NOT_CONNECTED and STALE_SESSION send HELLO");
+    synchronize(SESSION_A, 10U);
+    send_fault_event(4U);
+    advance(10U);
+    mark = fx.sent_count;
+    send_command_rejected(obs()->snapshot_request_id, REJECT_NOT_CONNECTED);
+    advance(10U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_HELLO) == 1U, "HELLO after NOT_CONNECTED");
+    send_fault_event(5U);
+    advance(10U);
+    mark = fx.sent_count;
+    send_command_rejected(obs()->snapshot_request_id, REJECT_STALE_SESSION);
+    advance(10U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_HELLO) == 1U, "HELLO after STALE_SESSION");
+    end();
+}
+
+static void lost_hello_ack(void)
+{
+    begin("lost HELLO_ACK");
+    advance(FURNACE_HMI_CLIENT_HELLO_RETRY_MS + 50U);
+    EXPECT(sent_since(0U, FURNACE_WIRE_MSG_HELLO) == 2U, "HELLO again");
+    synchronize(SESSION_A, 10U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "connected on the second answer");
+    end();
+}
+
+static void duplicate_on_capabilities_request(void)
+{
+    size_t mark;
+
+    begin("duplicate on the capabilities request: a new client session");
+    synchronize(SESSION_A, 10U);
+    send_status(1U, 500, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_B);
+    advance(10U);
+    send_hello_ack(HELLO_OK, SESSION_B);
+    advance(10U);
+    mark = fx.sent_count;
+    send_command_rejected(fx.client.capabilities_request_id, REJECT_DUPLICATE_REQUEST);
+    advance(10U);
+    EXPECT(obs()->client_session_id != FIRST_CLIENT_ID, "new client session");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_HELLO) == 1U, "HELLO with it");
+    end();
+}
+
+static void older_periodic_status_recovers(void)
+{
+    size_t mark;
+
+    begin("older periodic status asks for a snapshot");
+    synchronize(SESSION_A, 10U);
+    send_status(12U, 1300, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    advance(10U);
+    mark = fx.sent_count;
+    send_status(11U, 1250, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    advance(10U);
+    EXPECT(obs()->temperature_decicelsius == 1300, "the older one not shown");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_SNAPSHOT_REQUEST) == 1U, "snapshot asked (spec)");
+    EXPECT(obs()->controller_session_changes == 0U, "no session change while connected");
+    end();
+}
+
 int controller_client_tests_run(void)
 {
     failures = 0;
+    periodic_status_within_snapshot();
+    lost_end_while_connected();
+    lost_fault_page();
+    missing_only_page();
+    superseded_snapshot();
+    events_during_first_snapshot();
+    request_id_exhausted();
+    absurd_intervals();
+    rejections_send_hello();
+    lost_hello_ack();
+    duplicate_on_capabilities_request();
+    older_periodic_status_recovers();
     hello_at_start();
     hello_retry();
     handshake_to_current();

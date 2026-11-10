@@ -50,6 +50,10 @@ static void set_link(furnace_hmi_controller_client_t *c, furnace_hmi_link_state_
 
 /* ---- sending ------------------------------------------------------------------------------ */
 
+/*
+ * The port takes the whole frame or reports a shortfall. The Zephyr UART port
+ * writes byte by byte and always takes everything, so there it never counts.
+ */
 static void send_out(furnace_hmi_controller_client_t *c)
 {
     size_t written;
@@ -83,40 +87,6 @@ static void send_heartbeat(furnace_hmi_controller_client_t *c)
     send_out(c);
 }
 
-static void fill_envelope(furnace_hmi_controller_client_t *c, struct furnace_wire_envelope *env)
-{
-    (void)memcpy(env->session_id, c->observation.session_id, sizeof(env->session_id));
-    env->client_session_id = c->observation.client_session_id;
-    env->request_id = c->next_request_id++;
-}
-
-static void request_capabilities(furnace_hmi_controller_client_t *c)
-{
-    (void)memset(&c->out, 0, sizeof(c->out));
-    c->out.type = FURNACE_WIRE_MSG_CAPABILITIES_REQUEST;
-    fill_envelope(c, &c->out.u.capabilities_request.envelope);
-    send_out(c);
-}
-
-/* A new request supersedes one still pending: only the newer gets SNAPSHOT_END. */
-static void request_snapshot(furnace_hmi_controller_client_t *c)
-{
-    if (!c->observation.identity_known) {
-        return;
-    }
-    (void)memset(&c->out, 0, sizeof(c->out));
-    c->out.type = FURNACE_WIRE_MSG_SNAPSHOT_REQUEST;
-    fill_envelope(c, &c->out.u.snapshot_request.envelope);
-    c->observation.snapshot_request = FURNACE_HMI_REQUEST_PENDING;
-    c->observation.snapshot_request_id = c->out.u.snapshot_request.envelope.request_id;
-    c->observation.snapshot_reject_reason = 0U;
-    saturating_increment(&c->observation.snapshots_requested);
-    c->snapshot_active = true;
-    c->pending_fault_count = 0U;
-    send_out(c);
-    changed(c);
-}
-
 static void new_client_session(furnace_hmi_controller_client_t *c)
 {
     uint32_t id = c->config.new_client_session_id(c->config.id_context);
@@ -127,7 +97,83 @@ static void new_client_session(furnace_hmi_controller_client_t *c)
     }
     c->observation.client_session_id = id;
     c->next_request_id = 1U;
+    c->capabilities_request_id = 0U;
+    c->client_session_confirmed = false;
     changed(c);
+}
+
+/*
+ * The next request ID of this client session. request_id never wraps: at
+ * 2^32-1 the client starts a new client session with HELLO instead (spec).
+ */
+static bool take_request_id(furnace_hmi_controller_client_t *c, uint32_t *id)
+{
+    if (c->next_request_id == UINT32_MAX) {
+        new_client_session(c);
+        send_hello(c);
+        return false;
+    }
+    *id = c->next_request_id++;
+    return true;
+}
+
+static bool fill_envelope(furnace_hmi_controller_client_t *c, struct furnace_wire_envelope *env)
+{
+    if (!take_request_id(c, &env->request_id)) {
+        return false;
+    }
+    (void)memcpy(env->session_id, c->observation.session_id, sizeof(env->session_id));
+    env->client_session_id = c->observation.client_session_id;
+    return true;
+}
+
+static void request_capabilities(furnace_hmi_controller_client_t *c)
+{
+    (void)memset(&c->out, 0, sizeof(c->out));
+    c->out.type = FURNACE_WIRE_MSG_CAPABILITIES_REQUEST;
+    if (!fill_envelope(c, &c->out.u.capabilities_request.envelope)) {
+        return;
+    }
+    c->capabilities_request_id = c->out.u.capabilities_request.envelope.request_id;
+    send_out(c);
+}
+
+/*
+ * Ask for a snapshot. A new request supersedes one still pending: only the
+ * newer gets SNAPSHOT_END. The fault list counts as outdated until it arrives.
+ */
+static void request_snapshot(furnace_hmi_controller_client_t *c)
+{
+    furnace_hmi_controller_observation_t *o = &c->observation;
+
+    if (!o->identity_known) {
+        return;
+    }
+    (void)memset(&c->out, 0, sizeof(c->out));
+    c->out.type = FURNACE_WIRE_MSG_SNAPSHOT_REQUEST;
+    if (!fill_envelope(c, &c->out.u.snapshot_request.envelope)) {
+        return;
+    }
+    o->snapshot_request = FURNACE_HMI_REQUEST_PENDING;
+    o->snapshot_request_id = c->out.u.snapshot_request.envelope.request_id;
+    o->snapshot_reject_reason = 0U;
+    o->faults_outdated = true;
+    saturating_increment(&o->snapshots_requested);
+    c->snapshot_active = true;
+    c->snapshot_requested_ms = c->now_ms;
+    c->pending_fault_pages_seen = false;
+    c->newest_fault_event_seen = 0U;
+    send_out(c);
+    changed(c);
+}
+
+/* Ask for a snapshot unless one is already on its way. */
+static void refresh(furnace_hmi_controller_client_t *c)
+{
+    c->observation.faults_outdated = true;
+    if (c->observation.snapshot_request != FURNACE_HMI_REQUEST_PENDING) {
+        request_snapshot(c);
+    }
 }
 
 /* ---- the controller session -------------------------------------------------------------- */
@@ -139,6 +185,7 @@ static void discard_session_data(furnace_hmi_controller_client_t *c)
     o->capabilities_valid = false;
     o->status_valid = false;
     o->faults_valid = false;
+    o->faults_outdated = false;
     o->fault_count = 0U;
     o->run_event_sequence = 0U;
     o->fault_event_sequence = 0U;
@@ -147,7 +194,8 @@ static void discard_session_data(furnace_hmi_controller_client_t *c)
     }
     c->event_sequences_known = false;
     c->newest_fault_event_seen = 0U;
-    c->pending_fault_count = 0U;
+    c->pending_fault_pages_seen = false;
+    c->reconnect_baseline_active = false;
     changed(c);
 }
 
@@ -155,6 +203,12 @@ static bool is_current_session(const furnace_hmi_controller_client_t *c, const u
 {
     return c->observation.identity_known &&
            memcmp(c->observation.session_id, session, FURNACE_HMI_CONTROLLER_SESSION_ID_SIZE) == 0;
+}
+
+static void begin_synchronizing(furnace_hmi_controller_client_t *c)
+{
+    set_link(c, FURNACE_HMI_LINK_SYNCHRONIZING);
+    c->sync_started_ms = c->now_ms;
 }
 
 /* Another controller session: its predecessor's data goes, and the new one is synchronized. */
@@ -166,10 +220,25 @@ static void adopt_session(furnace_hmi_controller_client_t *c, const uint8_t *ses
     discard_session_data(c);
     (void)memcpy(c->observation.session_id, session, FURNACE_HMI_CONTROLLER_SESSION_ID_SIZE);
     c->observation.identity_known = true;
-    set_link(c, FURNACE_HMI_LINK_SYNCHRONIZING);
-    c->sync_started_ms = c->now_ms;
+    begin_synchronizing(c);
     /* The controller sends CAPABILITIES and a snapshot to a new client or controller session. */
     c->snapshot_active = true;
+    c->newest_fault_event_seen = 0U;
+}
+
+/*
+ * After a reconnect, something older than the status held when the link fell
+ * silent: another controller session that drew the same ID (a restart;
+ * improbable, not impossible). Everything is discarded and asked for again.
+ */
+static void repeated_session_id(furnace_hmi_controller_client_t *c)
+{
+    saturating_increment(&c->observation.status_regressions);
+    saturating_increment(&c->observation.controller_session_changes);
+    discard_session_data(c);
+    begin_synchronizing(c);
+    request_capabilities(c);
+    request_snapshot(c);
 }
 
 static void on_hello_ack(furnace_hmi_controller_client_t *c, const struct furnace_wire_frame *f,
@@ -197,8 +266,7 @@ static void on_hello_ack(furnace_hmi_controller_client_t *c, const struct furnac
         return;
     }
     /* The same controller session: it sends no snapshot to a repeated HELLO, so ask. */
-    set_link(c, FURNACE_HMI_LINK_SYNCHRONIZING);
-    c->sync_started_ms = c->now_ms;
+    begin_synchronizing(c);
     if (!o->capabilities_valid) {
         request_capabilities(c);
     }
@@ -226,6 +294,16 @@ static void identity_changed(furnace_hmi_controller_client_t *c, const uint8_t *
     send_hello(c);
 }
 
+static bool intervals_acceptable(const struct furnace_wire_capabilities *caps)
+{
+    return caps->status_interval_ms > 0U &&
+           caps->status_interval_ms <= FURNACE_HMI_CLIENT_MAX_STATUS_INTERVAL_MS &&
+           caps->heartbeat_interval_ms > 0U &&
+           caps->heartbeat_interval_ms <= FURNACE_HMI_CLIENT_MAX_HEARTBEAT_INTERVAL_MS &&
+           caps->link_silence_ms > caps->status_interval_ms &&
+           caps->link_silence_ms <= FURNACE_HMI_CLIENT_MAX_LINK_SILENCE_MS;
+}
+
 static void on_capabilities(furnace_hmi_controller_client_t *c,
                             const struct furnace_wire_capabilities *caps)
 {
@@ -237,6 +315,14 @@ static void on_capabilities(furnace_hmi_controller_client_t *c,
     }
     if (!is_current_session(c, caps->session_id)) {
         identity_changed(c, caps->session_id);
+    }
+    if (caps->request_id != 0U && caps->request_id == c->capabilities_request_id) {
+        c->client_session_confirmed = true;
+    }
+    if (!intervals_acceptable(caps)) {
+        saturating_increment(&o->capabilities_rejected);
+        changed(c);
+        return;
     }
     (void)memset(o->model_id, 0, sizeof(o->model_id));
     (void)memcpy(o->model_id, caps->model_id, sizeof(caps->model_id));
@@ -293,20 +379,30 @@ static void on_status(furnace_hmi_controller_client_t *c, const struct furnace_w
     }
     if (!is_current_session(c, s->session_id)) {
         identity_changed(c, s->session_id);
+    } else if (c->reconnect_baseline_active && s->status_sequence < c->reconnect_baseline) {
+        repeated_session_id(c);
     } else if (o->status_valid && s->status_sequence <= o->status_sequence) {
-        return; /* older than what is shown; a gap alone is normal (coalesced) */
+        /*
+         * Not newer than what is shown. The snapshot's STATUS may be older than a
+         * periodic one (spec: Snapshot); otherwise an older STATUS asks for a
+         * snapshot (spec: Recovery). A gap alone is normal: status is coalesced.
+         */
+        if (s->status_sequence < o->status_sequence && !c->snapshot_active) {
+            refresh(c);
+        }
+        return;
     }
     copy_status(o, s);
     c->last_status_ms = c->now_ms;
     changed(c);
     if (o->link == FURNACE_HMI_LINK_SILENT) {
         /* Contact again without a HELLO: rebuild from a snapshot (reconnect, step 5). */
-        set_link(c, FURNACE_HMI_LINK_SYNCHRONIZING);
-        c->sync_started_ms = c->now_ms;
-        request_snapshot(c);
+        begin_synchronizing(c);
+        refresh(c);
     }
 }
 
+/* Pages must be contiguous, all of one snapshot, and add up to its total. */
 static void on_fault_list(furnace_hmi_controller_client_t *c,
                           const struct furnace_wire_fault_list *list)
 {
@@ -314,13 +410,25 @@ static void on_fault_list(furnace_hmi_controller_client_t *c,
         return;
     }
     if (list->first_index == 0U) {
+        c->pending_fault_pages_seen = true;
+        c->pending_fault_pages_ok = list->total <= FURNACE_HMI_CONTROLLER_MAX_FAULTS;
+        c->pending_fault_total = list->total;
+        c->pending_fault_sequence = list->status_sequence;
+        c->pending_fault_request_id = list->request_id;
         c->pending_fault_count = 0U;
+    } else if (!c->pending_fault_pages_seen || list->first_index != c->pending_fault_count ||
+               list->total != c->pending_fault_total ||
+               list->status_sequence != c->pending_fault_sequence ||
+               list->request_id != c->pending_fault_request_id) {
+        c->pending_fault_pages_ok = false;
+        return;
     }
     for (uint8_t i = 0U; i < list->entries_count; i++) {
         const struct furnace_wire_fault_entry *e = &list->entries[i];
         furnace_hmi_controller_fault_t *f;
 
         if (c->pending_fault_count >= FURNACE_HMI_CONTROLLER_MAX_FAULTS) {
+            c->pending_fault_pages_ok = false;
             break;
         }
         f = &c->pending_faults[c->pending_fault_count++];
@@ -333,6 +441,15 @@ static void on_fault_list(furnace_hmi_controller_client_t *c,
     }
 }
 
+static bool fault_pages_complete(const furnace_hmi_controller_client_t *c,
+                                 const struct furnace_wire_snapshot_end *end)
+{
+    return c->pending_fault_pages_seen && c->pending_fault_pages_ok &&
+           c->pending_fault_count == c->pending_fault_total &&
+           c->pending_fault_sequence == end->status_sequence &&
+           c->pending_fault_request_id == end->request_id;
+}
+
 static void on_snapshot_end(furnace_hmi_controller_client_t *c,
                             const struct furnace_wire_snapshot_end *end)
 {
@@ -343,19 +460,20 @@ static void on_snapshot_end(furnace_hmi_controller_client_t *c,
     if (!c->snapshot_active || (end->request_id != 0U && !ours)) {
         return; /* superseded, or not expected */
     }
-    if (o->status_valid && end->status_sequence < o->status_sequence) {
-        /*
-         * A snapshot is captured at one instant, never before a STATUS its session
-         * already published: this is another controller session that drew the same
-         * ID (a restart; improbable, not impossible). Its data replaces everything.
-         */
-        saturating_increment(&o->status_regressions);
-        saturating_increment(&o->controller_session_changes);
-        discard_session_data(c);
-        set_link(c, FURNACE_HMI_LINK_SYNCHRONIZING);
-        c->sync_started_ms = c->now_ms;
-        request_capabilities(c);
-        request_snapshot(c);
+    if (ours) {
+        c->client_session_confirmed = true;
+    }
+    if (c->reconnect_baseline_active && end->status_sequence < c->reconnect_baseline) {
+        repeated_session_id(c);
+        return;
+    }
+    if (!fault_pages_complete(c, end)) {
+        /* Not applied; the request timeout asks again. No list is not an empty list. */
+        saturating_increment(&o->snapshots_incomplete);
+        c->snapshot_active = !ours && (o->snapshot_request == FURNACE_HMI_REQUEST_PENDING);
+        c->pending_fault_pages_seen = false;
+        o->faults_outdated = true;
+        changed(c);
         return;
     }
     if (ours) {
@@ -364,16 +482,20 @@ static void on_snapshot_end(furnace_hmi_controller_client_t *c,
     (void)memcpy(o->faults, c->pending_faults, sizeof(o->faults));
     o->fault_count = c->pending_fault_count;
     o->faults_valid = true;
+    o->faults_outdated = false;
     o->run_event_sequence = end->run_event_sequence;
     o->fault_event_sequence = end->fault_sequence;
     c->event_sequences_known = true;
-    c->snapshot_active = false;
+    /* The controller's own snapshot (request 0) does not answer a request of ours still pending. */
+    c->snapshot_active = !ours && (o->snapshot_request == FURNACE_HMI_REQUEST_PENDING);
+    c->pending_fault_pages_seen = false;
+    c->reconnect_baseline_active = false;
     changed(c);
     if (o->capabilities_valid && o->status_valid) {
         set_link(c, FURNACE_HMI_LINK_CONNECTED);
     }
     if (c->newest_fault_event_seen > end->fault_sequence) {
-        request_snapshot(c); /* a fault changed after the snapshot's instant */
+        refresh(c); /* a fault changed after the snapshot's instant */
     }
 }
 
@@ -381,6 +503,7 @@ static void on_event(furnace_hmi_controller_client_t *c, uint32_t sequence, bool
 {
     furnace_hmi_controller_observation_t *o = &c->observation;
     uint32_t *last = fault ? &o->fault_event_sequence : &o->run_event_sequence;
+    bool gap;
 
     if (fault && sequence > c->newest_fault_event_seen) {
         c->newest_fault_event_seen = sequence;
@@ -388,31 +511,37 @@ static void on_event(furnace_hmi_controller_client_t *c, uint32_t sequence, bool
     if (!c->event_sequences_known || sequence <= *last) {
         return; /* before the snapshot's base, or already in it */
     }
-    if (sequence != *last + 1U) {
+    gap = (sequence != *last + 1U);
+    if (gap) {
         saturating_increment(&o->event_gaps);
-        request_snapshot(c);
-    } else if (fault) {
-        request_snapshot(c); /* the fault list is taken from a snapshot, never inferred */
     }
     *last = sequence;
     changed(c);
+    if (gap || fault) {
+        /* The fault list is taken from a snapshot, never inferred from events. */
+        refresh(c);
+    }
 }
 
 static void on_command_rejected(furnace_hmi_controller_client_t *c,
                                 const struct furnace_wire_command_rejected *r)
 {
     furnace_hmi_controller_observation_t *o = &c->observation;
+    const bool snapshot = (o->snapshot_request == FURNACE_HMI_REQUEST_PENDING) &&
+                          (r->request_id == o->snapshot_request_id);
+    const bool capabilities = (r->request_id != 0U) && (r->request_id == c->capabilities_request_id);
 
-    if (o->snapshot_request != FURNACE_HMI_REQUEST_PENDING ||
-        r->request_id != o->snapshot_request_id) {
+    if (!snapshot && !capabilities) {
         return;
     }
-    o->snapshot_request = FURNACE_HMI_REQUEST_REJECTED;
-    o->snapshot_reject_reason = r->reason;
-    c->snapshot_active = false;
+    if (snapshot) {
+        o->snapshot_request = FURNACE_HMI_REQUEST_REJECTED;
+        o->snapshot_reject_reason = r->reason;
+        c->snapshot_active = false;
+    }
     changed(c);
-    if (r->reason == REJECT_DUPLICATE_REQUEST && r->request_id == 1U) {
-        /* The first request of a sequence was a duplicate: this client session ID was used. */
+    if (r->reason == REJECT_DUPLICATE_REQUEST && !c->client_session_confirmed) {
+        /* A duplicate before any answer: the controller knew this client session ID already. */
         new_client_session(c);
         send_hello(c);
     } else if (r->reason == REJECT_NOT_CONNECTED || r->reason == REJECT_STALE_SESSION ||
@@ -467,6 +596,37 @@ static void on_frame(furnace_hmi_controller_client_t *c, const struct furnace_wi
 
 /* ---- time ---------------------------------------------------------------------------------- */
 
+/*
+ * A snapshot or capabilities answer that did not come is asked for again, in
+ * any connected state: a pending request after FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS,
+ * a synchronization without a request (the controller's own snapshot) likewise,
+ * and an outdated fault list whose request was rejected or incomplete.
+ */
+static void on_request_timeout(furnace_hmi_controller_client_t *c)
+{
+    furnace_hmi_controller_observation_t *o = &c->observation;
+    const uint32_t now = c->now_ms;
+    bool again;
+
+    if (o->snapshot_request == FURNACE_HMI_REQUEST_PENDING) {
+        again = elapsed(now, c->snapshot_requested_ms, FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS);
+    } else if (o->link == FURNACE_HMI_LINK_SYNCHRONIZING) {
+        again = elapsed(now, c->sync_started_ms, FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS) &&
+                elapsed(now, c->snapshot_requested_ms, FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS);
+    } else {
+        again = o->faults_outdated &&
+                elapsed(now, c->snapshot_requested_ms, FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS);
+    }
+    if (!again) {
+        return;
+    }
+    c->sync_started_ms = now;
+    if (!o->capabilities_valid) {
+        request_capabilities(c);
+    }
+    request_snapshot(c);
+}
+
 static void on_time(furnace_hmi_controller_client_t *c)
 {
     furnace_hmi_controller_observation_t *o = &c->observation;
@@ -487,24 +647,18 @@ static void on_time(furnace_hmi_controller_client_t *c)
     }
     /*
      * Only a synchronized link falls silent. While synchronizing, kept data is
-     * already shown as stale, and the synchronization timeout asks again.
+     * already shown as stale, and the request timeout asks again.
      */
     if (o->link == FURNACE_HMI_LINK_CONNECTED &&
         elapsed(now, c->last_status_ms, o->link_silence_ms)) {
         set_link(c, FURNACE_HMI_LINK_SILENT);
+        c->reconnect_baseline_active = true;
+        c->reconnect_baseline = o->status_sequence;
         send_hello(c);
         return;
     }
-    if (o->link == FURNACE_HMI_LINK_SYNCHRONIZING &&
-        elapsed(now, c->sync_started_ms, FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS)) {
-        c->sync_started_ms = now;
-        if (!o->capabilities_valid) {
-            request_capabilities(c);
-        }
-        request_snapshot(c);
-    }
-    if (o->capabilities_valid && o->heartbeat_interval_ms > 0U &&
-        elapsed(now, c->last_send_ms, o->heartbeat_interval_ms)) {
+    on_request_timeout(c);
+    if (o->capabilities_valid && elapsed(now, c->last_send_ms, o->heartbeat_interval_ms)) {
         send_heartbeat(c);
     }
 }
