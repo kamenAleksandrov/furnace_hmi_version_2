@@ -995,33 +995,7 @@ static void format_clock_time(char *buffer, size_t capacity, const furnace_hmi_o
                               bool twenty_four_hour);
 
 
-static void format_rate_tenths(char *buffer, size_t capacity, int32_t rate_tenths)
-{
-    const int64_t magnitude = rate_tenths < 0 ? -(int64_t)rate_tenths : rate_tenths;
-    (void)snprintf(buffer, capacity,
-                   ui_string(FURNACE_HMI_UI_STRING_UI_LAB_VALUE_FORMAT_RATE_TENTHS),
-                   rate_tenths < 0 ? "-" : "+", (long)(magnitude / 10),
-                   (long)(magnitude % 10));
-}
 
-static void format_stage_card_summary(
-    char *buffer,
-    size_t capacity,
-    const operator_stage_fixture_t *stage
-)
-{
-    char rate[24];
-    if (stage == NULL) {
-        (void)snprintf(buffer, capacity, "%s", "");
-        return;
-    }
-    if (stage->kind == FURNACE_HMI_UI_STRING_UI_LAB_STAGE_HOLD) {
-        snprintf(rate, sizeof(rate), "%s", ui_string(FURNACE_HMI_UI_STRING_UI_LAB_INHERITED_TARGET));
-    } else { format_rate_tenths(rate, sizeof(rate), stage->delta_c_per_minute); }
-    (void)snprintf(buffer, capacity,
-                   ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_CARD_SUMMARY_FORMAT),
-                   (long)stage->target_c, rate, (long)stage->duration_minutes);
-}
 
 static void remove_scroll(lv_obj_t *object)
 {
@@ -1162,36 +1136,6 @@ static const char *state_text(const furnace_hmi_dashboard_state_t *state)
     return ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_IDLE);
 }
 
-static const char *page_title(furnace_hmi_operator_page_t page)
-{
-    switch (page) {
-    case FURNACE_HMI_OPERATOR_PAGE_HOME:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_HOME_TITLE);
-    case FURNACE_HMI_OPERATOR_PAGE_MANUAL:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_MODE);
-    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_LOADING:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_LOADING_TITLE);
-    case FURNACE_HMI_OPERATOR_PAGE_RUNNING:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUNNING_TITLE);
-    case FURNACE_HMI_OPERATOR_PAGE_PROGRAMS:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_LIBRARY_TITLE);
-    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DETAIL_TITLE);
-    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STAGES_TITLE);
-    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM);
-    case FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_EDITOR_TITLE);
-    case FURNACE_HMI_OPERATOR_PAGE_DEVICE:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_TITLE);
-    case FURNACE_HMI_OPERATOR_PAGE_SETTINGS:
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_TITLE);
-    case FURNACE_HMI_OPERATOR_PAGE_COUNT:
-        break;
-    }
-    return "";
-}
 
 static void format_observation_value(
     char *buffer,
@@ -3585,33 +3529,44 @@ static bool create_furnace_visual(furnace_hmi_operator_screens_t *explorer, lv_o
     return true;
 }
 
-static int32_t manual_current_temperature_c(const furnace_hmi_operator_screens_t *explorer)
+/* The measured temperature, only when the controller reports it as current: never an assumed one. */
+static bool manual_current_temperature_c(const furnace_hmi_operator_screens_t *explorer, int32_t *value)
 {
     if (explorer != NULL && explorer->state != NULL &&
         explorer->state->current_temperature_c.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT) {
-        return explorer->state->current_temperature_c.value;
+        *value = explorer->state->current_temperature_c.value;
+        return true;
     }
-    return 25;
+    return false;
 }
 
-static uint32_t manual_cooling_minutes(const furnace_hmi_operator_screens_t *explorer)
+/* The cooling estimate; false without a current measured temperature. */
+static bool manual_cooling_minutes(const furnace_hmi_operator_screens_t *explorer, uint32_t *minutes)
 {
-    const int32_t current = manual_current_temperature_c(explorer);
+    int32_t current;
+    if (!manual_current_temperature_c(explorer, &current)) {
+        return false;
+    }
     if (current <= 30) {
-        return 0U;
+        *minutes = 0U;
+        return true;
     }
     const int32_t rate_tenths = current * 10 / 180 > 4 ? current * 10 / 180 : 4;
-    return (uint32_t)(((current - 30) * 10 + rate_tenths - 1) / rate_tenths);
+    *minutes = (uint32_t)(((current - 30) * 10 + rate_tenths - 1) / rate_tenths);
+    return true;
 }
 
-static uint32_t manual_prediction_minutes(const furnace_hmi_operator_screens_t *explorer)
+/* Minutes to the target at the chosen rate; false without a current measured temperature. */
+static bool manual_prediction_minutes(const furnace_hmi_operator_screens_t *explorer, uint32_t *minutes)
 {
-    const int32_t delta = explorer->manual_target_c - manual_current_temperature_c(explorer);
-    const int32_t rate = explorer->manual_rate_tenths_c_per_minute;
-    if (delta <= 0 || rate <= 0) {
-        return 0U;
+    int32_t current;
+    if (!manual_current_temperature_c(explorer, &current)) {
+        return false;
     }
-    return (uint32_t)((delta * 10 + rate - 1) / rate);
+    const int32_t delta = explorer->manual_target_c - current;
+    const int32_t rate = explorer->manual_rate_tenths_c_per_minute;
+    *minutes = (delta <= 0 || rate <= 0) ? 0U : (uint32_t)((delta * 10 + rate - 1) / rate);
+    return true;
 }
 
 static void format_running_time_value(char *text, size_t capacity,
@@ -3627,10 +3582,13 @@ static void prepare_manual_prediction(furnace_hmi_operator_screens_t *explorer)
     furnace_hmi_dashboard_state_t *preview = &explorer->preview_graph_state;
     furnace_hmi_dashboard_state_initialize(preview);
     preview->availability = FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
-    const int32_t current = manual_current_temperature_c(explorer);
+    int32_t current = 0;
+    uint32_t minutes = 0U;
     const bool cooling = explorer->manual_cooling;
     const bool active = explorer->manual_running || cooling;
-    const uint32_t minutes = cooling ? manual_cooling_minutes(explorer) : manual_prediction_minutes(explorer);
+    /* No forecast without a current measured temperature. */
+    const bool forecast = manual_current_temperature_c(explorer, &current) &&
+        (cooling ? manual_cooling_minutes(explorer, &minutes) : manual_prediction_minutes(explorer, &minutes));
     const int32_t goal = cooling ? 30 : explorer->manual_target_c;
     const furnace_hmi_dashboard_state_t *state = explorer->state;
     uint32_t now = 0U;
@@ -3662,6 +3620,17 @@ static void prepare_manual_prediction(furnace_hmi_operator_screens_t *explorer)
             margin = 300U;
         }
         end = reach + margin < 600U ? 600U : reach + margin;
+    }
+    if (!forecast) {
+        /* The measured readings only: no "now" point and no forecast line. */
+        explorer->manual_marker_index = -1;
+        preview->graph_sample_count = count;
+        explorer->trajectory_uses_program_preview = true;
+        explorer->trajectory_domain_minimum_temperature_c = 0;
+        explorer->trajectory_domain_maximum_temperature_c = OPERATOR_MAX_PROGRAM_TEMPERATURE_C;
+        explorer->trajectory_domain_maximum_seconds = end;
+        explorer->trajectory_domain_initialized = true;
+        return;
     }
     explorer->manual_marker_index = (int32_t)count;
     furnace_hmi_graph_sample_t *sample = &preview->graph_samples[count++];
@@ -3729,9 +3698,13 @@ static void refresh_manual_readings(furnace_hmi_operator_screens_t *explorer)
     lv_obj_clean(strip);
     const bool running = explorer->manual_running;
     const bool paused = explorer->manual_paused;
-    const uint32_t minutes = manual_prediction_minutes(explorer);
+    uint32_t minutes = 0U;
+    const bool forecast = manual_prediction_minutes(explorer, &minutes);
     char to_target[24];
-    if (minutes == 0U) {
+    if (!forecast) {
+        copy_text_bounded(to_target, sizeof(to_target), ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_UNKNOWN));
+    }
+    else if (minutes == 0U) {
         copy_text_bounded(to_target, sizeof(to_target), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_AT_TARGET));
     }
     else {
@@ -3739,13 +3712,16 @@ static void refresh_manual_readings(furnace_hmi_operator_screens_t *explorer)
                        (long)(minutes / 60U), (long)(minutes % 60U));
     }
     const bool cooling = explorer->manual_cooling;
-    const uint32_t cooling_minutes = cooling ? manual_cooling_minutes(explorer) : 0U;
+    uint32_t cooling_minutes = 0U;
+    const bool cooling_known = cooling && manual_cooling_minutes(explorer, &cooling_minutes);
+    /* An unknown estimate is never "complete". */
+    const bool cooling_done = cooling_known && cooling_minutes == 0U;
     const furnace_hmi_ui_string_id_t state_id = cooling
-        ? (cooling_minutes > 0U ? FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_COOLING : FURNACE_HMI_UI_STRING_UI_LAB_COOLING_COMPLETE)
+        ? (cooling_done ? FURNACE_HMI_UI_STRING_UI_LAB_COOLING_COMPLETE : FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_COOLING)
         : running
         ? (paused ? FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_PAUSED
-                  : minutes > 0U ? FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_HEATING
-                                 : FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_HOLDING)
+                  : (!forecast || minutes > 0U) ? FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_HEATING
+                                                : FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_HOLDING)
         : FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_READY;
     lv_obj_t *state_label = create_label(strip, ui_string(state_id), &furnace_hmi_font_semibold_15,
                                          cooling ? operator_color(FURNACE_HMI_COLOR_BLUE_TEXT)
@@ -3765,7 +3741,8 @@ static void refresh_manual_readings(furnace_hmi_operator_screens_t *explorer)
         format_running_time_value(value, sizeof(value), &cooled);
         add_manual_reading(strip, FURNACE_HMI_UI_STRING_UI_LAB_READING_COOLING, value);
         const furnace_hmi_i32_value_t remaining = {
-            (int32_t)cooling_minutes * 60, FURNACE_HMI_VALUE_PROVENANCE_ESTIMATED, FURNACE_HMI_VALUE_VALIDITY_CURRENT };
+            (int32_t)cooling_minutes * 60, FURNACE_HMI_VALUE_PROVENANCE_ESTIMATED,
+            cooling_known ? FURNACE_HMI_VALUE_VALIDITY_CURRENT : FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE };
         format_running_time_value(value, sizeof(value), &remaining);
         add_manual_reading(strip, FURNACE_HMI_UI_STRING_UI_LAB_READING_EST_REMAINING, value);
         format_observation_value(value, sizeof(value), &state->current_temperature_c,
@@ -4332,6 +4309,13 @@ static bool make_program_card(
 
 static bool build_programs(furnace_hmi_operator_screens_t *explorer)
 {
+    if (!explorer->library_known) {
+        /* The library is the controller's: not shown as empty, and nothing to edit. */
+        lv_obj_set_flex_flow(explorer->content, LV_FLEX_FLOW_COLUMN);
+        return create_label(explorer->content,
+                            ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNAVAILABLE),
+                            &furnace_hmi_font_regular_16, OPERATOR_MUTED) != NULL;
+    }
     const size_t program_count = listed_program_count(explorer);
     const size_t per_page = 6U;
     const size_t page_count = program_count == 0 ? 1 : (program_count + per_page - 1U) / per_page;
@@ -5954,56 +5938,8 @@ static operator_tone_t status_tone(operator_status_t status)
         : status == OPERATOR_STATUS_OK ? OPERATOR_TONE_OK : OPERATOR_TONE_NEUTRAL;
 }
 
-static bool device_task_needs_attention(
-    const furnace_hmi_operator_device_task_t *task
-)
-{
-    return task != NULL &&
-        (task->task_state == FURNACE_HMI_OPERATOR_DEVICE_TASK_DUE ||
-         task->task_state == FURNACE_HMI_OPERATOR_DEVICE_TASK_DUE_SOON ||
-         task->task_state == FURNACE_HMI_OPERATOR_DEVICE_TASK_UNKNOWN);
-}
 
-static bool device_component_visible(
-    const furnace_hmi_operator_device_component_t *component,
-    uint8_t filter
-)
-{
-    if (component == NULL) {
-        return false;
-    }
-    if (filter != OPERATOR_DEVICE_FILTER_ATTENTION) {
-        return true;
-    }
-    for (uint8_t index = 0U; index < component->task_count; ++index) {
-        if (device_task_needs_attention(&component->tasks[index])) {
-            return true;
-        }
-    }
-    return false;
-}
 
-static const furnace_hmi_operator_device_task_t *device_component_summary(
-    const furnace_hmi_operator_device_component_t *component
-)
-{
-    static const uint8_t rank[] = { 4U, 2U, 0U, 3U, 1U };
-    const furnace_hmi_operator_device_task_t *summary = NULL;
-    uint8_t best = UINT8_MAX;
-    if (component == NULL) {
-        return NULL;
-    }
-    for (uint8_t index = 0U; index < component->task_count; ++index) {
-        const furnace_hmi_operator_device_task_t *task = &component->tasks[index];
-        const uint8_t task_rank = rank[task->task_state <=
-            FURNACE_HMI_OPERATOR_DEVICE_TASK_UNKNOWN ? task->task_state : 4U];
-        if (summary == NULL || task_rank < best) {
-            summary = task;
-            best = task_rank;
-        }
-    }
-    return summary;
-}
 
 static bool device_add_category_button(
     furnace_hmi_operator_screens_t *explorer,
@@ -6093,100 +6029,7 @@ static bool device_add_toolbar(
     return true;
 }
 
-static bool device_add_row(
-    furnace_hmi_operator_screens_t *explorer,
-    lv_obj_t *parent,
-    const char *title,
-    const char *detail,
-    const char *value,
-    operator_status_t status,
-    operator_action_t action,
-    int action_value
-)
-{
-    lv_obj_t *row = create_panel(parent, true);
-    if (row == NULL) {
-        return false;
-    }
-    const lv_color_t value_color = status_color(status);
-    const bool has_icon = status != OPERATOR_STATUS_NEUTRAL;
-    operator_theme_edge(row, status_tone(status), OPERATOR_EDGE_LEFT);
-    lv_obj_set_width(row, lv_pct(100));
-    lv_obj_set_height(row, 48);
-    lv_obj_set_style_pad_hor(row, 10, LV_PART_MAIN);
-    lv_obj_set_style_pad_ver(row, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_column(row, 8, LV_PART_MAIN);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    lv_obj_t *left = create_transparent_container(row);
-    if (left == NULL) {
-        return false;
-    }
-    lv_obj_set_width(left, 0);
-    lv_obj_set_flex_grow(left, 1);
-    lv_obj_set_height(left, 40);
-    lv_obj_set_style_pad_row(left, 2, LV_PART_MAIN);
-    lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(left, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_t *title_label = create_label(left, title, &furnace_hmi_font_regular_14, OPERATOR_TEXT);
-    lv_obj_t *detail_label = detail == NULL ? NULL :
-        create_label(left, detail, &furnace_hmi_font_regular_13, OPERATOR_MUTED);
-    if (title_label == NULL || (detail != NULL && detail_label == NULL)) {
-        return false;
-    }
-    lv_obj_set_width(title_label, lv_pct(100));
-    lv_label_set_long_mode(title_label, LV_LABEL_LONG_DOT);
-    if (detail_label != NULL) {
-        lv_obj_set_width(detail_label, lv_pct(100));
-        lv_label_set_long_mode(detail_label, LV_LABEL_LONG_DOT);
-    }
-    lv_obj_t *tag_box = create_transparent_container(row);
-    lv_obj_t *tag_icon = NULL;
-    if (tag_box != NULL && has_icon) {
-        tag_icon = lv_image_create(tag_box);
-        if (tag_icon != NULL) {
-            lv_image_set_src(tag_icon, furnace_hmi_icon_image(
-                status == OPERATOR_STATUS_OK ? FURNACE_HMI_ICON_CHECK_CIRCLE : FURNACE_HMI_ICON_WARNING, 16));
-            lv_obj_set_style_image_recolor(tag_icon, value_color, LV_PART_MAIN);
-            lv_obj_set_style_image_recolor_opa(tag_icon, LV_OPA_COVER, LV_PART_MAIN);
-        }
-    }
-    lv_obj_t *tag = tag_box == NULL ? NULL
-        : create_label(tag_box, value, &furnace_hmi_font_regular_13, value_color);
-    if (tag == NULL || (has_icon && tag_icon == NULL) ||
-        explorer->page_action_count >= sizeof(explorer->page_actions) /
-            sizeof(explorer->page_actions[0])) {
-        return false;
-    }
-    lv_obj_set_size(tag_box, 156, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(tag_box, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(tag_box, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(tag_box, 6, LV_PART_MAIN);
-    lv_obj_set_style_max_width(tag, tag_icon == NULL ? 156 : 134, LV_PART_MAIN);
-    lv_label_set_long_mode(tag, LV_LABEL_LONG_DOT);
-    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_USER_1);
-    furnace_hmi_operator_action_slot_t *slot =
-        &explorer->page_actions[explorer->page_action_count++];
-    slot->explorer = explorer;
-    slot->action = (int)action;
-    slot->value = action_value;
-    lv_obj_add_event_cb(row, action_callback, LV_EVENT_CLICKED, slot);
-    return true;
-}
-
-static lv_obj_t *device_create_list(lv_obj_t *parent)
-{
-    lv_obj_t *list = create_transparent_container(parent);
-    if (list == NULL) {
-        return NULL;
-    }
-    lv_obj_set_width(list, lv_pct(100));
-    lv_obj_set_height(list, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(list, 6, LV_PART_MAIN);
-    return list;
-}
 
 static bool device_add_empty(lv_obj_t *parent, const char *text)
 {
@@ -6256,22 +6099,6 @@ static bool device_add_footer(
                         OPERATOR_EDGE_TOP) != NULL;
 }
 
-static uint16_t device_count_components(
-    const furnace_hmi_operator_screens_t *explorer
-)
-{
-    uint16_t count = 0U;
-    if (explorer == NULL) {
-        return 0U;
-    }
-    for (uint8_t index = 0U; index < explorer->device_catalogue.component_count; ++index) {
-        if (device_component_visible(&explorer->device_catalogue.components[index],
-                                     explorer->device_filter)) {
-            ++count;
-        }
-    }
-    return count;
-}
 
 static size_t device_collect_notices(
     const furnace_hmi_operator_screens_t *explorer,
@@ -6414,6 +6241,9 @@ static furnace_hmi_operator_log_event_t log_event(int32_t minute, uint8_t type)
 /* A session event on top of the log (web logEvent); the oldest drops off when full. */
 static void log_add(furnace_hmi_operator_screens_t *explorer, const furnace_hmi_operator_log_event_t *event)
 {
+    if (!explorer->log_known) {
+        return; /* the log is the controller's: the screens never write history of their own */
+    }
     const size_t kept = explorer->log_count < FURNACE_HMI_OPERATOR_LOG_CAPACITY
         ? explorer->log_count : FURNACE_HMI_OPERATOR_LOG_CAPACITY - 1U;
     memmove(&explorer->log_events[1], &explorer->log_events[0], kept * sizeof(explorer->log_events[0]));
@@ -6707,97 +6537,6 @@ static bool device_build_log(
                         OPERATOR_ACTION_DEVICE_PREVIOUS, OPERATOR_ACTION_DEVICE_NEXT, OPERATOR_EDGE_TOP) != NULL;
 }
 
-static bool device_build_components(
-    furnace_hmi_operator_screens_t *explorer,
-    lv_obj_t *body
-)
-{
-    if (explorer->device_component_selected &&
-        explorer->device_selected_component < explorer->device_catalogue.component_count) {
-        const furnace_hmi_operator_device_component_t *part =
-            &explorer->device_catalogue.components[explorer->device_selected_component];
-        if (!device_add_toolbar(explorer, body, part->name, true, true, 0U)) {
-            return false;
-        }
-        lv_obj_t *list = device_create_list(body);
-        if (list == NULL) {
-            return false;
-        }
-        const uint16_t task_count = part->task_count;
-        const uint16_t first = (uint16_t)explorer->device_page * OPERATOR_DEVICE_PAGE_SIZE;
-        const uint16_t last = first + OPERATOR_DEVICE_PAGE_SIZE < task_count
-            ? first + OPERATOR_DEVICE_PAGE_SIZE : task_count;
-        if (task_count == 0U &&
-            !device_add_empty(list, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_NO_TASKS))) {
-            return false;
-        }
-        for (uint16_t index = first; index < last; ++index) {
-            const furnace_hmi_operator_device_task_t *task = &part->tasks[index];
-            char detail[256];
-            (void)snprintf(
-                detail, sizeof(detail),
-                ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_ROW_DETAIL_FORMAT),
-                task->basis, task->interval);
-            if (!device_add_row(
-                    explorer, list, task->name, detail, task->remaining,
-                    device_task_status(task->task_state), OPERATOR_ACTION_DEVICE_TASK,
-                    ((int)explorer->device_selected_component << 8) | (int)index)) {
-                return false;
-            }
-        }
-        return device_add_footer(explorer, body, task_count, OPERATOR_DEVICE_PAGE_SIZE);
-    }
-
-    if (!device_add_toolbar(
-            explorer, body, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_COMPONENTS),
-            false, false, 2U)) {
-        return false;
-    }
-    const uint16_t count = device_count_components(explorer);
-    lv_obj_t *list = device_create_list(body);
-    if (list == NULL) {
-        return false;
-    }
-    uint16_t visible = 0U;
-    const uint16_t first = (uint16_t)explorer->device_page * OPERATOR_DEVICE_PAGE_SIZE;
-    for (uint8_t index = 0U; index < explorer->device_catalogue.component_count; ++index) {
-        const furnace_hmi_operator_device_component_t *part =
-            &explorer->device_catalogue.components[index];
-        if (!device_component_visible(part, explorer->device_filter)) {
-            continue;
-        }
-        if (visible >= first && visible < first + OPERATOR_DEVICE_PAGE_SIZE) {
-            const furnace_hmi_operator_device_task_t *summary = device_component_summary(part);
-            char detail[256];
-            const char *value = summary == NULL
-                ? ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_UNKNOWN)
-                : device_task_state_text(summary->task_state);
-            (void)snprintf(
-                detail, sizeof(detail),
-                ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_ROW_DETAIL_FORMAT),
-                part->usage,
-                summary == NULL
-                    ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_NO_TASKS)
-                    : summary->name);
-            if (!device_add_row(
-                    explorer, list, part->name, detail, value,
-                    summary == NULL ? OPERATOR_STATUS_NEUTRAL :
-                        device_task_status(summary->task_state),
-                    OPERATOR_ACTION_DEVICE_COMPONENT, index)) {
-                return false;
-            }
-        }
-        ++visible;
-    }
-    if (count == 0U &&
-        !device_add_empty(
-            list, explorer->device_catalogue.component_count == 0U
-                ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_NO_COMPONENTS)
-                : ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_NO_MATCH))) {
-        return false;
-    }
-    return device_add_footer(explorer, body, count, OPERATOR_DEVICE_PAGE_SIZE);
-}
 
 /* Status tag and edge of a Device card: warning icon for due and fault,
  * check for up to date. */
@@ -7204,8 +6943,10 @@ static bool device_build(
                      &furnace_hmi_font_regular_14, OPERATOR_MUTED) == NULL) {
         return false;
     }
-    if (explorer->state != NULL &&
-        explorer->state->availability == FURNACE_HMI_STATE_AVAILABILITY_UNAVAILABLE) {
+    /* Without the controller's catalogue and log there is nothing to verify: no assumed records. */
+    if ((explorer->state != NULL &&
+         explorer->state->availability == FURNACE_HMI_STATE_AVAILABILITY_UNAVAILABLE) ||
+        !explorer->device_catalogue_known || !explorer->log_known) {
         return device_build_unavailable(explorer, body);
     }
     switch (explorer->device_tab) {
@@ -8772,6 +8513,9 @@ static bool update_header(furnace_hmi_operator_screens_t *explorer)
 static bool run_was_stopped(const furnace_hmi_operator_screens_t *explorer)
 {
     const furnace_hmi_dashboard_state_t *state = explorer->state;
+    if (state != NULL && state->run_stopped && state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM) {
+        return true; /* reported by the controller */
+    }
     return explorer->run_stopped && state != NULL && state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM &&
         state->program_id == explorer->stopped_program_id;
 }
@@ -8972,6 +8716,36 @@ static void begin_program_editor(
     explorer->program_stage_page = 0U;
 }
 
+/* Actions that would change controller state: answered only by a simulation (see the content). */
+static bool action_needs_controller(operator_action_t action)
+{
+    switch (action) {
+    case OPERATOR_ACTION_RUNNING:
+    case OPERATOR_ACTION_START_AGAIN:
+    case OPERATOR_ACTION_PAUSE_PREVIEW:
+    case OPERATOR_ACTION_RESUME_PREVIEW:
+    case OPERATOR_ACTION_STOP_PREVIEW:
+    case OPERATOR_ACTION_ACKNOWLEDGE_PREVIEW:
+    case OPERATOR_ACTION_DELETE_REQUESTED:
+    case OPERATOR_ACTION_CONFIRM_SAVE_ALL:
+    case OPERATOR_ACTION_SETTINGS_CLOCK_SET:
+    case OPERATOR_ACTION_SETTINGS_RESET_CONFIRM:
+    case OPERATOR_ACTION_SETTINGS_DELETE_CONFIRM:
+    case OPERATOR_ACTION_SETTINGS_RESTART_DISPLAY_CONFIRM:
+    case OPERATOR_ACTION_SETTINGS_ASSESS_RESTART:
+    case OPERATOR_ACTION_SETTINGS_RESTART_CONFIRM:
+    case OPERATOR_ACTION_DEVICE_MAINTENANCE_DONE:
+    case OPERATOR_ACTION_MANUAL_START:
+    case OPERATOR_ACTION_MANUAL_STOP:
+    case OPERATOR_ACTION_MANUAL_PAUSE:
+    case OPERATOR_ACTION_MANUAL_NEW:
+    case OPERATOR_ACTION_TOGGLE_LIGHT:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static void apply_action(
     furnace_hmi_operator_screens_t *explorer,
     operator_action_t action,
@@ -8979,6 +8753,14 @@ static void apply_action(
 )
 {
     if (explorer == NULL) {
+        return;
+    }
+    if (!explorer->simulated_responses && action_needs_controller(action)) {
+        /* Requirement 7 of M21-2b: no controller command yet, and no simulated outcome either. */
+        clear_modal(explorer);
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ACTION_NOT_CONNECTED_TITLE),
+                          ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ACTION_NOT_CONNECTED_DETAIL),
+                          OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
         return;
     }
     switch (action) {
@@ -9526,7 +9308,7 @@ static void apply_action(
             OPERATOR_KEYBOARD_TARGET_PROGRAM_NAME, 0U);
         break;
     case OPERATOR_ACTION_SHOW_STAGE_RENAME:
-        if (value >= 0 && value < FURNACE_HMI_OPERATOR_MAX_STAGES) {
+        if (value >= 0 && value < (int)FURNACE_HMI_OPERATOR_MAX_STAGES) {
             (void)keyboard_open_text(
                 explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_STAGE_NAME),
                 stage_name_text(explorer, (size_t)value),
@@ -9641,6 +9423,7 @@ static void apply_action(
             break;
         }
         /* Legacy stage-editor entry remains bounded for existing smoke paths. */
+        /* fall through */
     case OPERATOR_ACTION_NEW_DRAFT:
         if (action == OPERATOR_ACTION_NEW_DRAFT) {
             begin_program_editor(explorer, true);
@@ -9660,14 +9443,29 @@ static void apply_action(
                                                     FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR);
         break;
     case OPERATOR_ACTION_RETURN_HOME:
+        /*
+         * Navigation never ends the controller's final cooling (owner, Phase 21
+         * M21-2b; controller RUN-17, API-12): while it cools, Home is shown and
+         * nothing is sent. A run is closed only after its cooling.
+         */
+        if (explorer->state->run_phase == FURNACE_HMI_RUN_PHASE_COOLING) {
+            clear_modal(explorer);
+            explorer->page = FURNACE_HMI_OPERATOR_PAGE_HOME;
+            explorer->trajectory_domain_initialized = false;
+            update_nav_selection(explorer);
+            (void)rebuild_page(explorer);
+            break;
+        }
         /* A completed or stopped run is closed by the controller; Home follows its report. */
-        if (explorer->state->run_state == FURNACE_HMI_RUN_STATE_COMPLETE || run_was_stopped(explorer)) {
+        if (explorer->simulated_responses &&
+            (explorer->state->run_state == FURNACE_HMI_RUN_STATE_COMPLETE || run_was_stopped(explorer))) {
             explorer->run_stopped = false;
             post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN);
             break;
         }
-        /* Only a run the controller has ended (fault) may be left this way. */
-        if (explorer->state->run_state == FURNACE_HMI_RUN_STATE_FAULT) {
+        /* Only a run the controller has ended (fault, or completed without a simulation) is left this way. */
+        if (explorer->state->run_state == FURNACE_HMI_RUN_STATE_FAULT ||
+            explorer->state->run_state == FURNACE_HMI_RUN_STATE_COMPLETE || run_was_stopped(explorer)) {
             clear_modal(explorer);
             explorer->page = FURNACE_HMI_OPERATOR_PAGE_HOME;
             explorer->trajectory_domain_initialized = false;
@@ -9954,6 +9752,7 @@ bool furnace_hmi_operator_screens_create(
     explorer->log_known = content->log_known;
     explorer->limits_known = content->limits_known;
     explorer->device_catalogue_known = content->device_catalogue_known;
+    explorer->simulated_responses = content->simulated_responses;
     if (content->device_catalogue_known) {
         explorer->device_catalogue = content->device_catalogue;
     }

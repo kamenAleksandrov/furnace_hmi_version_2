@@ -8,6 +8,7 @@
 
 #include <furnace_hmi/availability_presentation_checks.h>
 #include <furnace_hmi/development_marker.h>
+#include <furnace_hmi/operator_content_checks.h>
 #include <furnace_hmi/foundation.h>
 #include <furnace_hmi/state_availability_view.h>
 #include <furnace_hmi/ui_strings.h>
@@ -215,14 +216,18 @@ int main(int argc, char **argv)
     const bool input_smoke_test = argc == 2 && strcmp(argv[1], "--smoke-test") == 0;
     const bool presentation_smoke_test =
         argc == 2 && strcmp(argv[1], "--presentation-smoke-test") == 0;
+    const bool operator_content_smoke_test =
+        argc == 2 && strcmp(argv[1], "--operator-content-smoke-test") == 0;
     input_diagnostic_view_t diagnostic_view = {0};
     furnace_hmi_state_availability_view_state_t initial_state = {0};
     furnace_hmi_state_availability_view_t availability_view = {0};
 
-    if (argc > 2 || (argc == 2 && !input_smoke_test && !presentation_smoke_test)) {
+    if (argc > 2 ||
+        (argc == 2 && !input_smoke_test && !presentation_smoke_test && !operator_content_smoke_test)) {
         (void)fprintf(
             stderr,
-            "Usage: furnace_hmi_desktop [--smoke-test|--presentation-smoke-test]\n"
+            "Usage: furnace_hmi_desktop "
+            "[--smoke-test|--presentation-smoke-test|--operator-content-smoke-test]\n"
         );
         return 64;
     }
@@ -250,6 +255,15 @@ int main(int argc, char **argv)
     if (input_smoke_test) {
         create_input_diagnostic_view(&diagnostic_view);
         return run_input_smoke_test(display, &diagnostic_view);
+    }
+    if (operator_content_smoke_test) {
+        const char *failure = NULL;
+        const int result = furnace_hmi_operator_content_check(display, &failure);
+
+        if (result != 0) {
+            (void)fprintf(stderr, "%s\n", failure);
+        }
+        return result;
     }
     if (presentation_smoke_test) {
         const char *failure = NULL;

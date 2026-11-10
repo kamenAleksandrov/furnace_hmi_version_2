@@ -140,6 +140,12 @@ typedef struct {
     furnace_hmi_run_state_t run_state;
     furnace_hmi_run_phase_t run_phase;
     furnace_hmi_fault_kind_t fault_kind;
+    /**
+     * The controller reports the run as stopped by the operator (run_state
+     * STOPPED); it then cools. False when unknown. The UI lab's simulation
+     * leaves it false and tracks its own Stop.
+     */
+    bool run_stopped;
 
     uint32_t program_id;
     uint32_t program_revision;

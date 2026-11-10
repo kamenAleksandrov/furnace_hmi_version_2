@@ -115,6 +115,7 @@ set(FURNACE_HMI_CLIENT_TESTS_DIR "${FURNACE_HMI_REPOSITORY_ROOT}/tests/client")
 add_executable(furnace_hmi_controller_client_tests
   "${FURNACE_HMI_CLIENT_TESTS_DIR}/host_main.c"
   "${FURNACE_HMI_CLIENT_TESTS_DIR}/controller_client_tests.c"
+  "${FURNACE_HMI_CLIENT_TESTS_DIR}/controller_dashboard_tests.c"
 )
 target_link_libraries(furnace_hmi_controller_client_tests PRIVATE furnace_hmi::client)
 if(MSVC)

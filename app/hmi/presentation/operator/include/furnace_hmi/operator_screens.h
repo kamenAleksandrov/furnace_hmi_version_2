@@ -230,6 +230,15 @@ typedef struct {
     int32_t default_duration_minutes;
     bool device_catalogue_known;
     furnace_hmi_operator_device_catalogue_t device_catalogue;
+    /**
+     * The host answers controller actions itself (the UI lab's simulation).
+     * When false, an action that would change controller state (starting,
+     * pausing or stopping a run, Manual, the light, saving or deleting
+     * programs, maintenance, acknowledgements, the clock, resets, restarts)
+     * sends nothing and shows that it is not connected yet: those actions
+     * belong to later integration milestones (Phase 21 M21-5, M21-7).
+     */
+    bool simulated_responses;
 } furnace_hmi_operator_content_t;
 
 /** Curing minutes of a program: the sum of its stages. */
@@ -495,6 +504,7 @@ struct furnace_hmi_operator_screens {
     bool log_known;
     bool limits_known;
     bool device_catalogue_known;
+    bool simulated_responses;
     uint8_t device_tab;
     uint8_t device_filter;
     uint8_t device_page;

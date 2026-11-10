@@ -353,6 +353,15 @@ static void copy_status(furnace_hmi_controller_observation_t *o, const struct fu
     o->program_revision = s->run_status.program_revision;
     o->stage_index = s->run_status.stage_index;
     o->stage_count = s->run_status.stage_count;
+    o->stage_kind = s->run_status.stage_kind;
+    (void)memset(o->program_name, 0, sizeof(o->program_name));
+    (void)memcpy(o->program_name, s->run_status.program_name,
+                 sizeof(o->program_name) - 1U < sizeof(s->run_status.program_name)
+                     ? sizeof(o->program_name) - 1U
+                     : sizeof(s->run_status.program_name));
+    o->run_elapsed_s = s->run_status.run_elapsed_s;
+    o->cooling = s->run_status.cooling;
+    o->cooling_s = s->run_status.cooling_s;
     o->setpoint_valid = s->run_status.setpoint_valid;
     o->setpoint_decicelsius = s->run_status.setpoint;
     o->heating_requested = s->run_status.heating_requested;
@@ -364,6 +373,8 @@ static void copy_status(furnace_hmi_controller_observation_t *o, const struct fu
     o->store_readiness = s->controller.store_readiness;
     o->execution_active = s->lifecycle.execution_active;
     o->heating_authorized = s->lifecycle.heating_authorized;
+    o->navigation_permitted = s->lifecycle.navigation_permitted;
+    o->fan_feedback = s->equipment.fan_feedback;
     o->door_state = s->equipment.door_state;
     o->emergency_active = s->equipment.emergency_active;
     o->status_valid = true;

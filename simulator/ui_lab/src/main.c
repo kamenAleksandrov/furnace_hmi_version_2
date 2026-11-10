@@ -1638,9 +1638,11 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         context->explorer.state->elapsed_seconds.value != 0 ||
         strcmp(context->explorer.state->program_name, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_EPOXY_3)) != 0 ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) || !pump_controller_requests(context) ||
+        /* Return Home leaves the stopped run cooling: navigation never ends it. */
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME) || !pump_controller_requests(context) ||
         context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_HOME ||
-        context->explorer.state->mode != FURNACE_HMI_MACHINE_MODE_IDLE) {
+        context->explorer.state->mode != FURNACE_HMI_MACHINE_MODE_PROGRAM ||
+        context->explorer.state->run_phase != FURNACE_HMI_RUN_PHASE_COOLING) {
         fprintf(stderr, "Program run pause/resume/stop failed\n"); return 3;
     }
     /* Stage dialog over the program editor: add after, move by position,

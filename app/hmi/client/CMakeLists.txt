@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.28.0)
 
 # The controller client (WI-H06): portable, single-threaded, no platform calls.
-add_library(furnace_hmi_client STATIC src/controller_client.c)
+add_library(furnace_hmi_client STATIC src/controller_client.c src/controller_dashboard.c)
 add_library(furnace_hmi::client ALIAS furnace_hmi_client)
 
 target_include_directories(furnace_hmi_client

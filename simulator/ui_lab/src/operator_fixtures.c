@@ -203,4 +203,5 @@ void furnace_hmi_operator_fixture_content(
     content->limits_known = true;
     log_build(content);
     content->log_known = true;
+    content->simulated_responses = true;
 }

@@ -251,7 +251,11 @@ const PRESENTATION_CHOICE = `(()=>{
     await evaluate('[...document.querySelectorAll(".run-controls>button")].find(b=>b.textContent==="Start again").click()');
     await waitFor('!controller.pending && !!demoRun && !demoRun.stopped && demoRun.phase === "curing"');
     assert.strictEqual(await evaluate('demoRun.elapsed+"|"+demoRun.program.minutes+"|"+demoRun.program.name'), '0|95|Customer cure A');
+    // Return Home leaves the stopped run cooling: navigation never ends the final cooling (Phase 21 M21-2b).
     await evaluate('stopDemo();[...document.querySelectorAll(".run-controls>button")].find(b=>b.textContent==="Return Home").click()');
+    assert.strictEqual(await evaluate('demoRun!==null&&demoRun.stopped&&demoRun.phase==="cooling"&&mainPage==="home"'), true);
+    // Once the cooling has ended, Return Home closes the run.
+    await evaluate('advanceDemo(2000);leaveFaultedRun()');
     assert.strictEqual(await evaluate('demoRun===null&&mainPage==="home"'), true);
     await evaluate('mainPage="programs";programRoute="detail";selectedProgram=' + created + ';render();deleteProgram(' + created + ')');
     await waitFor('!controller.pending && document.getElementById("message").open');
@@ -359,12 +363,24 @@ const PRESENTATION_CHOICE = `(()=>{
     // Automatic cooling keeps one line: curing Elapsed plus cooling time and its estimate only.
     await evaluate('demoRun.phase=\'cooling\';demoRun.coolingElapsed=17;demoRun.coolingRemaining=25;demoRun.coolingTemperature=102;render()');
     assert.strictEqual(await evaluate('(()=>{const line=document.querySelector(\'.run-line\'),labels=[...line.querySelectorAll(\'.run-reading small\')].map(x=>x.textContent);return labels.join(\'|\')===\'Elapsed|Cooling|Est. remaining|Current °C|Target °C\'&&!document.querySelector(\'#content .cooling-summary\')&&line.scrollWidth<=line.clientWidth+1})()'), true);
-    // Stop during automatic cooling marks the run stopped; Return Home closes it.
+    // Stop during automatic cooling marks the run stopped. Return Home leaves it cooling (navigation never
+    // ends the final cooling, Phase 21 M21-2b); once the cooling has ended, Return Home closes it.
     await evaluate('stopDemo()');
     assert.strictEqual(await evaluate('demoRun.stopped&&[...document.querySelectorAll(".run-controls>button")].map(b=>b.textContent).join(",")'), 'Start again,Return Home');
     await evaluate('leaveFaultedRun()');
+    assert.strictEqual(await evaluate('demoRun!==null&&demoRun.phase==="cooling"&&mainPage==="home"'), true);
+    await evaluate('advanceDemo(2000);leaveFaultedRun()');
+    assert.strictEqual(await evaluate('demoRun===null'), true);
     await evaluate('switchMain(\'manual\')');
     assert.strictEqual(await evaluate('mainPage'), 'manual');
+    // Without a live measured temperature Manual forecasts nothing (Phase 21 M21-2b, as the LVGL screens).
+    await evaluate('setLinkLost(true);render()');
+    await sleep(400); // the graph is drawn by its resize observer
+    assert.strictEqual(await evaluate('document.querySelectorAll(\'.manual-graph svg line\').length>0'), true);
+    assert.strictEqual(await evaluate('(()=>{const strip=document.querySelector(\'.manual-readings\');return !!strip&&strip.textContent.includes(\'Unknown\')&&document.querySelectorAll(\'.manual-graph svg polyline\').length===0&&document.querySelectorAll(\'.manual-graph svg circle\').length===0})()'), true);
+    await evaluate('setLinkLost(false);if(document.getElementById(\'message\').open)document.getElementById(\'message\').close();render()');
+    await sleep(400);
+    assert.strictEqual(await evaluate('document.querySelectorAll(\'.manual-graph svg polyline\').length>0'), true);
     assert.strictEqual(await evaluate('document.querySelector(\'.header h1\').textContent'), 'Manual mode');
     assert.strictEqual(await evaluate('!!document.getElementById(\'top-light\')'), true);
     const lightBounds = await evaluate('(()=>{const light=document.getElementById(\'top-light\'),target=light.getBoundingClientRect(),screen=document.querySelector(\'.screen\').getBoundingClientRect();return {height:target.height,width:target.width,screen:screen.width,tag:light.tagName}})()');
