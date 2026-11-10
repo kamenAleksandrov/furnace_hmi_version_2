@@ -70,8 +70,13 @@ static void map_run(const furnace_hmi_controller_observation_t *o, furnace_hmi_d
         executing = true;
         break;
     case RUN_PAUSED:
-    case RUN_AWAITING_DECISION: /* the model has no decision state (M21-5) */
         s->run_state = FURNACE_HMI_RUN_STATE_PAUSED;
+        executing = true;
+        break;
+    case RUN_AWAITING_DECISION:
+        /* Heating is held; the decision itself is M21-5. */
+        s->run_state = FURNACE_HMI_RUN_STATE_PAUSED;
+        s->awaiting_decision = true;
         executing = true;
         break;
     case RUN_COMPLETED:
@@ -98,6 +103,7 @@ static void map_run(const furnace_hmi_controller_observation_t *o, furnace_hmi_d
         /* No session the screens can name: nothing to present as a run. */
         s->run_state = FURNACE_HMI_RUN_STATE_IDLE;
         s->run_stopped = false;
+        s->awaiting_decision = false;
         return;
     }
     s->run_phase = (o->cooling == COOLING_ACTIVE) ? FURNACE_HMI_RUN_PHASE_COOLING
@@ -122,6 +128,9 @@ void furnace_hmi_controller_dashboard_state(const furnace_hmi_controller_observa
     s->state_revision = o->status_sequence;
 
     map_run(o, s);
+    s->navigation_permitted = (furnace_hmi_bool_value_t){
+        .value = o->navigation_permitted, .provenance = FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED,
+        .validity = validity};
     if (s->mode != FURNACE_HMI_MACHINE_MODE_IDLE) {
         s->program_id = o->program_id;
         s->program_revision = o->program_revision;

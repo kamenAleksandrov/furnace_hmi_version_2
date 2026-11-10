@@ -24,6 +24,14 @@ extern "C" {
  */
 int furnace_hmi_operator_content_check(lv_display_t *display, const char **failure);
 
+/**
+ * The controller's lifecycle on the operator screens: a held (faulted) run
+ * stays on Running, a run that still cools is not shown complete and may be
+ * left, a decision is named, and a controller Manual session holds Running.
+ * Same contract as furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **failure);
+
 #ifdef __cplusplus
 }
 #endif

@@ -22,10 +22,11 @@ extern "C" {
  * - mode: by session_kind (PROGRAM 1, MANUAL 2) for any session that is not
  *   IDLE; otherwise IDLE.
  * - run_state: RUNNING, PAUSED, COMPLETED -> COMPLETE, STOPPED -> COMPLETE with
- *   run_stopped, FAULTED -> FAULT; AWAITING_DECISION -> PAUSED (the model has
- *   no decision state; the decision workflow is M21-5). Unknown codes -> IDLE.
- *   Whenever the controller reports execution active, the result is RUNNING or
- *   PAUSED, so the screens keep Running authoritative (interface: Lifecycle).
+ *   run_stopped, FAULTED -> FAULT; AWAITING_DECISION -> PAUSED with
+ *   awaiting_decision (the decision workflow is M21-5). Unknown codes -> IDLE.
+ * - navigation_permitted: the controller's, with the status validity. The
+ *   screens follow it on every observation (interface: Lifecycle): while it
+ *   is false they stay on Running, a faulted run included.
  * - run_phase: COOLING while cooling is ACTIVE; CURING while executing.
  * - Temperatures in whole degrees Celsius, rounded from 0.1 C.
  * - door and fan from physical feedback only; NOT_AVAILABLE stays unavailable.

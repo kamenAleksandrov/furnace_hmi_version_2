@@ -35,7 +35,8 @@ def main() -> int:
     from PIL import Image
     report = ROOT / "build/graphite-review/final"
     report.mkdir(parents=True, exist_ok=True)
-    source_paths = sorted(path for folder in ("simulator/ui_lab", "simulator/semantic_controller", "app/hmi/presentation/strings")
+    source_paths = sorted(path for folder in ("simulator/ui_lab", "simulator/semantic_controller", "app/hmi/presentation/strings",
+                                                       "app/hmi/presentation/operator")
                           for path in (ROOT / folder).rglob("*") if path.is_file())
     source_paths += [ROOT / "simulator/desktop/lv_conf.h", ROOT / "CMakePresets.json"]
     source_hash = hashlib.sha256()

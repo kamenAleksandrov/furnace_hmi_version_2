@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 739 of 739 strings; missing entries are NULL and fall back to English. */
+/* en: 740 of 740 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -92,6 +92,7 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_EMPTY_LIBRARY] = "No programs. Choose New program.",
     [FURNACE_HMI_UI_STRING_UI_LAB_ACTION_NOT_CONNECTED_TITLE] = "Not connected yet",
     [FURNACE_HMI_UI_STRING_UI_LAB_ACTION_NOT_CONNECTED_DETAIL] = "This controller action is connected in a later integration step. Nothing was sent and nothing changed.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_RUN_AWAITING_DECISION] = "Awaiting operator decision",
     [FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNAVAILABLE] = "Program library unavailable. The controller has not provided it; no programs are assumed.",
     [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_IDENTITY_FORMAT] = "%u / %u - %s",
     [FURNACE_HMI_UI_STRING_UI_LAB_CURRENT_TEMPERATURE] = "Current temp",

@@ -223,7 +223,10 @@ typedef struct {
     bool log_known;
     uint16_t log_count;
     furnace_hmi_operator_log_event_t log_events[FURNACE_HMI_OPERATOR_LOG_CAPACITY];
-    /** The controller's program limits, as Settings shows them. */
+    /**
+     * The controller's program limits, kept for Settings; not shown yet, and
+     * the editors still bound values by the screens' own constants (CTRL-LIMITS).
+     */
     bool limits_known;
     int32_t max_rate_tenths_c_per_minute;
     int32_t max_temperature_c;

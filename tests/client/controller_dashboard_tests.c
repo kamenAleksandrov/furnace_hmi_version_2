@@ -69,6 +69,8 @@ static void unavailable(void)
     EXPECT(s.availability == FURNACE_HMI_STATE_AVAILABILITY_UNAVAILABLE, "unavailable");
     EXPECT(s.mode == FURNACE_HMI_MACHINE_MODE_IDLE && s.run_state == FURNACE_HMI_RUN_STATE_IDLE,
            "idle default");
+    EXPECT(s.navigation_permitted.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE,
+           "no navigation permission without the controller");
     EXPECT(s.current_temperature_c.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE,
            "no temperature, not an assumed one");
     EXPECT(s.door_closed.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE &&
@@ -197,13 +199,18 @@ static void other_states(void)
                s.run_phase == FURNACE_HMI_RUN_PHASE_NONE,
            "completed");
     o.run_state = RUN_FAULTED;
+    o.navigation_permitted = false;
     map();
     EXPECT(s.run_state == FURNACE_HMI_RUN_STATE_FAULT, "faulted");
+    EXPECT(!s.navigation_permitted.value &&
+               s.navigation_permitted.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT,
+           "faulted: navigation held by the controller");
     o.run_state = RUN_AWAITING_DECISION;
     o.execution_active = true;
     map();
-    EXPECT(s.run_state == FURNACE_HMI_RUN_STATE_PAUSED && s.run_phase == FURNACE_HMI_RUN_PHASE_CURING,
-           "awaiting a decision: paused");
+    EXPECT(s.run_state == FURNACE_HMI_RUN_STATE_PAUSED && s.run_phase == FURNACE_HMI_RUN_PHASE_CURING &&
+               s.awaiting_decision,
+           "awaiting a decision: paused and named");
     o.session_kind = SESSION_MANUAL;
     o.run_state = RUN_RUNNING;
     map();

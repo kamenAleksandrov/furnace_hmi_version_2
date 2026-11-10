@@ -53,6 +53,25 @@ static lv_obj_t *first_button(lv_obj_t *object)
     return NULL;
 }
 
+/* The button whose label reads text. */
+static lv_obj_t *button_with_text(lv_obj_t *object, const char *text)
+{
+    if (object == NULL) {
+        return NULL;
+    }
+    if (lv_obj_check_type(object, &lv_button_class) && tree_contains(object, text)) {
+        return object;
+    }
+    const uint32_t count = lv_obj_get_child_count(object);
+    for (uint32_t index = 0U; index < count; ++index) {
+        lv_obj_t *found = button_with_text(lv_obj_get_child(object, (int32_t)index), text);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
 static bool show(furnace_hmi_operator_page_t page)
 {
     if (!furnace_hmi_operator_screens_navigate(&screens, page)) {
@@ -120,7 +139,8 @@ int furnace_hmi_operator_content_check(lv_display_t *display, const char **failu
      */
     (void)snprintf(fallback_forecast, sizeof(fallback_forecast),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_HOURS_MINUTES_FORMAT), 0L, 48L);
-    if (tree_contains(screens.root, fallback_forecast)) {
+    if (tree_contains(screens.root, fallback_forecast) ||
+        !tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_UNKNOWN))) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "Manual forecasts from an assumed temperature.", 70);
     }
@@ -172,6 +192,114 @@ int furnace_hmi_operator_content_check(lv_display_t *display, const char **failu
                        furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_UNAVAILABLE))) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "Device does not say that its data are unavailable.", 90);
+    }
+    /* Settings > Date & time (the screens' second Settings tab): no date without the clock. */
+    screens.settings_tab = 1U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
+        !tree_contains(screens.root,
+                       furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE)) ||
+        tree_contains(screens.root, "00:00")) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "Date & time shows a clock the controller did not provide.", 95);
+    }
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return 0;
+}
+
+/* A status as the adapter gives it, with the controller's navigation permission. */
+static void controller_status(furnace_hmi_machine_mode_t mode, furnace_hmi_run_state_t run,
+                              bool navigation)
+{
+    furnace_hmi_dashboard_state_initialize(&state);
+    state.availability = FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
+    state.mode = mode;
+    state.run_state = run;
+    state.program_id = 3U;
+    state.stage_count = 2U;
+    state.run_phase = (run == FURNACE_HMI_RUN_STATE_RUNNING || run == FURNACE_HMI_RUN_STATE_PAUSED)
+                          ? FURNACE_HMI_RUN_PHASE_CURING
+                          : FURNACE_HMI_RUN_PHASE_NONE;
+    state.navigation_permitted = (furnace_hmi_bool_value_t){
+        .value = navigation, .provenance = FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED,
+        .validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT};
+}
+
+int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+
+    /* A faulted run the controller holds: Running, and nothing leaves it. */
+    controller_status(FURNACE_HMI_MACHINE_MODE_PROGRAM, FURNACE_HMI_RUN_STATE_FAULT, false);
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 101);
+    }
+    if (screens.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING ||
+        furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_HOME) ||
+        !furnace_hmi_operator_screens_update(&screens, &state) ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "A run the controller holds could be left.", 102);
+    }
+
+    /* Stopped and cooling, navigation permitted: says so, and Home may be shown. */
+    controller_status(FURNACE_HMI_MACHINE_MODE_PROGRAM, FURNACE_HMI_RUN_STATE_COMPLETE, true);
+    state.run_stopped = true;
+    state.run_phase = FURNACE_HMI_RUN_PHASE_COOLING;
+    if (!furnace_hmi_operator_screens_update(&screens, &state)) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "The cooling status was refused.", 103);
+    }
+    lv_refr_now(NULL);
+    if (tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_COOLING_COMPLETE)) ||
+        !tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_STOPPED_COOLING))) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "A run that still cools is shown as complete.", 104);
+    }
+    /* Running is left by its Return Home button: during background cooling it shows Home. */
+    {
+        lv_obj_t *home = button_with_text(
+            screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME));
+
+        if (home != NULL) {
+            lv_obj_send_event(home, LV_EVENT_CLICKED, NULL);
+            for (int pass = 0; pass < 3; ++pass) {
+                (void)lv_timer_handler();
+            }
+        }
+        if (home == NULL || screens.page != FURNACE_HMI_OPERATOR_PAGE_HOME) {
+            furnace_hmi_operator_screens_destroy(&screens);
+            return failed(failure, "Home could not be shown during background cooling.", 105);
+        }
+    }
+
+    /* Awaiting a decision, held: named as such, on Running. */
+    controller_status(FURNACE_HMI_MACHINE_MODE_PROGRAM, FURNACE_HMI_RUN_STATE_PAUSED, false);
+    state.awaiting_decision = true;
+    if (!furnace_hmi_operator_screens_update(&screens, &state) ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "A run awaiting a decision is not on Running.", 106);
+    }
+    lv_refr_now(NULL);
+    if (!tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_AWAITING_DECISION))) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "Awaiting a decision is not named.", 107);
+    }
+
+    /* A Manual session of the controller, held: Running. */
+    controller_status(FURNACE_HMI_MACHINE_MODE_IDLE, FURNACE_HMI_RUN_STATE_IDLE, true);
+    if (!furnace_hmi_operator_screens_update(&screens, &state) ||
+        !furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_MANUAL)) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "Manual could not be shown while idle.", 108);
+    }
+    controller_status(FURNACE_HMI_MACHINE_MODE_MANUAL, FURNACE_HMI_RUN_STATE_RUNNING, false);
+    if (!furnace_hmi_operator_screens_update(&screens, &state) ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "A controller Manual session does not hold Running.", 109);
     }
 
     furnace_hmi_operator_screens_destroy(&screens);

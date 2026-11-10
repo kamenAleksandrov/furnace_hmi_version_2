@@ -23,7 +23,7 @@ Design record: [ADR-0012](../../../docs/07-decisions/0012-theme-and-language-cat
 
 1. **No colour values in UI code.** LVGL: `operator_color(FURNACE_HMI_COLOR_x)`,
    `operator_opa()`, `operator_theme_border()`, `operator_theme_background()` or the
-   `UI_LAB_THEME_*` macros. Web: `var(--token)` in CSS, `themeColor('token')`
+   `OPERATOR_THEME_*` macros. Web: `var(--token)` in CSS, `themeColor('token')`
    in drawing code. Need a new colour? Add a token with a `doc` to
    `themes.json` for **every** theme, then regenerate.
 2. **Name the role, not the look.** A token says what it is for

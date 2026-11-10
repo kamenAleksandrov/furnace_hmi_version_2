@@ -289,6 +289,17 @@ static const furnace_hmi_operator_program_t *selected_program_entry(const furnac
 
 static bool run_was_stopped(const furnace_hmi_operator_screens_t *explorer);
 
+/*
+ * The controller holds the screens on Running: it reports navigation as not
+ * permitted (interface: Lifecycle; a faulted run included). Not where no
+ * controller reports it (the UI lab's own containment applies there).
+ */
+static bool navigation_locked(const furnace_hmi_dashboard_state_t *state)
+{
+    return state != NULL && state->navigation_permitted.validity != FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE &&
+           !state->navigation_permitted.value && state->mode != FURNACE_HMI_MACHINE_MODE_IDLE;
+}
+
 static void copy_text_bounded(char *destination, size_t capacity, const char *source)
 {
     if (destination == NULL || capacity == 0U) {
@@ -1120,11 +1131,17 @@ static const char *state_text(const furnace_hmi_dashboard_state_t *state)
     if (state->run_state == FURNACE_HMI_RUN_STATE_FAULT) {
         return ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_FAULT);
     }
+    if (state->awaiting_decision) {
+        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_AWAITING_DECISION);
+    }
     if (state->run_state == FURNACE_HMI_RUN_STATE_PAUSED) {
         return ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_PAUSED);
     }
     if (state->run_state == FURNACE_HMI_RUN_STATE_COMPLETE) {
-        return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_COOLING_COMPLETE);
+        /* Still cooling is not complete (M21-2b review). */
+        return ui_string(state->run_phase == FURNACE_HMI_RUN_PHASE_COOLING
+                             ? FURNACE_HMI_UI_STRING_UI_LAB_AUTOMATIC_COOLING
+                             : FURNACE_HMI_UI_STRING_UI_LAB_COOLING_COMPLETE);
     }
     if (state->mode == FURNACE_HMI_MACHINE_MODE_MANUAL &&
         state->run_state == FURNACE_HMI_RUN_STATE_RUNNING) {
@@ -4803,11 +4820,16 @@ static bool build_running(furnace_hmi_operator_screens_t *explorer)
     const bool run_fault = !link_lost && explorer->state->run_state == FURNACE_HMI_RUN_STATE_FAULT;
     const bool run_complete = !link_lost && explorer->state->run_state == FURNACE_HMI_RUN_STATE_COMPLETE;
     const bool run_stopped = !link_lost && run_was_stopped(explorer);
-    if (run_complete) {
+    /* The phase decides: a finished run that still cools is never "complete" (M21-2b review). */
+    const bool cooling_now = explorer->state->run_phase == FURNACE_HMI_RUN_PHASE_COOLING;
+    if (run_stopped && cooling_now) {
+        phase_label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_STOPPED_COOLING);
+    }
+    else if (run_complete && !cooling_now) {
         phase_label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_COOLING_COMPLETE);
     }
-    else if (run_stopped && explorer->state->run_phase == FURNACE_HMI_RUN_PHASE_COOLING) {
-        phase_label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_STOPPED_COOLING);
+    else if (!link_lost && explorer->state->awaiting_decision) {
+        phase_label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_AWAITING_DECISION);
     }
     lv_color_t phase_color = OPERATOR_THEME_AMBER_TEXT;
     if (link_lost) {
@@ -6241,7 +6263,7 @@ static furnace_hmi_operator_log_event_t log_event(int32_t minute, uint8_t type)
 /* A session event on top of the log (web logEvent); the oldest drops off when full. */
 static void log_add(furnace_hmi_operator_screens_t *explorer, const furnace_hmi_operator_log_event_t *event)
 {
-    if (!explorer->log_known) {
+    if (!explorer->log_known || !explorer->simulated_responses) {
         return; /* the log is the controller's: the screens never write history of their own */
     }
     const size_t kept = explorer->log_count < FURNACE_HMI_OPERATOR_LOG_CAPACITY
@@ -8002,10 +8024,19 @@ static bool settings_build_time(furnace_hmi_operator_screens_t *explorer, lv_obj
     }
     char time[24];
     char date[48];
-    format_clock_time(time, sizeof(time), &explorer->clock, explorer->settings_candidate_24_hour);
-    format_clock_date(explorer, date, sizeof(date), &explorer->clock);
     char short_date[48];
-    format_short_date(explorer, short_date, sizeof(short_date), &explorer->clock);
+    if (explorer->clock_known) {
+        format_clock_time(time, sizeof(time), &explorer->clock, explorer->settings_candidate_24_hour);
+        format_clock_date(explorer, date, sizeof(date), &explorer->clock);
+        format_short_date(explorer, short_date, sizeof(short_date), &explorer->clock);
+    }
+    else {
+        /* The controller's clock is not known: no zero date (M21-2b review). */
+        copy_text_bounded(time, sizeof(time), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE));
+        date[0] = '\0';
+        copy_text_bounded(short_date, sizeof(short_date),
+                          ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE));
+    }
     const operator_card_t cards[] = {
         { .label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_AND_TIME), .value = time,
           .caption = date, .tag = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET),
@@ -8728,6 +8759,7 @@ static bool action_needs_controller(operator_action_t action)
     case OPERATOR_ACTION_ACKNOWLEDGE_PREVIEW:
     case OPERATOR_ACTION_DELETE_REQUESTED:
     case OPERATOR_ACTION_CONFIRM_SAVE_ALL:
+    case OPERATOR_ACTION_SHOW_SAVE:
     case OPERATOR_ACTION_SETTINGS_CLOCK_SET:
     case OPERATOR_ACTION_SETTINGS_RESET_CONFIRM:
     case OPERATOR_ACTION_SETTINGS_DELETE_CONFIRM:
@@ -8755,7 +8787,9 @@ static void apply_action(
     if (explorer == NULL) {
         return;
     }
-    if (!explorer->simulated_responses && action_needs_controller(action)) {
+    /* Renaming outside the editor changes the library; inside, only the draft. */
+    const bool library_rename = action == OPERATOR_ACTION_SHOW_RENAME && !explorer->program_editor_active;
+    if (!explorer->simulated_responses && (action_needs_controller(action) || library_rename)) {
         /* Requirement 7 of M21-2b: no controller command yet, and no simulated outcome either. */
         clear_modal(explorer);
         (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ACTION_NOT_CONNECTED_TITLE),
@@ -9443,6 +9477,9 @@ static void apply_action(
                                                     FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR);
         break;
     case OPERATOR_ACTION_RETURN_HOME:
+        if (navigation_locked(explorer->state)) {
+            break; /* the controller holds Running: nothing to leave */
+        }
         /*
          * Navigation never ends the controller's final cooling (owner, Phase 21
          * M21-2b; controller RUN-17, API-12): while it cools, Home is shown and
@@ -9763,7 +9800,8 @@ bool furnace_hmi_operator_screens_create(
     explorer->page = ((state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM ||
                        state->mode == FURNACE_HMI_MACHINE_MODE_MANUAL) &&
                       (state->run_state == FURNACE_HMI_RUN_STATE_RUNNING || state->run_state == FURNACE_HMI_RUN_STATE_PAUSED)) ||
-        (state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && state->run_state == FURNACE_HMI_RUN_STATE_FAULT)
+        (state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && state->run_state == FURNACE_HMI_RUN_STATE_FAULT) ||
+        navigation_locked(state)
         ? FURNACE_HMI_OPERATOR_PAGE_RUNNING : FURNACE_HMI_OPERATOR_PAGE_HOME;
     if (content->library_known) {
         memcpy(explorer->programs, content->programs, sizeof(explorer->programs));
@@ -10024,8 +10062,14 @@ static bool update_observation(furnace_hmi_operator_screens_t *explorer, const f
     /* Manual is a locally composed host presentation. A new observation can
      * refresh its live labels and forecast but must not destroy/recreate its
      * trajectory while the operator starts, pauses, resumes or stops. */
-    if (structure_changed && explorer->page != FURNACE_HMI_OPERATOR_PAGE_MANUAL) {
-        if (state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && (state->run_state == FURNACE_HMI_RUN_STATE_RUNNING || state->run_state == FURNACE_HMI_RUN_STATE_PAUSED)) {
+    /* The controller's lifecycle holds Running on every observation (interface: Lifecycle). */
+    const bool locked = navigation_locked(state);
+    if ((structure_changed && explorer->page != FURNACE_HMI_OPERATOR_PAGE_MANUAL) ||
+        (locked && explorer->page != FURNACE_HMI_OPERATOR_PAGE_RUNNING)) {
+        if (locked) {
+            clear_modal(explorer);
+            explorer->page = FURNACE_HMI_OPERATOR_PAGE_RUNNING;
+        } else if (state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && (state->run_state == FURNACE_HMI_RUN_STATE_RUNNING || state->run_state == FURNACE_HMI_RUN_STATE_PAUSED)) {
             explorer->page = FURNACE_HMI_OPERATOR_PAGE_RUNNING;
         } else if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_RUNNING && state->mode == FURNACE_HMI_MACHINE_MODE_IDLE) {
             explorer->page = FURNACE_HMI_OPERATOR_PAGE_HOME;
@@ -10086,6 +10130,9 @@ bool furnace_hmi_operator_screens_navigate(
 )
 {
     if (explorer == NULL || explorer->root == NULL || page >= FURNACE_HMI_OPERATOR_PAGE_COUNT) {
+        return false;
+    }
+    if (navigation_locked(explorer->state) && page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
         return false;
     }
     if ((explorer->modal != NULL && page != explorer->page) ||

@@ -258,7 +258,11 @@ int main(int argc, char **argv)
     }
     if (operator_content_smoke_test) {
         const char *failure = NULL;
-        const int result = furnace_hmi_operator_content_check(display, &failure);
+        int result = furnace_hmi_operator_content_check(display, &failure);
+
+        if (result == 0) {
+            result = furnace_hmi_operator_lifecycle_check(display, &failure);
+        }
 
         if (result != 0) {
             (void)fprintf(stderr, "%s\n", failure);
