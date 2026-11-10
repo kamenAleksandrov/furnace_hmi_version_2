@@ -9,6 +9,7 @@ backlog defines no wire schema. Demo observations remain synthetic.
 
 | Task | Owner | Required outcome/evidence |
 | --- | --- | --- |
+| CTRL-SIM-SESSION-ID | Controller repository (simulation) | Found in Phase 21 M21-3: the simulated controller's entropy (`sim/app_io` `sim_entropy`) starts from the same state in every process, so every start of the simulated program draws the same `session_id`. The HMI handles it (a snapshot older than the status held is another session), but a per-process seed would make simulated restarts realistic. Not blocking. |
 | CTRL-LIMITS | Control CPU/protocol | Session bounds/steps/applicability; product maxima 180 C, 3 C/min, 48 h. Define minima/rounding; independently validate. |
 | CTRL-PROGRAM | Control CPU/protocol | Heating/Hold save validation, curing <=48 h excluding final automatic cooling, no names/material. Define atomicity, first Hold, starting-temperature duration basis, legacy compatibility. |
 | CTRL-MANUAL | Control CPU/protocol | Manual operations/deadline/cooling at 48 h/warning timing; define paused-time accounting. Edits/reconnect never reset deadline. Fresh session needs accepted Stop/Start. |

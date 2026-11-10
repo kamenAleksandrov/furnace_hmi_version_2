@@ -70,12 +70,110 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 | M21-1 | The codec in the HMI | Copied at a pinned controller revision with a manifest and HMI build files; a sync check; the golden vectors pass in the desktop MSVC build, the host GCC build and on Zephyr |
 | M21-2 | The HMI as a Zephyr application | Evidence gate first (native_sim with SDL in WSL); then the shared presentation that exists runs on native_sim from the shared sources (the operator screens: M21-2b); the desktop program keeps working; the environment recorded |
 | M21-2b | The operator screens in the shared presentation | The lab's screens move from `simulator/ui_lab` into `app/hmi/presentation`, fed only by the HMI model; simulator data stays in the lab; the lab and the Zephyr application compose the same screens; the lab's smoke tests and web demo parity unchanged. Before M21-5 |
-| M21-3 | Transport and client (WI-H06) | Session, identity and freshness, snapshot rebuild, command lifecycle with pending, accepted, rejected and unresolved states and no automatic replay; readiness rules; link-loss presentation. Tested against a fake controller over a loopback |
-| M21-4 | The simulated link end to end | The controller and HMI programs in WSL, joined by a simulated serial cable (a pseudo-terminal pair); a scripted smoke test; the HMI window carries a simulation marker while it shows simulated controller data |
+| M21-3 | Transport and client against the controller (WI-H06), with the former M21-4 | The controller and the Zephyr HMI run as separate programs in WSL over the simulated link; the 0.16 handshake and compatibility check; authentic `CAPABILITIES`, snapshot and `STATUS`; faults, measurement qualification, run state and freshness in the client's observation; disconnect, reconnect, controller restart and stale sessions handled; nonblocking; nothing simulated by the HMI; automated tests and an end-to-end demonstration. No heating command (design below) |
+| M21-4 | Merged into M21-3 | Owner decision 2026-11-10: the end-to-end link is part of M21-3 |
 | M21-5 | Run, Manual and fault workflows (WI-H03, WI-H04) | Each workflow runs against the controller; the same behavior in the web demo, simulated |
 | M21-6 | Controller 20d (firmware) | A controller-side plan with its open decisions for the product owner and the controller's reviewers (for example the health rules still proposed); the messages built test-first with the controller's verification; the HMI resynced to the new revision in lockstep, ADR-0007 checked against its reopen triggers, before M21-7 |
 | M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo |
 | M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria |
+
+### M21-3 design
+
+Owner decision 2026-11-10: M21-3 comes first and connects the Zephyr HMI to the actual controller
+program over the simulated link; M21-2b follows (in parallel only while independent). Heating
+commands and operator workflows stay in M21-5 and later.
+
+**The link.**
+- The controller is the furnace firmware's own simulated program, `tests/sim/link_pty`, built at
+  the revision in `CONTROLLER_SYNC.json`: the controller runtime with its simulated plant, serving
+  its client link on a pseudo-terminal.
+- A relay, `tools/controller_link_demo.py`, holds a second pseudo-terminal for the HMI and copies
+  bytes between the two. A controller restart then creates a new controller device, while the HMI's
+  stays the same. The relay is also where faults are injected (ADR-0006).
+- The HMI's link is a Zephyr `native_tty` UART opened with `--controller_link_port=<device>`. The
+  same driver opens a USB serial port for the first two-board tests.
+
+**Modules** (§4):
+- `app/hmi/transport`: a byte port (non-blocking read and write) and an in-memory loopback.
+- `app/hmi/client`: portable C with no threads and no Zephyr. It is given bytes and the time, and
+  produces frames and a controller observation.
+- `app/zephyr`: the link thread polls the UART and the client, and publishes the observation to a
+  single-slot mailbox (the latest value, with a generation counter). The GUI context reads the
+  mailbox without waiting and alone updates LVGL (ADR-0005).
+- The observation is HMI-owned plain data: the controller's codes are kept as received, and no
+  codec structure reaches it (ADR-0003).
+
+**Session rules**, from the controller interface (Session, link and delivery) and its service:
+- **Handshake:** `HELLO` with a client session ID that is random at each HMI boot, repeated every
+  1000 ms until `HELLO_ACK`. The 1000 ms is a provisional HMI value. Only `OK` connects. A refused
+  version (`RX_HELLO_VERSION`) makes the link `INCOMPATIBLE`, and the HMI records the controller's
+  version from the frame header.
+- **Synchronization:** `CAPABILITIES`, then the snapshot (`STATUS`, `FAULT_LIST` parts, `SETTINGS`)
+  up to `SNAPSHOT_END`. After a `HELLO_ACK` to the same controller session, the controller sends no
+  snapshot, and the client asks for one (`SNAPSHOT_REQUEST`).
+- **Freshness:** `CURRENT` only after `SNAPSHOT_END` and while the newest `STATUS` is younger than
+  the controller's `link_silence_ms`; otherwise `STALE` (data kept, marked stale). On `STALE` the
+  client sends `HELLO` again. Before `CAPABILITIES`, or for an incompatible controller,
+  `UNAVAILABLE`.
+- **Controller restart:** a different `session_id` (in `HELLO_ACK`, `CAPABILITIES` or `STATUS`)
+  discards the capabilities, status and fault list, and marks a pending request unresolved.
+  Nothing is replayed.
+- **A repeated session ID** (improbable, not impossible): when the link falls silent, the client
+  keeps the `status_sequence` it holds as a baseline. After reconnecting to the same session ID,
+  nothing of that session can be older, because it was already published. A `STATUS` or
+  `SNAPSHOT_END` below the baseline is therefore another session, and is handled as a restart.
+  Data of the old session is never shown as current. While connected, an older sequence is
+  normal: a periodic `STATUS` may arrive before the end of an older snapshot (spec: Snapshot).
+  The rule misses a new session whose sequence has already passed the baseline. Its data is then
+  taken as current, and that data is the new controller's own.
+- **Ordering:** an older `status_sequence` is not shown. Outside a snapshot it asks for one (spec:
+  Recovery). A gap in a `RUN_EVENT` or `FAULT_EVENT` sequence asks for a snapshot. Events within
+  a snapshot are applied by their sequences.
+- **The fault list** comes only from a snapshot. It is applied only when its pages are contiguous,
+  add up to `total`, and carry the snapshot's `status_sequence` and `request_id`; otherwise it is
+  not applied and is asked for again (no list is not an empty list). While a refresh is pending,
+  the list is marked outdated.
+- **Liveness:** `HEARTBEAT` when nothing was sent for `heartbeat_interval_ms`.
+- **Intervals:** the controller's `status_interval_ms`, `heartbeat_interval_ms` and
+  `link_silence_ms` are accepted only within HMI bounds:
+  - 1 ms to 60 s for the status and heartbeat intervals;
+  - for `link_silence_ms`, more than the status interval and at most 10 min.
+
+  These are provisional HMI values. Outside them the capabilities are refused, and the link never
+  becomes current.
+- **Requests:** the client sends only `HELLO`, `HEARTBEAT`, `SNAPSHOT_REQUEST` and
+  `CAPABILITIES_REQUEST` (after an identity change without capabilities).
+  - **Lifecycle:** its snapshot request is pending, then completed (`SNAPSHOT_END` with its ID),
+    rejected (`COMMAND_REJECTED`), or unresolved (a restart).
+  - **One at a time:** at most one is outstanding. It is asked again after 3 s without an answer,
+    in any connected state, and so is a rejected or incomplete one while the list is outdated.
+  - **Request IDs** increase within a client session and never wrap: at 2^32-1 the client starts a
+    new client session.
+  - **A reused client session ID:** a `DUPLICATE_REQUEST` before the controller has answered any
+    request of the client session means the ID was reused, and the client starts a new one.
+- **Bounded work:** each poll reads a bounded number of bytes; all buffers are static.
+- **The GUI** shows `STALE` when the link thread has published nothing for 1 s, for example when it
+  is blocked in a write. It publishes at least every 200 ms.
+
+**Presentation in M21-3.**
+- The availability screen follows the link: `UNAVAILABLE`, `STALE` or `CURRENT`.
+- The window carries a development marker for the simulated link.
+- Values (temperature with validity and age, measurement state, run state, faults, lifecycle) are
+  in the observation, its tests and the console trace. The operator screens that show them come
+  with M21-2b and M21-5.
+- The Zephyr application links no simulator: every value comes from controller frames. A value is
+  current only when the controller marks it valid and the link is current.
+
+**Open, not blocking:**
+- On hardware, a unique client session ID at each HMI boot needs a random source or a persistent
+  counter. On native_sim the HMI runs with `--seed-random`; the fixed default seed would repeat
+  the ID.
+- Found in M21-3, for the controller repository: its simulated entropy (`sim/app_io`,
+  `sim_entropy`) starts from the same state in every process, so each start of the simulated
+  controller draws the same `session_id`. A restart then looks like the same session. The HMI
+  handles it by the repeated-ID rule, and the end-to-end demonstration exercises that rule. A
+  per-process seed in the fixture would make restarts look like restarts; recorded as
+  CTRL-SIM-SESSION-ID.
 
 ## 6. Verification, including failure and recovery
 
@@ -106,6 +204,60 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 
 ## Progress
 
-- 2026-11-10, M21-2 (draft): **evidence gate passed.** In WSL (Ubuntu 24.04, WSLg), Zephyr 4.4.0 on `native_sim/native/64` with LVGL `85aa60d1` builds, opens its SDL window and runs. The HMI's Zephyr application now builds the shared state-availability screen on that board (the main thread is the GUI context, ADR-0005; Zephyr's pointer input thread only reads display pointers set before main), and `qemu_x86` keeps the console probe. The desktop program's presentation checks moved to `tests/presentation/availability`, one definition run by the desktop smoke test and by the Zephyr test `furnace_hmi.presentation.availability` (a `zephyr,dummy-dc` display without SDL, `native_sim` and `native_sim/native/64`; each state rendered with `lv_refr_now`). The window path is built by Twister and was run by hand under WSLg, and headless with `SDL_VIDEODRIVER=offscreen` (it starts and runs; SDL's `dummy` driver has no renderer, so the display fails to start), which M21-4's scripted smoke test can use. Reviews (embedded reviewer with software critic, and error auditor; AI agents in the HMI roles) were applied: gradient stops as the desktop, a build failure if that board builds without LVGL, a display check and a minimum sleep in the GUI loop, wording corrections. A window capture of each build shows the same screen, apart from the desktop program's development footer; the captures are visual evidence, not a pixel-exact comparison (the Zephyr window passes through WSLg's remote display). Found: the operator screens live only in the UI lab, so M21-2b was added. On Windows, `qemu_x86` Twister passes the foundation probe and the codec conformance (the run M21-1 left out) and builds the probe sample; the desktop program passes under MSVC (`host-msvc-desktop-debug`, 16 of 16) and GCC (`host-debug`, 16 of 16).
+- 2026-11-10, M21-3 (draft), on the owner's decision to connect to the actual controller first:
+  - **Built:** `app/hmi/transport` (the byte port and a loopback), `app/hmi/client` (session,
+    synchronization, freshness, the snapshot request, the observation), and the Zephyr link thread
+    with a single-slot mailbox. The availability screen follows the link, with a development marker
+    for the simulated link (a shared component, also used by the desktop program).
+  - **Tests:** 35 scenarios against a scripted controller over the loopback, in CTest
+    (`host.controller_client`) and in Zephyr (`furnace_hmi.client.controller_link`):
+    - the handshake: refused version, retry and a lost `HELLO_ACK`;
+    - the link: silence, reconnect and restart, a repeated session ID and an unresolved request;
+    - ordering, including a periodic `STATUS` within a snapshot and an older periodic `STATUS`;
+    - events: gaps, and events during the first snapshot;
+    - corruption and heartbeat;
+    - rejections (`NOT_CONNECTED`, `STALE_SESSION`), duplicates on the first snapshot and the
+      capabilities request, and an exhausted request ID;
+    - synchronization timeout; a lost snapshot end while connected; a superseded snapshot;
+    - the fault list: paged, a lost page, a missing list;
+    - absurd intervals, bounded polls and clock wrap.
+  - **Defects found and fixed,** each test-first:
+    - a reconnect fell silent again at once;
+    - a restart with a repeated session ID could have shown the old session's status as current.
+  - **The protocol review** (protocol reviewer with software critic; AI agents in the HMI roles)
+    found these, each fixed test-first:
+    - the first repeated-ID rule misfired on normal snapshot traffic;
+    - a lost snapshot end while connected was never asked for again;
+    - fault list pages were not checked;
+    - the controller's intervals were used unchecked;
+    - a fault-event flood could keep a snapshot from completing;
+    - reused client session IDs were detected only on the first request;
+    - a blocked link thread would leave the GUI showing current;
+    - the demonstration's fault and run-state check compared nothing.
+
+    The error auditor's wording corrections were also applied.
+  - **End to end:** `tools/controller_link_demo.py` runs the controller's own simulated program and
+    the HMI as two processes in WSL. The program is furnace firmware `tests/sim/link_pty`, at main
+    `721f3cb` (the merge of controller PR #51, the codec copy's revision). Ten checks pass:
+    - connect;
+    - authentic STATUS: the HMI's temperature, validity, run state, heating inhibition, latched
+      class and unacknowledged count equal the fields the relay read in the controller's frame of
+      the same sequence;
+    - the fault list as sent (the controller's `FAULT_LIST` total);
+    - cut and restore;
+    - corruption;
+    - controller restart (with the repeated session ID), and authentic STATUS after it;
+    - HMI restart (a new client session);
+    - only read messages from the HMI;
+    - the controller's STATUS cadence: longest gap 0.21 s observed, against a 0.5 s threshold and a
+      0.2 s interval.
+  - **Limits of the evidence:**
+    - The simulated controller is idle and fault-free, so the end-to-end fault comparison is of an
+      empty list; non-empty lists are covered by the scripted scenarios.
+    - The cadence is the controller's link service. Its control timing is the controller's own
+      verification, not repeated here.
+  - **Not done here:** heating commands, operator workflows and the operator screens (M21-2b,
+    M21-5).
+- 2026-11-10, M21-2 (draft): **evidence gate passed.** In WSL (Ubuntu 24.04, WSLg), Zephyr 4.4.0 on `native_sim/native/64` with LVGL `85aa60d1` builds, opens its SDL window and runs. The HMI's Zephyr application now builds the shared state-availability screen on that board (the main thread is the GUI context, ADR-0005; Zephyr's pointer input thread only reads display pointers set before main), and `qemu_x86` keeps the console probe. The desktop program's presentation checks moved to `tests/presentation/availability`, one definition run by the desktop smoke test and by the Zephyr test `furnace_hmi.presentation.availability` (a `zephyr,dummy-dc` display without SDL, `native_sim` and `native_sim/native/64`; each state rendered with `lv_refr_now`). The window path is built by Twister and was run by hand under WSLg, and headless with `SDL_VIDEODRIVER=offscreen` (it starts and runs; SDL's `dummy` driver has no renderer, so the display fails to start), which M21-3's demonstration uses. Reviews (embedded reviewer with software critic, and error auditor; AI agents in the HMI roles) were applied: gradient stops as the desktop, a build failure if that board builds without LVGL, a display check and a minimum sleep in the GUI loop, wording corrections. A window capture of each build shows the same screen, apart from the desktop program's development footer; the captures are visual evidence, not a pixel-exact comparison (the Zephyr window passes through WSLg's remote display). Found: the operator screens live only in the UI lab, so M21-2b was added. On Windows, `qemu_x86` Twister passes the foundation probe and the codec conformance (the run M21-1 left out) and builds the probe sample; the desktop program passes under MSVC (`host-msvc-desktop-debug`, 16 of 16) and GCC (`host-debug`, 16 of 16).
 - 2026-11-10, M21-1 (draft): the codec copied at `721f3cb` with its manifest, `tools/sync_controller_wire.py`, and the conformance test. The golden vectors pass under the desktop MSVC build (`/W4 /WX /permissive-`, the codec unmodified), the host GCC build (`-Werror`) and Zephyr native_sim. Not run: `qemu_x86` on Windows.
 - 2026-11-10: plan and ADR updates (M21-0), draft. Protocol and architect review, and the decision challenger, applied (records in ADR-0007 and ADR-0009).

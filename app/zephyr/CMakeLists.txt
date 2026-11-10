@@ -37,11 +37,28 @@ if(BOARD STREQUAL "native_sim" AND BOARD_QUALIFIERS MATCHES "^/?native/64$" AND 
 endif()
 
 if(CONFIG_LVGL)
+  # The GUI build is the HMI: the screen, and the controller link (Phase 21 M21-3).
+  set(FURNACE_HMI_MARKER_DIR "${CMAKE_CURRENT_LIST_DIR}/../hmi/presentation/development_marker")
+  set(FURNACE_HMI_CLIENT_DIR "${CMAKE_CURRENT_LIST_DIR}/../hmi/client")
+  set(FURNACE_HMI_TRANSPORT_DIR "${CMAKE_CURRENT_LIST_DIR}/../hmi/transport")
+  set(FURNACE_HMI_WIRE_DIR "${CMAKE_CURRENT_LIST_DIR}/../hmi/protocol/wire")
   target_sources(app PRIVATE
     src/gui_main.c
+    src/controller_link.c
     "${FURNACE_HMI_AVAILABILITY_DIR}/src/state_availability_view.c"
+    "${FURNACE_HMI_MARKER_DIR}/src/development_marker.c"
+    "${FURNACE_HMI_CLIENT_DIR}/src/controller_client.c"
+    "${FURNACE_HMI_WIRE_DIR}/src/crc32.c"
+    "${FURNACE_HMI_WIRE_DIR}/src/wire_frame.c"
+    "${FURNACE_HMI_WIRE_DIR}/src/wire_messages.c"
   )
-  target_include_directories(app PRIVATE "${FURNACE_HMI_AVAILABILITY_DIR}/include")
+  target_include_directories(app PRIVATE
+    "${FURNACE_HMI_AVAILABILITY_DIR}/include"
+    "${FURNACE_HMI_MARKER_DIR}/include"
+    "${FURNACE_HMI_CLIENT_DIR}/include"
+    "${FURNACE_HMI_TRANSPORT_DIR}/include"
+    "${FURNACE_HMI_WIRE_DIR}/include"
+  )
 else()
   target_sources(app PRIVATE src/main.c)
 endif()
