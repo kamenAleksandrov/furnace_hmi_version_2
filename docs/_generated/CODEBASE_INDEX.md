@@ -9,14 +9,14 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 313 |
-| Git-tracked files | 313 |
+| Repository files | 325 |
+| Git-tracked files | 325 |
 | Git-untracked files | 0 |
-| Manually maintained files | 284 |
+| Manually maintained files | 296 |
 | Generated files | 29 |
-| Modules | 36 |
-| Build targets | 111 |
-| Compile units | 22 |
+| Modules | 37 |
+| Build targets | 112 |
+| Compile units | 23 |
 | Boards | 1 |
 
 ## Inputs
@@ -48,7 +48,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/model` | 4 | build, header, source |
 | `app/hmi/presentation` | 91 | build, configuration, documentation, header, other, source |
 | `app/hmi/protocol` | 9 | build, configuration, documentation, header, source |
-| `app/zephyr` | 4 | build, configuration, source |
+| `app/zephyr` | 8 | board, build, configuration, source |
 | `docs` | 3 | documentation |
 | `docs/.obsidian` | 4 | documentation |
 | `docs/00-project` | 5 | documentation |
@@ -68,7 +68,8 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `simulator/ui_lab` | 7 | build, documentation, header, source |
 | `tests/conformance` | 5 | test |
 | `tests/host` | 5 | test |
-| `tests/zephyr` | 8 | test |
+| `tests/presentation` | 3 | test |
+| `tests/zephyr` | 13 | test |
 | `tools` | 21 | test, tool |
 
 ## Build Targets
@@ -80,6 +81,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 2 | 0 |
 | `furnace_hmi_theme` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_wire` | STATIC_LIBRARY | `Debug` | 3 | 0 |
+| `furnace_hmi_availability_presentation_checks` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_desktop` | EXECUTABLE | `Debug` | 1 | 0 |
 | `lvgl` | STATIC_LIBRARY | `Debug` | 0 | 531 |
 | `furnace_hmi_state_availability_view` | STATIC_LIBRARY | `Debug` | 1 | 0 |
@@ -341,8 +343,12 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/protocol/wire/src/wire_frame.c` | source | `app/hmi/protocol` | manual | tracked |
 | `app/hmi/protocol/wire/src/wire_messages.c` | source | `app/hmi/protocol` | manual | tracked |
 | `app/zephyr/CMakeLists.txt` | build | `app/zephyr` | manual | tracked |
+| `app/zephyr/boards/native_sim_native_64.conf` | board | `app/zephyr` | manual | tracked |
+| `app/zephyr/boards/native_sim_native_64.overlay` | board | `app/zephyr` | manual | tracked |
+| `app/zephyr/gui.conf` | configuration | `app/zephyr` | manual | tracked |
 | `app/zephyr/prj.conf` | build | `app/zephyr` | manual | tracked |
 | `app/zephyr/sample.yaml` | configuration | `app/zephyr` | manual | tracked |
+| `app/zephyr/src/gui_main.c` | source | `app/zephyr` | manual | tracked |
 | `app/zephyr/src/main.c` | source | `app/zephyr` | manual | tracked |
 | `docs/.obsidian/app.json` | documentation | `docs/.obsidian` | manual | tracked |
 | `docs/.obsidian/appearance.json` | documentation | `docs/.obsidian` | manual | tracked |
@@ -480,10 +486,18 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/host/foundation_smoke.c` | test | `tests/host` | manual | tracked |
 | `tests/host/theme_smoke.c` | test | `tests/host` | manual | tracked |
 | `tests/host/ui_strings_smoke.c` | test | `tests/host` | manual | tracked |
+| `tests/presentation/availability/CMakeLists.txt` | test | `tests/presentation` | manual | tracked |
+| `tests/presentation/availability/include/furnace_hmi/availability_presentation_checks.h` | test | `tests/presentation` | manual | tracked |
+| `tests/presentation/availability/src/availability_presentation_checks.c` | test | `tests/presentation` | manual | tracked |
 | `tests/zephyr/foundation/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/prj.conf` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/src/main.c` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/presentation/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/presentation/app.overlay` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/presentation/prj.conf` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/presentation/src/main.c` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/presentation/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/wire_conformance/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/wire_conformance/prj.conf` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/wire_conformance/src/main.c` | test | `tests/zephyr` | manual | tracked |
