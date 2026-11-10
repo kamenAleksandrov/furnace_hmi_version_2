@@ -201,39 +201,6 @@ typedef struct {
 } operator_stage_fixture_t;
 
 
-/* The delivered program library (web programCatalogue): three epoxy cure
- * schedules within the furnace limits (180 C, 3.0 C/min, 8 stages). Heating
- * ramps from the previous target at the given rate (tenths of a degree per
- * minute); its minutes follow from that. Illustrations, not datasheet values. */
-typedef struct {
-    furnace_hmi_ui_string_id_t name;
-    uint8_t stage_count;
-    furnace_hmi_operator_program_stage_t stages[FURNACE_HMI_OPERATOR_MAX_STAGES];
-} operator_library_program_t;
-
-#define OPERATOR_HEAT(target, rate, minutes) { FURNACE_HMI_OPERATOR_STAGE_HEATING, (target), (rate), (minutes) }
-#define OPERATOR_HOLD(target, minutes) { FURNACE_HMI_OPERATOR_STAGE_HOLD, (target), 0, (minutes) }
-static const operator_library_program_t library_programs[] = {
-    /* Room-temperature laminating resin with an elevated post-cure. */
-    { FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_EPOXY_1, 4U,
-      { OPERATOR_HEAT(40, 3, 50), OPERATOR_HOLD(40, 120), OPERATOR_HEAT(60, 3, 67), OPERATOR_HOLD(60, 240) } },
-    /* 120 C prepreg cure with a resin-flow dwell. */
-    { FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_EPOXY_2, 4U,
-      { OPERATOR_HEAT(85, 15, 40), OPERATOR_HOLD(85, 30), OPERATOR_HEAT(120, 15, 24), OPERATOR_HOLD(120, 90) } },
-    /* High-Tg structural resin: 180 C cure in steps. */
-    { FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_EPOXY_3, 6U,
-      { OPERATOR_HEAT(90, 10, 65), OPERATOR_HOLD(90, 60), OPERATOR_HEAT(135, 10, 45), OPERATOR_HOLD(135, 90),
-        OPERATOR_HEAT(180, 5, 90), OPERATOR_HOLD(180, 120) } },
-};
-#undef OPERATOR_HEAT
-#undef OPERATOR_HOLD
-#define OPERATOR_LIBRARY_PROGRAM_COUNT (sizeof(library_programs) / sizeof(library_programs[0]))
-
-_Static_assert(
-    OPERATOR_LIBRARY_PROGRAM_COUNT < FURNACE_HMI_OPERATOR_MAX_PROGRAMS,
-    "UI-lab program storage must leave room for operator programs"
-);
-
 typedef enum {
     OPERATOR_DRAFT_STAGE_HEATING = 0,
     OPERATOR_DRAFT_STAGE_HOLD,
@@ -321,20 +288,6 @@ static const furnace_hmi_operator_program_t *selected_program_entry(const furnac
 }
 
 static bool run_was_stopped(const furnace_hmi_operator_screens_t *explorer);
-
-static void load_library_programs(furnace_hmi_operator_screens_t *explorer)
-{
-    memset(explorer->programs, 0, sizeof(explorer->programs));
-    for (size_t index = 0U; index < OPERATOR_LIBRARY_PROGRAM_COUNT; ++index) {
-        furnace_hmi_operator_program_t *program = &explorer->programs[index];
-        program->present = true;
-        program->library = true;
-        program->name_string = (uint16_t)library_programs[index].name;
-        program->stage_count = library_programs[index].stage_count;
-        memcpy(program->stages, library_programs[index].stages, sizeof(program->stages));
-    }
-    explorer->library_count = (uint8_t)OPERATOR_LIBRARY_PROGRAM_COUNT;
-}
 
 static void copy_text_bounded(char *destination, size_t capacity, const char *source)
 {
@@ -6367,25 +6320,6 @@ static size_t device_collect_notices(
  * history from its own clock), plus this session's events from controller
  * reports. Filter tabs, date headings with their age, and pages that hold as
  * many events as the screen fits. Times are wall-clock minutes since 1970. */
-enum {
-    OPERATOR_LOG_PROGRAM_STARTED = 0,
-    OPERATOR_LOG_PROGRAM_COMPLETED,
-    OPERATOR_LOG_PROGRAM_STOPPED,
-    OPERATOR_LOG_PROGRAM_PAUSED,
-    OPERATOR_LOG_PROGRAM_RESUMED,
-    OPERATOR_LOG_PROGRAM_SAVED,
-    OPERATOR_LOG_PROGRAM_DELETED,
-    OPERATOR_LOG_MANUAL_STARTED,
-    OPERATOR_LOG_MANUAL_STOPPED,
-    OPERATOR_LOG_ALARM,
-    OPERATOR_LOG_MAINTENANCE_DONE,
-    OPERATOR_LOG_SERVICE_DUE,
-    OPERATOR_LOG_DISPLAY_STARTED,
-    OPERATOR_LOG_SETTINGS_SAVED,
-    OPERATOR_LOG_LINK_LOST,
-    OPERATOR_LOG_LINK_RESTORED,
-    OPERATOR_LOG_TYPE_COUNT,
-};
 
 enum {
     OPERATOR_LOG_ALL = 0,
@@ -6396,7 +6330,6 @@ enum {
     OPERATOR_LOG_FILTER_COUNT,
 };
 
-#define OPERATOR_LOG_DAYS 30
 #define OPERATOR_LOG_ROW 44
 #define OPERATOR_LOG_HEADING 22
 #define OPERATOR_LOG_GAP 4
@@ -6407,23 +6340,23 @@ static const struct {
     operator_status_t tone;
     furnace_hmi_ui_string_id_t text;
     bool display;
-} log_types[OPERATOR_LOG_TYPE_COUNT] = {
-    [OPERATOR_LOG_PROGRAM_STARTED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PLAY, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_STARTED_FORMAT, false },
-    [OPERATOR_LOG_PROGRAM_COMPLETED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_CHECK_CIRCLE, OPERATOR_STATUS_OK, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_COMPLETED_FORMAT, false },
-    [OPERATOR_LOG_PROGRAM_STOPPED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_STOP, OPERATOR_STATUS_DUE, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_STOPPED_FORMAT, false },
-    [OPERATOR_LOG_PROGRAM_PAUSED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PAUSE, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_PAUSED_FORMAT, false },
-    [OPERATOR_LOG_PROGRAM_RESUMED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PLAY, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_RESUMED_FORMAT, false },
-    [OPERATOR_LOG_PROGRAM_SAVED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PENCIL, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_SAVED_FORMAT, false },
-    [OPERATOR_LOG_PROGRAM_DELETED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_TRASH, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_DELETED_FORMAT, false },
-    [OPERATOR_LOG_MANUAL_STARTED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PLAY, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_MANUAL_STARTED, false },
-    [OPERATOR_LOG_MANUAL_STOPPED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_STOP, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_MANUAL_STOPPED, false },
-    [OPERATOR_LOG_ALARM] = { OPERATOR_LOG_ALARMS, FURNACE_HMI_ICON_WARNING, OPERATOR_STATUS_FAULT, FURNACE_HMI_UI_STRING_UI_LAB_LOG_ALARM_FORMAT, false },
-    [OPERATOR_LOG_MAINTENANCE_DONE] = { OPERATOR_LOG_MAINTENANCE, FURNACE_HMI_ICON_WRENCH, OPERATOR_STATUS_OK, FURNACE_HMI_UI_STRING_UI_LAB_LOG_MAINTENANCE_DONE_FORMAT, false },
-    [OPERATOR_LOG_SERVICE_DUE] = { OPERATOR_LOG_MAINTENANCE, FURNACE_HMI_ICON_WRENCH, OPERATOR_STATUS_DUE, FURNACE_HMI_UI_STRING_UI_LAB_LOG_SERVICE_DUE_FORMAT, false },
-    [OPERATOR_LOG_DISPLAY_STARTED] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_POWER, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_DISPLAY_STARTED, true },
-    [OPERATOR_LOG_SETTINGS_SAVED] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_SLIDERS, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_SETTINGS_SAVED, true },
-    [OPERATOR_LOG_LINK_LOST] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_SIGNAL, OPERATOR_STATUS_DUE, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_LOST_TITLE, true },
-    [OPERATOR_LOG_LINK_RESTORED] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_SIGNAL, OPERATOR_STATUS_OK, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_RESTORED_TITLE, true },
+} log_types[FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT] = {
+    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_STARTED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PLAY, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_STARTED_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_COMPLETED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_CHECK_CIRCLE, OPERATOR_STATUS_OK, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_COMPLETED_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_STOPPED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_STOP, OPERATOR_STATUS_DUE, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_STOPPED_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_PAUSED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PAUSE, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_PAUSED_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_RESUMED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PLAY, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_RESUMED_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_SAVED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PENCIL, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_SAVED_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_DELETED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_TRASH, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_DELETED_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_MANUAL_STARTED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PLAY, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_MANUAL_STARTED, false },
+    [FURNACE_HMI_OPERATOR_LOG_MANUAL_STOPPED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_STOP, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_MANUAL_STOPPED, false },
+    [FURNACE_HMI_OPERATOR_LOG_ALARM] = { OPERATOR_LOG_ALARMS, FURNACE_HMI_ICON_WARNING, OPERATOR_STATUS_FAULT, FURNACE_HMI_UI_STRING_UI_LAB_LOG_ALARM_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_MAINTENANCE_DONE] = { OPERATOR_LOG_MAINTENANCE, FURNACE_HMI_ICON_WRENCH, OPERATOR_STATUS_OK, FURNACE_HMI_UI_STRING_UI_LAB_LOG_MAINTENANCE_DONE_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_SERVICE_DUE] = { OPERATOR_LOG_MAINTENANCE, FURNACE_HMI_ICON_WRENCH, OPERATOR_STATUS_DUE, FURNACE_HMI_UI_STRING_UI_LAB_LOG_SERVICE_DUE_FORMAT, false },
+    [FURNACE_HMI_OPERATOR_LOG_DISPLAY_STARTED] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_POWER, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_DISPLAY_STARTED, true },
+    [FURNACE_HMI_OPERATOR_LOG_SETTINGS_SAVED] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_SLIDERS, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_SETTINGS_SAVED, true },
+    [FURNACE_HMI_OPERATOR_LOG_LINK_LOST] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_SIGNAL, OPERATOR_STATUS_DUE, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_LOST_TITLE, true },
+    [FURNACE_HMI_OPERATOR_LOG_LINK_RESTORED] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_SIGNAL, OPERATOR_STATUS_OK, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_RESTORED_TITLE, true },
 };
 
 static const furnace_hmi_ui_string_id_t log_filter_ids[OPERATOR_LOG_FILTER_COUNT] = {
@@ -6432,11 +6365,6 @@ static const furnace_hmi_ui_string_id_t log_filter_ids[OPERATOR_LOG_FILTER_COUNT
     FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_SYSTEM,
 };
 
-/* Web LOG_FAULTS order. */
-static const uint8_t log_faults[] = {
-    FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE, FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED,
-    FURNACE_HMI_FAULT_KIND_DOOR_OPEN, FURNACE_HMI_FAULT_KIND_SENSOR, FURNACE_HMI_FAULT_KIND_POWER_INTERRUPTED,
-};
 
 /* Days since 1970-01-01 of a civil date, and back (H. Hinnant's algorithms). */
 static int32_t days_from_civil(int32_t year, int32_t month, int32_t day)
@@ -6473,13 +6401,6 @@ static int32_t log_now(const furnace_hmi_operator_screens_t *explorer)
     return days_from_civil(clock->year, clock->month, clock->day) * 1440 + clock->hour * 60 + clock->minute;
 }
 
-/* Web rand(): Park-Miller minimal standard generator. */
-static int32_t log_rand(uint64_t *seed, uint32_t range)
-{
-    *seed = (*seed * 48271U) % 2147483647U;
-    return (int32_t)(*seed % range);
-}
-
 static furnace_hmi_operator_log_event_t log_event(int32_t minute, uint8_t type)
 {
     furnace_hmi_operator_log_event_t event;
@@ -6507,114 +6428,19 @@ static void log_add_named(furnace_hmi_operator_screens_t *explorer, uint8_t type
     log_add(explorer, &event);
 }
 
-static bool log_find_task(const furnace_hmi_operator_screens_t *explorer, const char *component_id, const char *task_id,
-                          uint8_t *component, uint8_t *task)
-{
-    for (uint8_t part = 0U; part < explorer->device_catalogue.component_count; ++part) {
-        const furnace_hmi_operator_device_component_t *item = &explorer->device_catalogue.components[part];
-        for (uint8_t index = 0U; strcmp(item->id, component_id) == 0 && index < item->task_count; ++index) {
-            if (strcmp(item->tasks[index].id, task_id) == 0) {
-                *component = part;
-                *task = index;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-/* Web buildDeviceLog: the same seed and draws in the same order. */
-static void log_build(furnace_hmi_operator_screens_t *explorer)
-{
-    const int32_t now = log_now(explorer);
-    const int32_t today = now / 1440;
-    uint64_t seed = 20261006U;
-    furnace_hmi_operator_log_event_t *events = explorer->log_events;
-    size_t count = 0U;
-#define OPERATOR_LOG_PUSH(event_value) do { const furnace_hmi_operator_log_event_t pushed_ = (event_value); \
-        if (pushed_.minute <= now && count < FURNACE_HMI_OPERATOR_LOG_CAPACITY) { events[count++] = pushed_; } } while (0)
-    for (int32_t ago = OPERATOR_LOG_DAYS - 1; ago >= 0; --ago) {
-        const int32_t day = (today - ago) * 1440;
-        if (log_rand(&seed, 12U) == 0) {
-            OPERATOR_LOG_PUSH(log_event(day + 6 * 60 + log_rand(&seed, 60U), OPERATOR_LOG_DISPLAY_STARTED));
-        }
-        const int32_t runs = log_rand(&seed, 10U) < 3 ? 0 : (log_rand(&seed, 10U) < 7 ? 1 : 2);
-        int32_t at = day + 7 * 60 + log_rand(&seed, 120U);
-        for (int32_t run = 0; run < runs; ++run) {
-            const uint8_t program = (uint8_t)log_rand(&seed, 3U);
-            const int32_t curing = program_curing_minutes(&explorer->programs[program]);
-            const int32_t length = curing + program_cooling_minutes(&explorer->programs[program]);
-            const int32_t roll = log_rand(&seed, 20U);
-            if (at + length > now) {
-                break; /* no run is still going on the controller's clock */
-            }
-            furnace_hmi_operator_log_event_t started = log_event(at, OPERATOR_LOG_PROGRAM_STARTED);
-            started.program = program;
-            OPERATOR_LOG_PUSH(started);
-            if (roll == 0) {
-                const int32_t end = at + curing * (30 + log_rand(&seed, 50U)) / 100;
-                furnace_hmi_operator_log_event_t alarm = log_event(end, OPERATOR_LOG_ALARM);
-                alarm.program = program;
-                alarm.fault = log_faults[log_rand(&seed, 5U)];
-                OPERATOR_LOG_PUSH(alarm);
-                at = end + 30;
-            }
-            else if (roll < 3) {
-                const int32_t end = at + curing * (20 + log_rand(&seed, 60U)) / 100;
-                furnace_hmi_operator_log_event_t stopped = log_event(end, OPERATOR_LOG_PROGRAM_STOPPED);
-                stopped.program = program;
-                OPERATOR_LOG_PUSH(stopped);
-                at = end + 20;
-            }
-            else {
-                furnace_hmi_operator_log_event_t completed = log_event(at + length, OPERATOR_LOG_PROGRAM_COMPLETED);
-                completed.program = program;
-                OPERATOR_LOG_PUSH(completed);
-                at += length + 30;
-            }
-            at += 15 + log_rand(&seed, 60U);
-        }
-    }
-    /* The controller's service reminders, a short connection loss and a settings change. */
-    static const struct { int32_t ago; int32_t minute; const char *component; const char *task; } reminders[] = {
-        { 4, 8 * 60 + 2, "air_filter", "filter_inspect" },
-        { 11, 8 * 60 + 1, "cabinet_fan", "fan_calendar" },
-    };
-    for (size_t index = 0U; index < sizeof(reminders) / sizeof(reminders[0]); ++index) {
-        furnace_hmi_operator_log_event_t due = log_event((today - reminders[index].ago) * 1440 + reminders[index].minute,
-                                                       OPERATOR_LOG_SERVICE_DUE);
-        if (log_find_task(explorer, reminders[index].component, reminders[index].task, &due.component, &due.task)) {
-            OPERATOR_LOG_PUSH(due);
-        }
-    }
-    OPERATOR_LOG_PUSH(log_event((today - 9) * 1440 + 13 * 60 + 5, OPERATOR_LOG_LINK_LOST));
-    OPERATOR_LOG_PUSH(log_event((today - 9) * 1440 + 13 * 60 + 7, OPERATOR_LOG_LINK_RESTORED));
-    OPERATOR_LOG_PUSH(log_event((today - 17) * 1440 + 10 * 60 + 15, OPERATOR_LOG_SETTINGS_SAVED));
-#undef OPERATOR_LOG_PUSH
-    /* Newest first; equal times keep their order (web stable sort). */
-    for (size_t index = 1U; index < count; ++index) {
-        const furnace_hmi_operator_log_event_t moving = events[index];
-        size_t at = index;
-        while (at > 0U && events[at - 1U].minute < moving.minute) {
-            events[at] = events[at - 1U];
-            --at;
-        }
-        events[at] = moving;
-    }
-    explorer->log_count = (uint16_t)count;
-}
 
 static void log_text(const furnace_hmi_operator_screens_t *explorer, const furnace_hmi_operator_log_event_t *event,
                      char *buffer, size_t capacity)
 {
-    const furnace_hmi_ui_string_id_t format = log_types[event->type % OPERATOR_LOG_TYPE_COUNT].text;
+    const furnace_hmi_ui_string_id_t format = log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].text;
     const char *name = event->name[0] != '\0' ? event->name
-        : event->program < OPERATOR_LIBRARY_PROGRAM_COUNT ? ui_string(library_programs[event->program].name) : "";
-    if (event->type == OPERATOR_LOG_ALARM) {
+        : event->program < explorer->library_count && explorer->programs[event->program].library
+            ? ui_string((furnace_hmi_ui_string_id_t)explorer->programs[event->program].name_string) : "";
+    if (event->type == FURNACE_HMI_OPERATOR_LOG_ALARM) {
         (void)snprintf(buffer, capacity, ui_string(format),
                        ui_string(fault_alert_titles[event->fault < FURNACE_HMI_FAULT_KIND_COUNT ? event->fault : 0U]), name);
     }
-    else if (event->type == OPERATOR_LOG_MAINTENANCE_DONE || event->type == OPERATOR_LOG_SERVICE_DUE) {
+    else if (event->type == FURNACE_HMI_OPERATOR_LOG_MAINTENANCE_DONE || event->type == FURNACE_HMI_OPERATOR_LOG_SERVICE_DUE) {
         const bool known = event->component < explorer->device_catalogue.component_count &&
             event->task < explorer->device_catalogue.components[event->component].task_count;
         const furnace_hmi_operator_device_component_t *part = &explorer->device_catalogue.components[event->component];
@@ -6638,7 +6464,7 @@ static void log_time_text(const furnace_hmi_operator_screens_t *explorer, int32_
 static bool log_listed(const furnace_hmi_operator_screens_t *explorer, const furnace_hmi_operator_log_event_t *event)
 {
     return explorer->log_filter == OPERATOR_LOG_ALL ||
-        log_types[event->type % OPERATOR_LOG_TYPE_COUNT].kind == explorer->log_filter;
+        log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].kind == explorer->log_filter;
 }
 
 /* Web logPages: the page of every listed event; a date heading starts every
@@ -6705,7 +6531,7 @@ static bool log_add_heading(const furnace_hmi_operator_screens_t *explorer, lv_o
 static bool log_add_row(furnace_hmi_operator_screens_t *explorer, lv_obj_t *list, uint16_t index)
 {
     const furnace_hmi_operator_log_event_t *event = &explorer->log_events[index];
-    const operator_status_t tone = log_types[event->type % OPERATOR_LOG_TYPE_COUNT].tone;
+    const operator_status_t tone = log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].tone;
     char time_text[24];
     char text[2 * FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
     log_time_text(explorer, event->minute, time_text, sizeof(time_text));
@@ -6725,7 +6551,7 @@ static bool log_add_row(furnace_hmi_operator_screens_t *explorer, lv_obj_t *list
     lv_obj_set_style_pad_column(row, 8, LV_PART_MAIN);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_image_set_src(icon, furnace_hmi_icon_image(log_types[event->type % OPERATOR_LOG_TYPE_COUNT].icon, 18));
+    lv_image_set_src(icon, furnace_hmi_icon_image(log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].icon, 18));
     lv_obj_set_style_image_recolor(icon, tone == OPERATOR_STATUS_NEUTRAL ? OPERATOR_THEME_AMBER_TEXT : status_color(tone),
                                    LV_PART_MAIN);
     lv_obj_set_style_image_recolor_opa(icon, LV_OPA_COVER, LV_PART_MAIN);
@@ -6750,11 +6576,11 @@ static void log_observation(furnace_hmi_operator_screens_t *explorer, const furn
     const bool was_current = before->availability == FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
     const bool is_current = after->availability == FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
     if (was_current && !is_current) {
-        log_add_named(explorer, OPERATOR_LOG_LINK_LOST, "");
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_LINK_LOST, "");
         return;
     }
     if (!was_current && is_current) {
-        log_add_named(explorer, OPERATOR_LOG_LINK_RESTORED, "");
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_LINK_RESTORED, "");
     }
     if (!is_current) {
         return;
@@ -6764,28 +6590,28 @@ static void log_observation(furnace_hmi_operator_screens_t *explorer, const furn
     const bool after_active = after->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM &&
         (after->run_state == FURNACE_HMI_RUN_STATE_RUNNING || after->run_state == FURNACE_HMI_RUN_STATE_PAUSED);
     if (after_active && (!before_active || before->program_id != after->program_id)) {
-        log_add_named(explorer, OPERATOR_LOG_PROGRAM_STARTED, after->program_name);
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_STARTED, after->program_name);
     }
     else if (before_active && after_active && before->run_state != after->run_state) {
-        log_add_named(explorer, after->run_state == FURNACE_HMI_RUN_STATE_PAUSED ? OPERATOR_LOG_PROGRAM_PAUSED
-                                                                                 : OPERATOR_LOG_PROGRAM_RESUMED,
+        log_add_named(explorer, after->run_state == FURNACE_HMI_RUN_STATE_PAUSED ? FURNACE_HMI_OPERATOR_LOG_PROGRAM_PAUSED
+                                                                                 : FURNACE_HMI_OPERATOR_LOG_PROGRAM_RESUMED,
                       after->program_name);
     }
     if (after->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && after->run_state == FURNACE_HMI_RUN_STATE_COMPLETE &&
         before->run_state != FURNACE_HMI_RUN_STATE_COMPLETE &&
         !(explorer->run_stopped && after->program_id == explorer->stopped_program_id)) {
-        log_add_named(explorer, OPERATOR_LOG_PROGRAM_COMPLETED, after->program_name);
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_COMPLETED, after->program_name);
     }
     if (after->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && after->run_state == FURNACE_HMI_RUN_STATE_FAULT &&
         before->run_state != FURNACE_HMI_RUN_STATE_FAULT) {
-        furnace_hmi_operator_log_event_t alarm = log_event(log_now(explorer), OPERATOR_LOG_ALARM);
+        furnace_hmi_operator_log_event_t alarm = log_event(log_now(explorer), FURNACE_HMI_OPERATOR_LOG_ALARM);
         alarm.fault = (uint8_t)after->fault_kind;
         copy_text_bounded(alarm.name, sizeof(alarm.name), after->program_name);
         log_add(explorer, &alarm);
     }
     if (before_active && before->run_phase == FURNACE_HMI_RUN_PHASE_CURING &&
         after->mode == FURNACE_HMI_MACHINE_MODE_IDLE) {
-        log_add_named(explorer, OPERATOR_LOG_PROGRAM_STOPPED, before->program_name);
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_STOPPED, before->program_name);
     }
 }
 
@@ -7974,7 +7800,7 @@ static void device_complete_task(furnace_hmi_operator_screens_t *explorer, uint8
     }
     copy_text_bounded(task->last, sizeof(task->last), date);
     {
-        furnace_hmi_operator_log_event_t done = log_event(log_now(explorer), OPERATOR_LOG_MAINTENANCE_DONE);
+        furnace_hmi_operator_log_event_t done = log_event(log_now(explorer), FURNACE_HMI_OPERATOR_LOG_MAINTENANCE_DONE);
         done.component = component_index;
         done.task = task_index;
         log_add(explorer, &done);
@@ -9069,7 +8895,7 @@ static void commit_program_editor(furnace_hmi_operator_screens_t *explorer)
     else {
         copy_text_bounded(explorer->program_name_overrides[slot], FURNACE_HMI_OPERATOR_NAME_CAPACITY, name);
     }
-    log_add_named(explorer, OPERATOR_LOG_PROGRAM_SAVED, program_name_text(explorer, slot));
+    log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_SAVED, program_name_text(explorer, slot));
     clear_staged_session(explorer);
     clear_modal(explorer);
     explorer->selected_program = (uint8_t)slot;
@@ -9085,7 +8911,7 @@ static bool remove_program(furnace_hmi_operator_screens_t *explorer, uint8_t pro
     if (!program_listed(explorer, program)) {
         return false;
     }
-    log_add_named(explorer, OPERATOR_LOG_PROGRAM_DELETED, program_name_text(explorer, program));
+    log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_DELETED, program_name_text(explorer, program));
     if (program_is_favourite(explorer, program)) {
         (void)toggle_program_favourite(explorer, program);
     }
@@ -9224,14 +9050,14 @@ static void apply_action(
         (void)furnace_hmi_operator_screens_navigate(explorer, FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR);
         break;
     case OPERATOR_ACTION_MANUAL_START:
-        log_add_named(explorer, OPERATOR_LOG_MANUAL_STARTED, "");
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_MANUAL_STARTED, "");
         explorer->manual_running = true;
         explorer->manual_paused = false;
         (void)update_manual_run_state(explorer);
         break;
     case OPERATOR_ACTION_MANUAL_STOP:
         /* The controller stops heating and cools automatically; the session stays on screen. */
-        log_add_named(explorer, OPERATOR_LOG_MANUAL_STOPPED, "");
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_MANUAL_STOPPED, "");
         explorer->manual_running = false;
         explorer->manual_paused = false;
         explorer->manual_cooling = true;
@@ -9412,7 +9238,7 @@ static void apply_action(
             log_time_text(explorer, event->minute, time_text, sizeof(time_text));
             (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_EVENT_DETAIL_FORMAT),
                            date, time_text,
-                           ui_string(log_types[event->type % OPERATOR_LOG_TYPE_COUNT].display
+                           ui_string(log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].display
                                          ? FURNACE_HMI_UI_STRING_UI_LAB_SOURCE_HMI
                                          : FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_CONTROL_CPU));
             (void)settings_show_message(explorer, text, detail);
@@ -9513,7 +9339,7 @@ static void apply_action(
     }
     case OPERATOR_ACTION_SETTINGS_SAVE:
         settings_copy_candidate_to_saved(explorer);
-        log_add_named(explorer, OPERATOR_LOG_SETTINGS_SAVED, "");
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_SETTINGS_SAVED, "");
         (void)rebuild_page(explorer);
         (void)settings_show_message(explorer,
                                      ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SAVED_TITLE),
@@ -9540,7 +9366,7 @@ static void apply_action(
         break;
     case OPERATOR_ACTION_SETTINGS_SAVE_TO_TAB:
         settings_copy_candidate_to_saved(explorer);
-        log_add_named(explorer, OPERATOR_LOG_SETTINGS_SAVED, "");
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_SETTINGS_SAVED, "");
         clear_modal(explorer);
         if ((uint8_t)value == UINT8_MAX) {
             (void)furnace_hmi_operator_screens_navigate(explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE);
@@ -9573,7 +9399,7 @@ static void apply_action(
             explorer->settings_candidate_date_format = 0U;
         }
         settings_copy_candidate_to_saved(explorer);
-        log_add_named(explorer, OPERATOR_LOG_SETTINGS_SAVED, "");
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_SETTINGS_SAVED, "");
         clear_modal(explorer);
         (void)settings_apply_presentation(explorer);
         (void)settings_show_message(explorer,
@@ -9863,7 +9689,7 @@ static void apply_action(
              explorer->state->run_state == FURNACE_HMI_RUN_STATE_PAUSED)) {
             explorer->run_stopped = true;
             explorer->stopped_program_id = explorer->state->program_id;
-            log_add_named(explorer, OPERATOR_LOG_PROGRAM_STOPPED, explorer->state->program_name);
+            log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_STOPPED, explorer->state->program_name);
         }
         post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_STOP);
         break;
@@ -10112,16 +9938,25 @@ bool furnace_hmi_operator_screens_create(
     furnace_hmi_operator_screens_t *explorer,
     lv_obj_t *parent,
     const furnace_hmi_dashboard_state_t *state,
-    const furnace_hmi_operator_device_catalogue_t *device_catalogue
+    const furnace_hmi_operator_content_t *content
 )
 {
     if (explorer == NULL || parent == NULL || explorer->root != NULL || state == NULL ||
-        device_catalogue == NULL ||
+        content == NULL || content->library_count > FURNACE_HMI_OPERATOR_MAX_PROGRAMS ||
+        content->recent_count > FURNACE_HMI_OPERATOR_MAX_RECENT_PROGRAMS ||
+        content->log_count > FURNACE_HMI_OPERATOR_LOG_CAPACITY ||
         !furnace_hmi_dashboard_state_is_well_formed(state)) {
         return false;
     }
     memset(explorer, 0, sizeof(*explorer));
-    explorer->device_catalogue = *device_catalogue;
+    explorer->library_known = content->library_known;
+    explorer->clock_known = content->clock_known;
+    explorer->log_known = content->log_known;
+    explorer->limits_known = content->limits_known;
+    explorer->device_catalogue_known = content->device_catalogue_known;
+    if (content->device_catalogue_known) {
+        explorer->device_catalogue = content->device_catalogue;
+    }
     explorer->observation = *state;
     normalize_observation_validity(&explorer->observation);
     explorer->state = &explorer->observation;
@@ -10131,21 +9966,31 @@ bool furnace_hmi_operator_screens_create(
                       (state->run_state == FURNACE_HMI_RUN_STATE_RUNNING || state->run_state == FURNACE_HMI_RUN_STATE_PAUSED)) ||
         (state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && state->run_state == FURNACE_HMI_RUN_STATE_FAULT)
         ? FURNACE_HMI_OPERATOR_PAGE_RUNNING : FURNACE_HMI_OPERATOR_PAGE_HOME;
-    load_library_programs(explorer);
+    if (content->library_known) {
+        memcpy(explorer->programs, content->programs, sizeof(explorer->programs));
+        explorer->library_count = content->library_count;
+    }
     explorer->running_view_mode = 1U;
     explorer->settings_tab = OPERATOR_SETTINGS_TAB_DISPLAY;
     explorer->settings_pending_tab = OPERATOR_SETTINGS_TAB_DISPLAY;
-    explorer->clock = (furnace_hmi_operator_clock_t){ 2026U, 9U, 14U, 14U, 32U };
+    if (content->clock_known) {
+        explorer->clock = content->clock;
+    }
     explorer->clock_draft = explorer->clock;
     explorer->settings_connections_enabled = false;
     /* The controller's event log, and this display starting. */
-    log_build(explorer);
-    log_add_named(explorer, OPERATOR_LOG_DISPLAY_STARTED, "");
+    if (content->log_known) {
+        memcpy(explorer->log_events, content->log_events, sizeof(explorer->log_events));
+        explorer->log_count = content->log_count;
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_DISPLAY_STARTED, "");
+    }
     explorer->settings_restart_assessment = 0U;
     explorer->settings_restart_result = 0U;
-    explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_RATE] = OPERATOR_MAX_PROGRAM_RATE_TENTHS;
-    explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_TEMPERATURE] = OPERATOR_MAX_PROGRAM_TEMPERATURE_C;
-    explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_DURATION] = 720;
+    if (content->limits_known) {
+        explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_RATE] = content->max_rate_tenths_c_per_minute;
+        explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_TEMPERATURE] = content->max_temperature_c;
+        explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_DURATION] = content->default_duration_minutes;
+    }
     explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_BRIGHTNESS] = 80;
     explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_DIM] = 0;
     memcpy(explorer->settings_candidate_numeric, explorer->settings_saved_numeric,
@@ -10179,10 +10024,11 @@ bool furnace_hmi_operator_screens_create(
         explorer->draft_duration_minutes = initial.duration_minutes;
         explorer->draft_stage_kind = (uint8_t)fixture_stage_kind(&initial);
     }
-    /* Web demoRecent: the programs run most recently, newest first. */
-    static const uint8_t initial_recent[] = { 1U, 0U };
-    memcpy(explorer->quick_launch_recent, initial_recent, sizeof(initial_recent));
-    explorer->recent_count = (uint8_t)sizeof(initial_recent);
+    /* The programs run most recently, newest first (web demoRecent). */
+    if (content->library_known) {
+        memcpy(explorer->quick_launch_recent, content->recent, sizeof(explorer->quick_launch_recent));
+        explorer->recent_count = content->recent_count;
+    }
 
     explorer->root = lv_obj_create(parent);
     if (explorer->root == NULL) {
@@ -10523,4 +10369,19 @@ void furnace_hmi_operator_screens_destroy(furnace_hmi_operator_screens_t *explor
         lv_obj_delete(explorer->root);
     }
     memset(explorer, 0, sizeof(*explorer));
+}
+
+int32_t furnace_hmi_operator_program_curing_minutes(const furnace_hmi_operator_program_t *program)
+{
+    return program_curing_minutes(program);
+}
+
+int32_t furnace_hmi_operator_program_cooling_minutes(const furnace_hmi_operator_program_t *program)
+{
+    return program_cooling_minutes(program);
+}
+
+int32_t furnace_hmi_operator_clock_minute(const furnace_hmi_operator_clock_t *clock)
+{
+    return days_from_civil(clock->year, clock->month, clock->day) * 1440 + clock->hour * 60 + clock->minute;
 }

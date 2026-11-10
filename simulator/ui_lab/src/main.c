@@ -14,6 +14,7 @@
 
 #include <furnace_hmi/operator_screens.h>
 #include "device_catalogue_file.h"
+#include "operator_fixtures.h"
 #include <furnace_hmi/support_qr.h>
 #include <furnace_hmi/operator_theme.h>
 
@@ -29,6 +30,8 @@ typedef struct {
     furnace_hmi_simulator_t simulator;
     furnace_hmi_operator_screens_t explorer;
     furnace_hmi_operator_device_catalogue_t device_catalogue;
+    /* SIMULATION ONLY: the controller-owned content the lab shows (operator_fixtures.c). */
+    furnace_hmi_operator_content_t content;
     lv_obj_t *simulation_marker;
     volatile int requested_scenario;
     volatile int requested_page;
@@ -144,8 +147,9 @@ static bool render_scenario(ui_lab_context_t *context)
     if (state == NULL) {
         return false;
     }
+    furnace_hmi_operator_fixture_content(&context->content, &context->device_catalogue);
     if (!furnace_hmi_operator_screens_create(
-            &context->explorer, lv_screen_active(), state, &context->device_catalogue)) {
+            &context->explorer, lv_screen_active(), state, &context->content)) {
         return false;
     }
 

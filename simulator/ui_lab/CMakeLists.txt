@@ -95,6 +95,7 @@ add_executable(
   furnace_hmi_ui_lab
   src/main.c
   src/device_catalogue_file.c
+  src/operator_fixtures.c
 )
 target_compile_definitions(
   furnace_hmi_ui_lab

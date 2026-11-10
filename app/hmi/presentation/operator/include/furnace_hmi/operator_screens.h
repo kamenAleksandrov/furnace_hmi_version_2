@@ -159,16 +159,87 @@ typedef struct {
     char detail[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
 } furnace_hmi_operator_service_record_t;
 
+/** The kinds of event-log entry (furnace_hmi_operator_log_event_t.type). */
+typedef enum {
+    FURNACE_HMI_OPERATOR_LOG_PROGRAM_STARTED = 0,
+    FURNACE_HMI_OPERATOR_LOG_PROGRAM_COMPLETED,
+    FURNACE_HMI_OPERATOR_LOG_PROGRAM_STOPPED,
+    FURNACE_HMI_OPERATOR_LOG_PROGRAM_PAUSED,
+    FURNACE_HMI_OPERATOR_LOG_PROGRAM_RESUMED,
+    FURNACE_HMI_OPERATOR_LOG_PROGRAM_SAVED,
+    FURNACE_HMI_OPERATOR_LOG_PROGRAM_DELETED,
+    FURNACE_HMI_OPERATOR_LOG_MANUAL_STARTED,
+    FURNACE_HMI_OPERATOR_LOG_MANUAL_STOPPED,
+    FURNACE_HMI_OPERATOR_LOG_ALARM,
+    FURNACE_HMI_OPERATOR_LOG_MAINTENANCE_DONE,
+    FURNACE_HMI_OPERATOR_LOG_SERVICE_DUE,
+    FURNACE_HMI_OPERATOR_LOG_DISPLAY_STARTED,
+    FURNACE_HMI_OPERATOR_LOG_SETTINGS_SAVED,
+    FURNACE_HMI_OPERATOR_LOG_LINK_LOST,
+    FURNACE_HMI_OPERATOR_LOG_LINK_RESTORED,
+    FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT,
+} furnace_hmi_operator_log_type_t;
+
 /* One Device log event (the controller's event log). */
 typedef struct {
     int32_t minute;     /**< Wall-clock minutes since 1970-01-01 on the controller clock. */
-    uint8_t type;       /**< ui_lab log event type. */
+    uint8_t type;       /**< furnace_hmi_operator_log_type_t. */
     uint8_t program;    /**< Delivered library program, or UINT8_MAX when `name` holds the program. */
     uint8_t fault;      /**< furnace_hmi_fault_kind_t of an alarm. */
     uint8_t component;  /**< Maintenance events: catalogue component and task. */
     uint8_t task;
     char name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
 } furnace_hmi_operator_log_event_t;
+
+/** Calendar date and wall-clock time on the controller's clock. */
+typedef struct {
+    uint16_t year;
+    uint8_t month;  /**< 1-12 */
+    uint8_t day;    /**< 1-31 */
+    uint8_t hour;   /**< 0-23 */
+    uint8_t minute; /**< 0-59 */
+} furnace_hmi_operator_clock_t;
+
+/**
+ * Controller-owned content the screens show besides the status observation:
+ * the program library and the recently run programs, the controller's clock,
+ * its event log, its program limits and the Device catalogue. The host
+ * supplies it at creation. Content whose flag is false is presented as
+ * unavailable, never as empty or as a default, and the screens add nothing to
+ * it themselves. The UI lab fills it from its simulation
+ * (simulator/ui_lab/src/operator_fixtures.c); the Zephyr application has none
+ * until the controller provides it (Phase 21: the 20d messages).
+ */
+typedef struct {
+    bool library_known;
+    /** Delivered programs, listed first, then programs the operator created. */
+    uint8_t library_count;
+    furnace_hmi_operator_program_t programs[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
+    /** The programs run most recently, newest first (indices into programs). */
+    uint8_t recent_count;
+    uint8_t recent[FURNACE_HMI_OPERATOR_MAX_RECENT_PROGRAMS];
+    bool clock_known;
+    furnace_hmi_operator_clock_t clock;
+    bool log_known;
+    uint16_t log_count;
+    furnace_hmi_operator_log_event_t log_events[FURNACE_HMI_OPERATOR_LOG_CAPACITY];
+    /** The controller's program limits, as Settings shows them. */
+    bool limits_known;
+    int32_t max_rate_tenths_c_per_minute;
+    int32_t max_temperature_c;
+    int32_t default_duration_minutes;
+    bool device_catalogue_known;
+    furnace_hmi_operator_device_catalogue_t device_catalogue;
+} furnace_hmi_operator_content_t;
+
+/** Curing minutes of a program: the sum of its stages. */
+int32_t furnace_hmi_operator_program_curing_minutes(const furnace_hmi_operator_program_t *program);
+
+/** The screens' estimate of a program's automatic cooling, in minutes. */
+int32_t furnace_hmi_operator_program_cooling_minutes(const furnace_hmi_operator_program_t *program);
+
+/** Wall-clock minutes since 1970-01-01 of a clock value. */
+int32_t furnace_hmi_operator_clock_minute(const furnace_hmi_operator_clock_t *clock);
 
 typedef struct furnace_hmi_operator_screens furnace_hmi_operator_screens_t;
 
@@ -184,12 +255,12 @@ typedef struct {
     char text[16];
 } furnace_hmi_operator_keyboard_button_t;
 
-/** Create the host-only visual explorer under the LVGL owner context. */
+/** Create the operator screens under the LVGL owner context, with the host's content. */
 bool furnace_hmi_operator_screens_create(
     furnace_hmi_operator_screens_t *explorer,
     lv_obj_t *parent,
     const furnace_hmi_dashboard_state_t *state,
-    const furnace_hmi_operator_device_catalogue_t *device_catalogue
+    const furnace_hmi_operator_content_t *content
 );
 
 /** Refresh controller-observation labels without treating simulation as truth. */
@@ -227,14 +298,6 @@ bool furnace_hmi_operator_screens_take_request(
 /* The opaque storage is intentionally fixed-size so the host laboratory does
  * not need a separate allocator policy. Its fields remain private to the lab.
  */
-/** Calendar date and wall-clock time (simulated controller clock). */
-typedef struct {
-    uint16_t year;
-    uint8_t month;  /**< 1-12 */
-    uint8_t day;    /**< 1-31 */
-    uint8_t hour;   /**< 0-23 */
-    uint8_t minute; /**< 0-59 */
-} furnace_hmi_operator_clock_t;
 
 struct furnace_hmi_operator_screens {
     lv_obj_t *root;
@@ -426,6 +489,12 @@ struct furnace_hmi_operator_screens {
     furnace_hmi_operator_clock_t clock;
     furnace_hmi_operator_clock_t clock_draft;
     furnace_hmi_operator_device_catalogue_t device_catalogue;
+    /* Which controller-owned content the host supplied (furnace_hmi_operator_content_t). */
+    bool library_known;
+    bool clock_known;
+    bool log_known;
+    bool limits_known;
+    bool device_catalogue_known;
     uint8_t device_tab;
     uint8_t device_filter;
     uint8_t device_page;
