@@ -21,8 +21,8 @@ Design record: [ADR-0012](../../../docs/07-decisions/0012-theme-and-language-cat
 
 ## Rules
 
-1. **No colour values in UI code.** LVGL: `ui_lab_color(FURNACE_HMI_COLOR_x)`,
-   `ui_lab_opa()`, `ui_lab_theme_border()`, `ui_lab_theme_background()` or the
+1. **No colour values in UI code.** LVGL: `operator_color(FURNACE_HMI_COLOR_x)`,
+   `operator_opa()`, `operator_theme_border()`, `operator_theme_background()` or the
    `UI_LAB_THEME_*` macros. Web: `var(--token)` in CSS, `themeColor('token')`
    in drawing code. Need a new colour? Add a token with a `doc` to
    `themes.json` for **every** theme, then regenerate.
@@ -49,8 +49,8 @@ Design record: [ADR-0012](../../../docs/07-decisions/0012-theme-and-language-cat
    (C cannot reorder arguments; rephrase instead), the same `{fields}` in any
    order, characters the HMI font can draw. The generator enforces all three.
 8. **Switching is a rebuild in the GUI context.** LVGL:
-   `ui_lab_theme_select()` / `furnace_hmi_ui_set_language()` then
-   `furnace_hmi_ui_lab_explorer_refresh_presentation()`. Web: candidate
+   `operator_theme_select()` / `furnace_hmi_ui_set_language()` then
+   `furnace_hmi_operator_screens_refresh_presentation()`. Web: candidate
    preference, `render()` applies it. Never restyle from another thread.
 9. **Both presentations in the same slice** (UI-parity skill).
 

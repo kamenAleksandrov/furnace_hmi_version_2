@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
-#ifndef FURNACE_HMI_UI_LAB_EXPLORER_H
-#define FURNACE_HMI_UI_LAB_EXPLORER_H
+#ifndef FURNACE_HMI_OPERATOR_SCREENS_H
+#define FURNACE_HMI_OPERATOR_SCREENS_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -15,111 +15,111 @@ extern "C" {
 #endif
 
 typedef enum {
-    FURNACE_HMI_UI_LAB_PAGE_HOME = 0,
-    FURNACE_HMI_UI_LAB_PAGE_MANUAL,
-    FURNACE_HMI_UI_LAB_PAGE_PROGRAM_LOADING,
-    FURNACE_HMI_UI_LAB_PAGE_RUNNING,
-    FURNACE_HMI_UI_LAB_PAGE_PROGRAMS,
-    FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL,
-    FURNACE_HMI_UI_LAB_PAGE_PROGRAM_STAGES,
-    FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR,
-    FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR,
-    FURNACE_HMI_UI_LAB_PAGE_DEVICE,
-    FURNACE_HMI_UI_LAB_PAGE_SETTINGS,
-    FURNACE_HMI_UI_LAB_PAGE_COUNT,
-} furnace_hmi_ui_lab_page_t;
+    FURNACE_HMI_OPERATOR_PAGE_HOME = 0,
+    FURNACE_HMI_OPERATOR_PAGE_MANUAL,
+    FURNACE_HMI_OPERATOR_PAGE_PROGRAM_LOADING,
+    FURNACE_HMI_OPERATOR_PAGE_RUNNING,
+    FURNACE_HMI_OPERATOR_PAGE_PROGRAMS,
+    FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL,
+    FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES,
+    FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR,
+    FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR,
+    FURNACE_HMI_OPERATOR_PAGE_DEVICE,
+    FURNACE_HMI_OPERATOR_PAGE_SETTINGS,
+    FURNACE_HMI_OPERATOR_PAGE_COUNT,
+} furnace_hmi_operator_page_t;
 
-#define FURNACE_HMI_UI_LAB_MAX_PROGRAMS 12U
-#define FURNACE_HMI_UI_LAB_MAX_STAGES 8U
-#define FURNACE_HMI_UI_LAB_MAX_QUICK_LAUNCH_ITEMS 3U
-#define FURNACE_HMI_UI_LAB_MAX_RECENT_PROGRAMS 6U
-#define FURNACE_HMI_UI_LAB_TRAJECTORY_GRID_HORIZONTAL_COUNT 5U
-#define FURNACE_HMI_UI_LAB_TRAJECTORY_GRID_VERTICAL_COUNT 7U
-#define FURNACE_HMI_UI_LAB_TRAJECTORY_STAGE_NODE_COUNT 8U
-#define FURNACE_HMI_UI_LAB_DEVICE_MAX_COMPONENTS 12U
-#define FURNACE_HMI_UI_LAB_DEVICE_MAX_TASKS 4U
-#define FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY 192U
+#define FURNACE_HMI_OPERATOR_MAX_PROGRAMS 12U
+#define FURNACE_HMI_OPERATOR_MAX_STAGES 8U
+#define FURNACE_HMI_OPERATOR_MAX_QUICK_LAUNCH_ITEMS 3U
+#define FURNACE_HMI_OPERATOR_MAX_RECENT_PROGRAMS 6U
+#define FURNACE_HMI_OPERATOR_TRAJECTORY_GRID_HORIZONTAL_COUNT 5U
+#define FURNACE_HMI_OPERATOR_TRAJECTORY_GRID_VERTICAL_COUNT 7U
+#define FURNACE_HMI_OPERATOR_TRAJECTORY_STAGE_NODE_COUNT 8U
+#define FURNACE_HMI_OPERATOR_DEVICE_MAX_COMPONENTS 12U
+#define FURNACE_HMI_OPERATOR_DEVICE_MAX_TASKS 4U
+#define FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY 192U
 /* Full-width top accent/light-request strip. It equals the 12 px side and
  * bottom borders, so content starts 12 px below the top edge. */
-#define FURNACE_HMI_UI_LAB_LIGHT_TARGET_HEIGHT 12
+#define FURNACE_HMI_OPERATOR_LIGHT_TARGET_HEIGHT 12
 /* Running reading line: label/value pairs between the run visual and actions. */
-#define FURNACE_HMI_UI_LAB_RUNNING_READING_COUNT 5U
-#define FURNACE_HMI_UI_LAB_DEVICE_ID_CAPACITY 40U
-#define FURNACE_HMI_UI_LAB_NAME_CAPACITY 33U
-#define FURNACE_HMI_UI_LAB_KEYBOARD_VALUE_CAPACITY 64U
-#define FURNACE_HMI_UI_LAB_KEYBOARD_BUTTON_COUNT 64U
-#define FURNACE_HMI_UI_LAB_SERVICE_RECORDS 8U
-#define FURNACE_HMI_UI_LAB_LOG_CAPACITY 160U
+#define FURNACE_HMI_OPERATOR_RUNNING_READING_COUNT 5U
+#define FURNACE_HMI_OPERATOR_DEVICE_ID_CAPACITY 40U
+#define FURNACE_HMI_OPERATOR_NAME_CAPACITY 33U
+#define FURNACE_HMI_OPERATOR_KEYBOARD_VALUE_CAPACITY 64U
+#define FURNACE_HMI_OPERATOR_KEYBOARD_BUTTON_COUNT 64U
+#define FURNACE_HMI_OPERATOR_SERVICE_RECORDS 8U
+#define FURNACE_HMI_OPERATOR_LOG_CAPACITY 160U
 
 typedef enum {
-    FURNACE_HMI_UI_LAB_DEVICE_TASK_UP_TO_DATE = 0,
-    FURNACE_HMI_UI_LAB_DEVICE_TASK_DUE_SOON,
-    FURNACE_HMI_UI_LAB_DEVICE_TASK_DUE,
-    FURNACE_HMI_UI_LAB_DEVICE_TASK_CONDITION,
-    FURNACE_HMI_UI_LAB_DEVICE_TASK_UNKNOWN,
-} furnace_hmi_ui_lab_device_task_state_t;
+    FURNACE_HMI_OPERATOR_DEVICE_TASK_UP_TO_DATE = 0,
+    FURNACE_HMI_OPERATOR_DEVICE_TASK_DUE_SOON,
+    FURNACE_HMI_OPERATOR_DEVICE_TASK_DUE,
+    FURNACE_HMI_OPERATOR_DEVICE_TASK_CONDITION,
+    FURNACE_HMI_OPERATOR_DEVICE_TASK_UNKNOWN,
+} furnace_hmi_operator_device_task_state_t;
 
 typedef struct {
-    char id[FURNACE_HMI_UI_LAB_DEVICE_ID_CAPACITY];
-    char name[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char basis[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char interval[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char remaining[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char state[FURNACE_HMI_UI_LAB_DEVICE_ID_CAPACITY];
-    char last[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char procedure[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    furnace_hmi_ui_lab_device_task_state_t task_state;
-} furnace_hmi_ui_lab_device_task_t;
+    char id[FURNACE_HMI_OPERATOR_DEVICE_ID_CAPACITY];
+    char name[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char basis[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char interval[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char remaining[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char state[FURNACE_HMI_OPERATOR_DEVICE_ID_CAPACITY];
+    char last[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char procedure[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    furnace_hmi_operator_device_task_state_t task_state;
+} furnace_hmi_operator_device_task_t;
 
 typedef struct {
-    char id[FURNACE_HMI_UI_LAB_DEVICE_ID_CAPACITY];
-    char name[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char part[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char location[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char usage[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char source[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char instance[FURNACE_HMI_UI_LAB_DEVICE_ID_CAPACITY];
+    char id[FURNACE_HMI_OPERATOR_DEVICE_ID_CAPACITY];
+    char name[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char part[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char location[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char usage[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char source[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char instance[FURNACE_HMI_OPERATOR_DEVICE_ID_CAPACITY];
     uint8_t task_count;
-    furnace_hmi_ui_lab_device_task_t tasks[FURNACE_HMI_UI_LAB_DEVICE_MAX_TASKS];
-} furnace_hmi_ui_lab_device_component_t;
+    furnace_hmi_operator_device_task_t tasks[FURNACE_HMI_OPERATOR_DEVICE_MAX_TASKS];
+} furnace_hmi_operator_device_component_t;
 
 typedef struct {
-    char revision[FURNACE_HMI_UI_LAB_DEVICE_ID_CAPACITY];
+    char revision[FURNACE_HMI_OPERATOR_DEVICE_ID_CAPACITY];
     uint8_t component_count;
-    furnace_hmi_ui_lab_device_component_t components[FURNACE_HMI_UI_LAB_DEVICE_MAX_COMPONENTS];
-} furnace_hmi_ui_lab_device_catalogue_t;
+    furnace_hmi_operator_device_component_t components[FURNACE_HMI_OPERATOR_DEVICE_MAX_COMPONENTS];
+} furnace_hmi_operator_device_catalogue_t;
 
 /* One copy of a stage-editor session's stages (see the explorer's stage
  * session helpers): the raw staged arrays plus bookkeeping. */
 typedef struct {
-    int32_t targets[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    int32_t rates[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    int32_t durations[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    int32_t starts[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    uint8_t kinds[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    bool cooling_rate_enabled[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    bool valid[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    bool name_valid[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    char names[FURNACE_HMI_UI_LAB_MAX_STAGES][FURNACE_HMI_UI_LAB_NAME_CAPACITY];
+    int32_t targets[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t rates[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t durations[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t starts[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    uint8_t kinds[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    bool cooling_rate_enabled[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    bool valid[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    bool name_valid[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    char names[FURNACE_HMI_OPERATOR_MAX_STAGES][FURNACE_HMI_OPERATOR_NAME_CAPACITY];
     uint8_t program;
     uint8_t count;
     bool active;
-} furnace_hmi_ui_lab_stage_set_t;
+} furnace_hmi_operator_stage_set_t;
 
 /* One authored stage: Heating ramps to `target_c` at `rate_tenths_c_per_minute`;
  * Hold keeps the previous target for `minutes`. Cooling is controller-owned
  * and never authored. */
 typedef enum {
-    FURNACE_HMI_UI_LAB_STAGE_HEATING = 0,
-    FURNACE_HMI_UI_LAB_STAGE_HOLD = 1,
-} furnace_hmi_ui_lab_stage_kind_t;
+    FURNACE_HMI_OPERATOR_STAGE_HEATING = 0,
+    FURNACE_HMI_OPERATOR_STAGE_HOLD = 1,
+} furnace_hmi_operator_stage_kind_t;
 
 typedef struct {
     uint8_t kind;
     int32_t target_c;
     int32_t rate_tenths_c_per_minute;
     int32_t minutes;
-} furnace_hmi_ui_lab_program_stage_t;
+} furnace_hmi_operator_program_stage_t;
 
 /* A program as the controller's library holds it for this session. Library
  * programs take their name from the string catalogue (`name_string`); a
@@ -130,34 +130,34 @@ typedef struct {
     bool library;
     uint16_t name_string;
     uint8_t stage_count;
-    furnace_hmi_ui_lab_program_stage_t stages[FURNACE_HMI_UI_LAB_MAX_STAGES];
-} furnace_hmi_ui_lab_program_t;
+    furnace_hmi_operator_program_stage_t stages[FURNACE_HMI_OPERATOR_MAX_STAGES];
+} furnace_hmi_operator_program_t;
 
 /* An operator request for the controller. The explorer only asks; the host
  * hands the request to the controller (here the simulator) and the result
- * arrives as a new observation through furnace_hmi_ui_lab_explorer_update(). */
+ * arrives as a new observation through furnace_hmi_operator_screens_update(). */
 typedef enum {
-    FURNACE_HMI_UI_LAB_REQUEST_NONE = 0,
-    FURNACE_HMI_UI_LAB_REQUEST_START_PROGRAM,
-    FURNACE_HMI_UI_LAB_REQUEST_PAUSE,
-    FURNACE_HMI_UI_LAB_REQUEST_RESUME,
-    FURNACE_HMI_UI_LAB_REQUEST_STOP,
+    FURNACE_HMI_OPERATOR_REQUEST_NONE = 0,
+    FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM,
+    FURNACE_HMI_OPERATOR_REQUEST_PAUSE,
+    FURNACE_HMI_OPERATOR_REQUEST_RESUME,
+    FURNACE_HMI_OPERATOR_REQUEST_STOP,
     /* Close a stopped, cooling or completed run (Return Home). */
-    FURNACE_HMI_UI_LAB_REQUEST_CLOSE_RUN,
-} furnace_hmi_ui_lab_request_kind_t;
+    FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN,
+} furnace_hmi_operator_request_kind_t;
 
 typedef struct {
-    furnace_hmi_ui_lab_request_kind_t kind;
+    furnace_hmi_operator_request_kind_t kind;
     /* START_PROGRAM only: the program as the operator confirmed it. */
-    char program_name[FURNACE_HMI_UI_LAB_NAME_CAPACITY];
-    furnace_hmi_ui_lab_program_t program;
-} furnace_hmi_ui_lab_request_t;
+    char program_name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
+    furnace_hmi_operator_program_t program;
+} furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
 typedef struct {
-    char title[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-    char detail[FURNACE_HMI_UI_LAB_DEVICE_TEXT_CAPACITY];
-} furnace_hmi_ui_lab_service_record_t;
+    char title[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+    char detail[FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
+} furnace_hmi_operator_service_record_t;
 
 /* One Device log event (the controller's event log). */
 typedef struct {
@@ -167,67 +167,61 @@ typedef struct {
     uint8_t fault;      /**< furnace_hmi_fault_kind_t of an alarm. */
     uint8_t component;  /**< Maintenance events: catalogue component and task. */
     uint8_t task;
-    char name[FURNACE_HMI_UI_LAB_NAME_CAPACITY];
-} furnace_hmi_ui_lab_log_event_t;
+    char name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
+} furnace_hmi_operator_log_event_t;
 
-typedef struct furnace_hmi_ui_lab_explorer furnace_hmi_ui_lab_explorer_t;
+typedef struct furnace_hmi_operator_screens furnace_hmi_operator_screens_t;
 
 typedef struct {
-    furnace_hmi_ui_lab_explorer_t *explorer;
+    furnace_hmi_operator_screens_t *explorer;
     int action;
     int value;
-} furnace_hmi_ui_lab_action_slot_t;
+} furnace_hmi_operator_action_slot_t;
 
 typedef struct {
-    furnace_hmi_ui_lab_explorer_t *explorer;
+    furnace_hmi_operator_screens_t *explorer;
     uint8_t action;
     char text[16];
-} furnace_hmi_ui_lab_keyboard_button_t;
+} furnace_hmi_operator_keyboard_button_t;
 
 /** Create the host-only visual explorer under the LVGL owner context. */
-bool furnace_hmi_ui_lab_explorer_create(
-    furnace_hmi_ui_lab_explorer_t *explorer,
+bool furnace_hmi_operator_screens_create(
+    furnace_hmi_operator_screens_t *explorer,
     lv_obj_t *parent,
     const furnace_hmi_dashboard_state_t *state,
-    const furnace_hmi_ui_lab_device_catalogue_t *device_catalogue
-);
-
-/** Load the bounded developer-editable catalogue before GUI ownership starts. */
-bool furnace_hmi_ui_lab_device_catalogue_load(
-    furnace_hmi_ui_lab_device_catalogue_t *catalogue,
-    const char *path
+    const furnace_hmi_operator_device_catalogue_t *device_catalogue
 );
 
 /** Refresh controller-observation labels without treating simulation as truth. */
-bool furnace_hmi_ui_lab_explorer_update(
-    furnace_hmi_ui_lab_explorer_t *explorer,
+bool furnace_hmi_operator_screens_update(
+    furnace_hmi_operator_screens_t *explorer,
     const furnace_hmi_dashboard_state_t *state
 );
 
 /** Change the visible lab page. Detail pages are also available to smoke tests. */
-/** Re-apply the active theme (ui_lab_theme_select) and language to
+/** Re-apply the active theme (operator_theme_select) and language to
  * everything on screen: the chrome built at creation, then the current page.
  * Open dialogs and keyboards close; the page and its state are kept. Call only
  * from the GUI context, after changing the theme or language. */
-bool furnace_hmi_ui_lab_explorer_refresh_presentation(furnace_hmi_ui_lab_explorer_t *explorer);
+bool furnace_hmi_operator_screens_refresh_presentation(furnace_hmi_operator_screens_t *explorer);
 
-bool furnace_hmi_ui_lab_explorer_navigate(
-    furnace_hmi_ui_lab_explorer_t *explorer,
-    furnace_hmi_ui_lab_page_t page
+bool furnace_hmi_operator_screens_navigate(
+    furnace_hmi_operator_screens_t *explorer,
+    furnace_hmi_operator_page_t page
 );
 
 /** Present the controller-owned service acknowledgement preview. */
-bool furnace_hmi_ui_lab_explorer_show_service_warning(
-    furnace_hmi_ui_lab_explorer_t *explorer
+bool furnace_hmi_operator_screens_show_service_warning(
+    furnace_hmi_operator_screens_t *explorer
 );
 
 /** Delete the lab tree and reset the supplied storage. */
-void furnace_hmi_ui_lab_explorer_destroy(furnace_hmi_ui_lab_explorer_t *explorer);
+void furnace_hmi_operator_screens_destroy(furnace_hmi_operator_screens_t *explorer);
 
 /** Take the operator's pending controller request, if any; false when none. */
-bool furnace_hmi_ui_lab_explorer_take_request(
-    furnace_hmi_ui_lab_explorer_t *explorer,
-    furnace_hmi_ui_lab_request_t *request
+bool furnace_hmi_operator_screens_take_request(
+    furnace_hmi_operator_screens_t *explorer,
+    furnace_hmi_operator_request_t *request
 );
 
 /* The opaque storage is intentionally fixed-size so the host laboratory does
@@ -240,9 +234,9 @@ typedef struct {
     uint8_t day;    /**< 1-31 */
     uint8_t hour;   /**< 0-23 */
     uint8_t minute; /**< 0-59 */
-} furnace_hmi_ui_lab_clock_t;
+} furnace_hmi_operator_clock_t;
 
-struct furnace_hmi_ui_lab_explorer {
+struct furnace_hmi_operator_screens {
     lv_obj_t *root;
     lv_obj_t *state_strip;
     lv_obj_t *state_strip_line;
@@ -286,9 +280,9 @@ struct furnace_hmi_ui_lab_explorer {
     lv_obj_t *manual_exit_button;
     lv_obj_t *manual_new_button;
     lv_obj_t *manual_steppers;
-    lv_obj_t *grid_lines[FURNACE_HMI_UI_LAB_TRAJECTORY_GRID_HORIZONTAL_COUNT +
-                         FURNACE_HMI_UI_LAB_TRAJECTORY_GRID_VERTICAL_COUNT];
-    lv_obj_t *trajectory_stage_nodes[FURNACE_HMI_UI_LAB_TRAJECTORY_STAGE_NODE_COUNT];
+    lv_obj_t *grid_lines[FURNACE_HMI_OPERATOR_TRAJECTORY_GRID_HORIZONTAL_COUNT +
+                         FURNACE_HMI_OPERATOR_TRAJECTORY_GRID_VERTICAL_COUNT];
+    lv_obj_t *trajectory_stage_nodes[FURNACE_HMI_OPERATOR_TRAJECTORY_STAGE_NODE_COUNT];
     lv_obj_t *measured_segments[FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS - 1U];
     lv_point_precise_t planned_points[FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS];
     lv_point_precise_t cooling_points[FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS];
@@ -306,21 +300,21 @@ struct furnace_hmi_ui_lab_explorer {
     lv_obj_t *manual_marker;
     int32_t manual_marker_index;
     lv_point_precise_t measured_segment_points[FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS - 1U][2];
-    lv_point_precise_t grid_line_points[FURNACE_HMI_UI_LAB_TRAJECTORY_GRID_HORIZONTAL_COUNT +
-                                        FURNACE_HMI_UI_LAB_TRAJECTORY_GRID_VERTICAL_COUNT][2];
+    lv_point_precise_t grid_line_points[FURNACE_HMI_OPERATOR_TRAJECTORY_GRID_HORIZONTAL_COUNT +
+                                        FURNACE_HMI_OPERATOR_TRAJECTORY_GRID_VERTICAL_COUNT][2];
     const furnace_hmi_dashboard_state_t *state;
     furnace_hmi_dashboard_state_t preview_graph_state;
-    furnace_hmi_ui_lab_page_t page;
+    furnace_hmi_operator_page_t page;
     uint8_t library_count;
     uint8_t program_page;
     uint8_t program_stage_page;
     uint8_t selected_program;
     uint8_t selected_stage;
     uint8_t running_view_mode;
-    lv_obj_t *running_reading_names[FURNACE_HMI_UI_LAB_RUNNING_READING_COUNT];
-    lv_obj_t *running_reading_values[FURNACE_HMI_UI_LAB_RUNNING_READING_COUNT];
-    uint8_t quick_launch_favourites[FURNACE_HMI_UI_LAB_MAX_QUICK_LAUNCH_ITEMS];
-    uint8_t quick_launch_recent[FURNACE_HMI_UI_LAB_MAX_RECENT_PROGRAMS];
+    lv_obj_t *running_reading_names[FURNACE_HMI_OPERATOR_RUNNING_READING_COUNT];
+    lv_obj_t *running_reading_values[FURNACE_HMI_OPERATOR_RUNNING_READING_COUNT];
+    uint8_t quick_launch_favourites[FURNACE_HMI_OPERATOR_MAX_QUICK_LAUNCH_ITEMS];
+    uint8_t quick_launch_recent[FURNACE_HMI_OPERATOR_MAX_RECENT_PROGRAMS];
     uint8_t favourite_count;
     uint8_t recent_count;
     int32_t draft_target_c;
@@ -341,12 +335,12 @@ struct furnace_hmi_ui_lab_explorer {
     /* A bounded, HMI-local edit session. These values are never sent to the
      * simulator/controller and are discarded unless the user explicitly saves
      * the whole session. */
-    int32_t staged_targets[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    int32_t staged_rates[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    int32_t staged_durations[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    uint8_t staged_kinds[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    bool staged_cooling_rate_enabled[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    bool staged_valid[FURNACE_HMI_UI_LAB_MAX_STAGES];
+    int32_t staged_targets[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t staged_rates[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t staged_durations[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    uint8_t staged_kinds[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    bool staged_cooling_rate_enabled[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    bool staged_valid[FURNACE_HMI_OPERATOR_MAX_STAGES];
     uint8_t staged_program;
     uint8_t staged_stage_count;
     bool staged_session_active;
@@ -354,17 +348,17 @@ struct furnace_hmi_ui_lab_explorer {
     bool program_editor_new;
     /* The open program draft differs from what was loaded (name or stages). */
     bool program_editor_dirty;
-    furnace_hmi_ui_lab_page_t program_editor_return_page;
+    furnace_hmi_operator_page_t program_editor_return_page;
     /* Stage editor dialog: drawn over the page it was opened from. The
      * session copies every stage; Discard restores `stage_backup`, Save
      * compares against `stage_baseline` to decide whether the draft changed. */
     lv_obj_t *stage_dialog;
-    furnace_hmi_ui_lab_page_t stage_editor_origin;
+    furnace_hmi_operator_page_t stage_editor_origin;
     bool stage_session_open;
-    int32_t stage_starts[FURNACE_HMI_UI_LAB_MAX_STAGES];
-    furnace_hmi_ui_lab_stage_set_t stage_backup;
-    furnace_hmi_ui_lab_stage_set_t stage_baseline;
-    char program_editor_name[FURNACE_HMI_UI_LAB_NAME_CAPACITY];
+    int32_t stage_starts[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    furnace_hmi_operator_stage_set_t stage_backup;
+    furnace_hmi_operator_stage_set_t stage_baseline;
+    char program_editor_name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
     int pending_action;
     int pending_action_value;
     bool action_pending;
@@ -373,10 +367,10 @@ struct furnace_hmi_ui_lab_explorer {
     int64_t trajectory_domain_maximum_seconds;
     int32_t trajectory_domain_minimum_temperature_c;
     int32_t trajectory_domain_maximum_temperature_c;
-    furnace_hmi_ui_lab_action_slot_t header_actions[2];
-    furnace_hmi_ui_lab_action_slot_t nav_actions[4];
-    furnace_hmi_ui_lab_action_slot_t page_actions[64];
-    furnace_hmi_ui_lab_action_slot_t modal_actions[32];
+    furnace_hmi_operator_action_slot_t header_actions[2];
+    furnace_hmi_operator_action_slot_t nav_actions[4];
+    furnace_hmi_operator_action_slot_t page_actions[64];
+    furnace_hmi_operator_action_slot_t modal_actions[32];
     size_t page_action_count;
     size_t modal_action_count;
     lv_obj_t *keyboard_input;
@@ -384,7 +378,7 @@ struct furnace_hmi_ui_lab_explorer {
     lv_obj_t *keyboard_count;
     lv_obj_t *keyboard_apply;
     lv_obj_t *keyboard_layout;
-    furnace_hmi_ui_lab_keyboard_button_t keyboard_buttons[FURNACE_HMI_UI_LAB_KEYBOARD_BUTTON_COUNT];
+    furnace_hmi_operator_keyboard_button_t keyboard_buttons[FURNACE_HMI_OPERATOR_KEYBOARD_BUTTON_COUNT];
     size_t keyboard_button_count;
     uint8_t keyboard_mode;
     uint8_t keyboard_target;
@@ -395,13 +389,13 @@ struct furnace_hmi_ui_lab_explorer {
     int32_t keyboard_minimum;
     int32_t keyboard_maximum;
     int32_t keyboard_step;
-    char keyboard_value[FURNACE_HMI_UI_LAB_KEYBOARD_VALUE_CAPACITY];
+    char keyboard_value[FURNACE_HMI_OPERATOR_KEYBOARD_VALUE_CAPACITY];
     size_t keyboard_length;
     size_t keyboard_cursor;
     size_t keyboard_anchor;
-    char program_name_overrides[FURNACE_HMI_UI_LAB_MAX_PROGRAMS][FURNACE_HMI_UI_LAB_NAME_CAPACITY];
-    char staged_names[FURNACE_HMI_UI_LAB_MAX_STAGES][FURNACE_HMI_UI_LAB_NAME_CAPACITY];
-    bool staged_name_valid[FURNACE_HMI_UI_LAB_MAX_STAGES];
+    char program_name_overrides[FURNACE_HMI_OPERATOR_MAX_PROGRAMS][FURNACE_HMI_OPERATOR_NAME_CAPACITY];
+    char staged_names[FURNACE_HMI_OPERATOR_MAX_STAGES][FURNACE_HMI_OPERATOR_NAME_CAPACITY];
+    bool staged_name_valid[FURNACE_HMI_OPERATOR_MAX_STAGES];
     uint8_t settings_tab;
     uint8_t settings_pending_tab;
     uint8_t settings_pending_scope;
@@ -429,9 +423,9 @@ struct furnace_hmi_ui_lab_explorer {
     uint8_t settings_saved_language;
     uint8_t settings_candidate_language;
     /* Simulated controller clock and the Set date & time dialog draft. */
-    furnace_hmi_ui_lab_clock_t clock;
-    furnace_hmi_ui_lab_clock_t clock_draft;
-    furnace_hmi_ui_lab_device_catalogue_t device_catalogue;
+    furnace_hmi_operator_clock_t clock;
+    furnace_hmi_operator_clock_t clock_draft;
+    furnace_hmi_operator_device_catalogue_t device_catalogue;
     uint8_t device_tab;
     uint8_t device_filter;
     uint8_t device_page;
@@ -441,20 +435,20 @@ struct furnace_hmi_ui_lab_explorer {
     /* Program library for this session: the delivered library programs, then
      * programs the operator created. `library_count` is how many delivered
      * programs are listed (all of them, or none). */
-    furnace_hmi_ui_lab_program_t programs[FURNACE_HMI_UI_LAB_MAX_PROGRAMS];
+    furnace_hmi_operator_program_t programs[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
     /* The program a confirmed start or a run belongs to. */
     uint8_t running_program;
     /* The operator stopped the run with this controller program id: it cools
      * on Running with Start again and Return Home. */
     bool run_stopped;
     uint32_t stopped_program_id;
-    furnace_hmi_ui_lab_request_t request;
+    furnace_hmi_operator_request_t request;
     /* Service records confirmed this session, newest first, before the
      * controller's earlier records in Service history. */
-    furnace_hmi_ui_lab_service_record_t service_records[FURNACE_HMI_UI_LAB_SERVICE_RECORDS];
+    furnace_hmi_operator_service_record_t service_records[FURNACE_HMI_OPERATOR_SERVICE_RECORDS];
     uint8_t service_record_count;
     /* Device log: one month of history and this session's events, newest first. */
-    furnace_hmi_ui_lab_log_event_t log_events[FURNACE_HMI_UI_LAB_LOG_CAPACITY];
+    furnace_hmi_operator_log_event_t log_events[FURNACE_HMI_OPERATOR_LOG_CAPACITY];
     uint16_t log_count;
     uint8_t log_filter;
 };
@@ -463,4 +457,4 @@ struct furnace_hmi_ui_lab_explorer {
 }
 #endif
 
-#endif /* FURNACE_HMI_UI_LAB_EXPLORER_H */
+#endif /* FURNACE_HMI_OPERATOR_SCREENS_H */

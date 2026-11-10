@@ -84,11 +84,17 @@ add_subdirectory(
   "${CMAKE_CURRENT_BINARY_DIR}/semantic_controller"
 )
 
+if(NOT TARGET furnace_hmi_operator_screens)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/operator"
+    "${CMAKE_CURRENT_BINARY_DIR}/operator_screens"
+  )
+endif()
+
 add_executable(
   furnace_hmi_ui_lab
   src/main.c
-  src/ui_lab_explorer.c
-  src/ui_lab_theme.c
+  src/device_catalogue_file.c
 )
 target_compile_definitions(
   furnace_hmi_ui_lab
@@ -108,6 +114,7 @@ target_link_libraries(furnace_hmi_ui_lab
     furnace_hmi::icons
     furnace_hmi::theme
     furnace_hmi::simulated_controller
+    furnace_hmi::operator_screens
     lvgl::lvgl
     SDL2::SDL2
 )
