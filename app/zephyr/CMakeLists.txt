@@ -31,6 +31,11 @@ target_include_directories(app PRIVATE
   "${FURNACE_HMI_STRINGS_DIR}/src"
 )
 
+if(BOARD STREQUAL "native_sim" AND BOARD_QUALIFIERS MATCHES "^/?native/64$" AND NOT CONFIG_LVGL)
+  message(FATAL_ERROR "native_sim/native/64 builds the LVGL application: pass the board with -b "
+                      "(or -DBOARD) so that gui.conf is applied")
+endif()
+
 if(CONFIG_LVGL)
   target_sources(app PRIVATE
     src/gui_main.c

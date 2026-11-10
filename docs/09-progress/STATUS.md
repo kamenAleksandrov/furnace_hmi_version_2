@@ -8,7 +8,8 @@ definition in `tests/presentation/availability`, run by the desktop smoke test
 and by the Zephyr test `furnace_hmi.presentation.availability` (Twister, both
 native_sim variants, a headless display). The operator screens are still only
 in the host UI lab; moving them into the shared presentation is the new
-milestone M21-2b.
+milestone M21-2b. The Zephyr test uses a `zephyr,dummy-dc` display without
+SDL; the window path is built by Twister and run by hand under WSLg.
 
 **Fact (2026-11-10, Phase 21 M21-1):** the controller's wire codec is copied
 into `app/hmi/protocol/wire` at controller revision `721f3cb` (ADR-0009), with a
@@ -736,9 +737,9 @@ semantics, controller state machines, and operational screens remain absent.
   3.12 specifically for Windows; new Windows setups should prefer 3.12.
 - The proof uses `qemu_x86`; it provides no evidence for the still-unselected
   production MCU, board, display, touch device, or resource budgets.
-- The reusable availability component is currently exercised by the desktop
-  target. Zephyr builds the shared foundation/string catalog, but embedded LVGL
-  display wiring is intentionally deferred until a display target is selected.
+- The reusable availability component is exercised by the desktop target and,
+  since Phase 21 M21-2, by the Zephyr application on the simulated native_sim
+  display. No production display or touch device is selected or wired.
 - The host-only UI laboratory is a visual and semantic HMI test environment;
   its synthetic controller cannot validate Control CPU safety, thermal physics,
   or production protocol behavior. Its program edits, service acknowledgement,

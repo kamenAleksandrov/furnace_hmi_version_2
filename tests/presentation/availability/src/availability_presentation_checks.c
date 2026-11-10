@@ -22,13 +22,6 @@ static int failed(const char **failure, const char *description, int code)
     return code;
 }
 
-static void service_timers(uint32_t iterations)
-{
-    for (uint32_t iteration = 0; iteration < iterations; ++iteration) {
-        (void)lv_timer_handler();
-    }
-}
-
 static bool object_tree_contains_label_text(const lv_obj_t *object, const char *expected)
 {
     if (lv_obj_check_type(object, &lv_label_class) &&
@@ -143,7 +136,7 @@ static int create_verify_destroy_presentation(
         )) {
         return failed(failure, "Availability-state view creation failed.", 12);
     }
-    service_timers(UINT32_C(2));
+    lv_refr_now(NULL);
     result = verify_availability_presentation(&view, expected, failure);
 
     if (furnace_hmi_state_availability_view_create(

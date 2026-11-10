@@ -3,8 +3,10 @@
 /*
  * The HMI's Zephyr application on a board with a display. The Zephyr LVGL
  * module initializes LVGL and the display before main; from then on the main
- * thread is the GUI execution context, the only one that touches LVGL
- * (ADR-0005). Boards without a display build main.c instead.
+ * thread is the GUI execution context, the only one that changes LVGL
+ * (ADR-0005). The one exception is the Zephyr pointer glue, whose input thread
+ * reads the LVGL display and its user data, both set before main. Boards
+ * without a display build main.c instead.
  */
 
 #include <stdint.h>
@@ -21,6 +23,8 @@
 
 /* The longest the GUI context sleeps between LVGL timer passes. */
 #define GUI_MAX_SLEEP_MS UINT32_C(10)
+/* At least one tick, so that native_sim time advances. */
+#define GUI_MIN_SLEEP_MS UINT32_C(1)
 
 int main(void)
 {
@@ -32,8 +36,8 @@ int main(void)
            furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_APPLICATION_TITLE),
            (unsigned int)furnace_hmi_foundation_probe_version());
 
-    if (!device_is_ready(display)) {
-        printk("Display device not ready.\n");
+    if (!device_is_ready(display) || lv_display_get_default() == NULL) {
+        printk("Display not ready for LVGL.\n");
         return 2;
     }
     if (!furnace_hmi_state_availability_view_create(&availability_view, lv_screen_active(),
@@ -51,6 +55,8 @@ int main(void)
 
         if (sleep_ms == LV_NO_TIMER_READY || sleep_ms > GUI_MAX_SLEEP_MS) {
             sleep_ms = GUI_MAX_SLEEP_MS;
+        } else if (sleep_ms < GUI_MIN_SLEEP_MS) {
+            sleep_ms = GUI_MIN_SLEEP_MS;
         }
         k_msleep((int32_t)sleep_ms);
     }

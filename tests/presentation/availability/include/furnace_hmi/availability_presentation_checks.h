@@ -16,9 +16,9 @@ extern "C" {
  * desktop program's ``--presentation-smoke-test`` and the Zephyr test.
  *
  * Changes the display resolution to 640 x 360 and leaves the active screen
- * empty. Call from the LVGL-owning GUI context after LVGL is initialized. It
- * services LVGL timers without delays, so it does not depend on the platform's
- * LVGL delay callback.
+ * empty. Call from the LVGL-owning GUI context after LVGL is initialized. Each
+ * state is rendered with lv_refr_now(), without LVGL timers or delays, so the
+ * result does not depend on the platform's clock or LVGL delay callback.
  *
  * Returns 0 when every check passes, otherwise the desktop program's exit code
  * for the first failure, with ``*failure`` set to its description.

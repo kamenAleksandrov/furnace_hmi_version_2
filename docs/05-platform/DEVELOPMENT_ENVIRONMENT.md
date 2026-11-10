@@ -34,7 +34,7 @@ beside the Windows environment above (commands: the
 | Item | Version | Notes |
 |---|---|---|
 | WSL distribution | Ubuntu 24.04 | Named with `wsl -d Ubuntu-24.04`; it need not be the default distribution. WSLg supplies the display |
-| Zephyr workspace | 4.4.0 at the commit `west.yml` pins | At present the furnace firmware's WSL workspace, which has no LVGL module |
+| Zephyr workspace | 4.4.0 at the commit `west.yml` pins | At present the furnace firmware's WSL workspace (Zephyr at `684c9e8f`, checked 2026-11-10), which has no LVGL module |
 | LVGL | commit `85aa60d18b3d5e5588d7b247abf90198f07c8a63` | A clone outside the workspace, given to the build with `-DZEPHYR_EXTRA_MODULES` |
 | SDL2 | 2.30.0, Ubuntu `libsdl2-dev` (amd64) | Linked by Zephyr's SDL display. Only the 64-bit `native_sim/native/64` can link it, so the window application uses that board. The 2.32.10 floor above is the desktop program's |
 
@@ -361,6 +361,6 @@ drivers, and target-specific Zephyr modules remain open.
 - The complete Python tooling suite passed 20/20 cases, then the canonical host
   and Zephyr File API replies were refreshed and the deterministic index
   generation/check reached a fixed point.
-- The availability LVGL component is not yet wired into an embedded display
-  application; this verification covers its portable boundary and desktop
+- (Superseded by Phase 21 M21-2, which runs it on native_sim.) The availability
+  LVGL component is not yet wired into an embedded display application; this verification covers its portable boundary and desktop
   behavior, not production display hardware.

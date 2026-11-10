@@ -305,6 +305,9 @@ west build -p always -b native_sim/native/64 -d ~/work/hmi-build/gui <hmi>/app/z
 ~/work/hmi-build/gui/zephyr/zephyr.exe
 ```
 
+Without a window, run it with `SDL_VIDEODRIVER=offscreen` (SDL's `dummy` driver has no
+renderer, and the display then fails to start).
+
 Run the Zephyr tests on both native_sim variants. The application itself is
 build-only there, because it opens a window:
 
