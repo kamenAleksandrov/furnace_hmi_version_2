@@ -9,14 +9,14 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 346 |
-| Git-tracked files | 346 |
+| Repository files | 362 |
+| Git-tracked files | 362 |
 | Git-untracked files | 0 |
-| Manually maintained files | 317 |
+| Manually maintained files | 333 |
 | Generated files | 29 |
 | Modules | 40 |
-| Build targets | 116 |
-| Compile units | 28 |
+| Build targets | 120 |
+| Compile units | 59 |
 | Boards | 1 |
 
 ## Inputs
@@ -44,10 +44,10 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `.codex/agents` | 10 | agent-configuration |
 | `.codex/config.toml` | 1 | agent-configuration |
 | `.vscode` | 5 | configuration |
-| `app/hmi/client` | 4 | build, header, source |
+| `app/hmi/client` | 6 | build, header, source |
 | `app/hmi/foundation` | 3 | build, header, source |
 | `app/hmi/model` | 4 | build, header, source |
-| `app/hmi/presentation` | 94 | build, configuration, documentation, header, other, source |
+| `app/hmi/presentation` | 99 | build, configuration, documentation, header, other, source |
 | `app/hmi/protocol` | 9 | build, configuration, documentation, header, source |
 | `app/hmi/transport` | 4 | build, header, source |
 | `app/zephyr` | 10 | board, build, configuration, header, source |
@@ -68,18 +68,18 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `simulator/desktop` | 5 | build, header, source |
 | `simulator/semantic_controller` | 3 | build, header, source |
 | `simulator/ui_lab` | 7 | build, documentation, header, source |
-| `tests/client` | 3 | test |
+| `tests/client` | 4 | test |
 | `tests/conformance` | 5 | test |
 | `tests/host` | 5 | test |
-| `tests/presentation` | 3 | test |
-| `tests/zephyr` | 17 | test |
+| `tests/presentation` | 6 | test |
+| `tests/zephyr` | 22 | test |
 | `tools` | 22 | test, tool |
 
 ## Build Targets
 
 | Target | Type | Configuration | Repository sources | External sources |
 | --- | --- | --- | ---: | ---: |
-| `furnace_hmi_client` | STATIC_LIBRARY | `Debug` | 1 | 0 |
+| `furnace_hmi_client` | STATIC_LIBRARY | `Debug` | 2 | 0 |
 | `furnace_hmi_foundation` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_model` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 2 | 0 |
@@ -89,9 +89,13 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `furnace_hmi_availability_presentation_checks` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_development_marker` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_desktop` | EXECUTABLE | `Debug` | 1 | 0 |
+| `furnace_hmi_fonts` | STATIC_LIBRARY | `Debug` | 24 | 0 |
+| `furnace_hmi_icons` | STATIC_LIBRARY | `Debug` | 2 | 0 |
 | `lvgl` | STATIC_LIBRARY | `Debug` | 0 | 531 |
+| `furnace_hmi_operator_content_checks` | STATIC_LIBRARY | `Debug` | 1 | 0 |
+| `furnace_hmi_operator_screens` | STATIC_LIBRARY | `Debug` | 2 | 0 |
 | `furnace_hmi_state_availability_view` | STATIC_LIBRARY | `Debug` | 1 | 0 |
-| `furnace_hmi_controller_client_tests` | EXECUTABLE | `Debug` | 2 | 0 |
+| `furnace_hmi_controller_client_tests` | EXECUTABLE | `Debug` | 3 | 0 |
 | `furnace_hmi_dashboard_model_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_foundation_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_theme_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
@@ -244,8 +248,10 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `README.md` | documentation | `.` | manual | tracked |
 | `app/hmi/client/CMakeLists.txt` | build | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/include/furnace_hmi/controller_client.h` | header | `app/hmi/client` | manual | tracked |
+| `app/hmi/client/include/furnace_hmi/controller_dashboard.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/include/furnace_hmi/controller_observation.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/src/controller_client.c` | source | `app/hmi/client` | manual | tracked |
+| `app/hmi/client/src/controller_dashboard.c` | source | `app/hmi/client` | manual | tracked |
 | `app/hmi/foundation/CMakeLists.txt` | build | `app/hmi/foundation` | manual | tracked |
 | `app/hmi/foundation/include/furnace_hmi/foundation.h` | header | `app/hmi/foundation` | manual | tracked |
 | `app/hmi/foundation/src/foundation.c` | source | `app/hmi/foundation` | manual | tracked |
@@ -330,6 +336,11 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/presentation/icons/svg/trash.svg` | other | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/icons/svg/warning.svg` | other | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/icons/svg/wrench.svg` | other | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/operator/CMakeLists.txt` | build | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/operator/include/furnace_hmi/operator_screens.h` | header | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/operator/include/furnace_hmi/operator_theme.h` | header | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/operator/src/operator_screens.c` | source | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/operator/src/operator_theme.c` | source | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/state_availability/CMakeLists.txt` | build | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/state_availability/include/furnace_hmi/state_availability.h` | header | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/state_availability/include/furnace_hmi/state_availability_view.h` | header | `app/hmi/presentation` | manual | tracked |
@@ -491,13 +502,14 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `simulator/semantic_controller/src/simulated_controller.c` | source | `simulator/semantic_controller` | manual | tracked |
 | `simulator/ui_lab/CMakeLists.txt` | build | `simulator/ui_lab` | manual | tracked |
 | `simulator/ui_lab/data/device_service_catalogue.txt` | documentation | `simulator/ui_lab` | manual | tracked |
+| `simulator/ui_lab/src/device_catalogue_file.c` | source | `simulator/ui_lab` | manual | tracked |
+| `simulator/ui_lab/src/device_catalogue_file.h` | header | `simulator/ui_lab` | manual | tracked |
 | `simulator/ui_lab/src/main.c` | source | `simulator/ui_lab` | manual | tracked |
-| `simulator/ui_lab/src/ui_lab_explorer.c` | source | `simulator/ui_lab` | manual | tracked |
-| `simulator/ui_lab/src/ui_lab_explorer.h` | header | `simulator/ui_lab` | manual | tracked |
-| `simulator/ui_lab/src/ui_lab_theme.c` | source | `simulator/ui_lab` | manual | tracked |
-| `simulator/ui_lab/src/ui_lab_theme.h` | header | `simulator/ui_lab` | manual | tracked |
+| `simulator/ui_lab/src/operator_fixtures.c` | source | `simulator/ui_lab` | manual | tracked |
+| `simulator/ui_lab/src/operator_fixtures.h` | header | `simulator/ui_lab` | manual | tracked |
 | `tests/client/controller_client_tests.c` | test | `tests/client` | manual | tracked |
 | `tests/client/controller_client_tests.h` | test | `tests/client` | manual | tracked |
+| `tests/client/controller_dashboard_tests.c` | test | `tests/client` | manual | tracked |
 | `tests/client/host_main.c` | test | `tests/client` | manual | tracked |
 | `tests/conformance/wire/host_main.c` | test | `tests/conformance` | manual | tracked |
 | `tests/conformance/wire/vector_table.h` | test | `tests/conformance` | manual | tracked |
@@ -512,6 +524,9 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/presentation/availability/CMakeLists.txt` | test | `tests/presentation` | manual | tracked |
 | `tests/presentation/availability/include/furnace_hmi/availability_presentation_checks.h` | test | `tests/presentation` | manual | tracked |
 | `tests/presentation/availability/src/availability_presentation_checks.c` | test | `tests/presentation` | manual | tracked |
+| `tests/presentation/operator/CMakeLists.txt` | test | `tests/presentation` | manual | tracked |
+| `tests/presentation/operator/include/furnace_hmi/operator_content_checks.h` | test | `tests/presentation` | manual | tracked |
+| `tests/presentation/operator/src/operator_content_checks.c` | test | `tests/presentation` | manual | tracked |
 | `tests/zephyr/controller_client/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/controller_client/prj.conf` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/controller_client/src/main.c` | test | `tests/zephyr` | manual | tracked |
@@ -520,6 +535,11 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/zephyr/foundation/prj.conf` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/src/main.c` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator/app.overlay` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator/prj.conf` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator/src/main.c` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/presentation/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/presentation/app.overlay` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/presentation/prj.conf` | test | `tests/zephyr` | manual | tracked |
