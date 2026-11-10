@@ -1,5 +1,19 @@
 # Project status
 
+**Fact (2026-11-10, Phase 21 M21-3):** the Zephyr HMI connects to the actual
+controller program over the simulated link. The controller is the furnace
+firmware's simulated `link_pty` program at `721f3cb`, the codec copy's revision;
+the two run as separate processes in WSL.
+- The new client (`app/hmi/client`, `app/hmi/transport`) does the 0.16
+  handshake, synchronizes from CAPABILITIES and the snapshot, and tracks
+  freshness from the controller's own intervals.
+- It handles disconnect, reconnect, controller restart (also with a repeated
+  session ID), HMI restart and corruption, and it sends no command that changes
+  the controller.
+- Evidence: 23 client scenarios, in CTest and in Zephyr; `tools/controller_link_demo.py`
+  passes 10 of 10 end-to-end checks.
+- The operator screens are not connected yet (M21-2b, M21-5).
+
 **Fact (2026-11-10, Phase 21 M21-2):** the HMI runs as a Zephyr application on
 `native_sim/native/64` in WSL: LVGL `85aa60d1` through Zephyr's SDL display
 opens a WSLg window with the shared state-availability screen. `qemu_x86`

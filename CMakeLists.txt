@@ -32,6 +32,8 @@ include(CTest)
 add_subdirectory(app/hmi/foundation)
 add_subdirectory(app/hmi/model)
 add_subdirectory(app/hmi/protocol/wire)
+add_subdirectory(app/hmi/transport)
+add_subdirectory(app/hmi/client)
 add_subdirectory(app/hmi/presentation/strings)
 add_subdirectory(app/hmi/presentation/theme)
 

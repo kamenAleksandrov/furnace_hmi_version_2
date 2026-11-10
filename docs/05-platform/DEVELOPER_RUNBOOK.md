@@ -316,6 +316,24 @@ west twister -T <hmi>/tests/zephyr -T <hmi>/app/zephyr -p native_sim -p native_s
   -x=ZEPHYR_EXTRA_MODULES=$HOME/work/hmi-deps/lvgl -O ~/work/hmi-build/twister
 ```
 
+### The controller link, end to end
+
+The HMI application talks to the controller's own simulated program (Phase 21
+M21-3). Build that program from a furnace firmware checkout at the revision in
+`app/hmi/protocol/wire/CONTROLLER_SYNC.json`, then run the demonstration:
+
+```bash
+west build -p always -b native_sim -d ~/work/hmi-build/controller <furnace-firmware>/tests/sim/link_pty
+python3 <hmi>/tools/controller_link_demo.py --controller ~/work/hmi-build/controller/zephyr/zephyr.exe \
+  --hmi ~/work/hmi-build/gui/zephyr/zephyr.exe --controller-checkout <furnace-firmware>
+```
+
+It prints one PASS or FAIL line per check and exits non-zero on a failure. Add
+`--window` to watch the HMI window. The HMI's console prints one `hmi-link:` line
+per change of link state and once a second. Without the script, the HMI opens
+`/tmp/furnace-hmi-controller-link`, or the device given with
+`--controller_link_port=<path>` (for example a USB serial port).
+
 ## HMI fonts and icons
 
 The typeface (Tomorrow HMI, see app/hmi/presentation/fonts/README.md) and the icon set are shared by the web demo and the LVGL
