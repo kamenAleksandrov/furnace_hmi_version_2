@@ -8,9 +8,14 @@
  * reads the LVGL display and its user data, both set before main. Boards
  * without a display build main.c instead.
  *
- * The controller link runs in its own thread (controller_link.c); this context
- * takes its newest observation without waiting. Every value shown comes from
- * the controller: the application links no simulator.
+ * It shows the shared operator screens (Phase 21 M21-2b). The controller link
+ * runs in its own thread (controller_link.c); this context takes its newest
+ * observation without waiting and maps it to the screens' status model. Every
+ * value comes from the controller, the application links no simulator, and
+ * the screens get no controller-owned content and no simulated answers: until
+ * the controller provides them (M21-5, M21-7), library, log and clock are
+ * shown as unavailable, and actions that would change controller state send
+ * nothing.
  */
 
 #include <stdint.h>
@@ -20,9 +25,10 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
+#include <furnace_hmi/controller_dashboard.h>
 #include <furnace_hmi/development_marker.h>
 #include <furnace_hmi/foundation.h>
-#include <furnace_hmi/state_availability_view.h>
+#include <furnace_hmi/operator_screens.h>
 #include <furnace_hmi/ui_strings.h>
 #include <lvgl.h>
 
@@ -38,26 +44,17 @@
  */
 #define GUI_MAILBOX_STALE_MS UINT32_C(1000)
 
-static furnace_hmi_state_availability_view_t availability_view;
+static furnace_hmi_operator_screens_t screens;
+static furnace_hmi_operator_content_t no_content;
 static furnace_hmi_controller_observation_t observation;
-
-/* The availability screen for the link's state, marked as a development build. */
-static bool show_availability(furnace_hmi_state_availability_t availability)
-{
-    const furnace_hmi_state_availability_view_state_t state = {.availability = availability};
-
-    furnace_hmi_state_availability_view_destroy(&availability_view);
-    return furnace_hmi_state_availability_view_create(&availability_view, lv_screen_active(),
-                                                      &state) &&
-           furnace_hmi_development_marker_create(
-               availability_view.root, FURNACE_HMI_UI_STRING_SIMULATED_LINK_DEVELOPMENT_LABEL);
-}
+static furnace_hmi_dashboard_state_t status;
 
 int main(void)
 {
     const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-    furnace_hmi_state_availability_t shown = FURNACE_HMI_STATE_AVAILABILITY_UNAVAILABLE;
     uint32_t seen = 0U;
+    uint32_t last_taken;
+    bool watchdog_stale = false;
 
     printk("%s (build probe %u)\n",
            furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_APPLICATION_TITLE),
@@ -67,8 +64,11 @@ int main(void)
         printk("Display not ready for LVGL.\n");
         return 2;
     }
-    if (!show_availability(shown)) {
-        printk("State-availability view creation failed.\n");
+    furnace_hmi_controller_dashboard_state(&observation, &status);
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &status, &no_content) ||
+        furnace_hmi_development_tag_create(FURNACE_HMI_UI_STRING_SIMULATED_LINK_DEVELOPMENT_LABEL) ==
+            NULL) {
+        printk("Operator screens could not be created.\n");
         return 13;
     }
     if (furnace_hmi_controller_link_start() != 0) {
@@ -79,27 +79,32 @@ int main(void)
     /* Draw the first frame, then show it: the display starts blanked. */
     (void)lv_timer_handler();
     (void)display_blanking_off(display);
-
-    uint32_t last_taken = k_uptime_get_32();
+    last_taken = k_uptime_get_32();
 
     for (;;) {
-        furnace_hmi_state_availability_t wanted = shown;
         const uint32_t now = k_uptime_get_32();
+        furnace_hmi_operator_request_t request;
+        bool refresh = false;
         uint32_t sleep_ms;
 
         if (furnace_hmi_controller_link_take(&observation, &seen)) {
             last_taken = now;
-            wanted = observation.availability;
-        } else if (shown == FURNACE_HMI_STATE_AVAILABILITY_CURRENT &&
-                   (uint32_t)(now - last_taken) >= GUI_MAILBOX_STALE_MS) {
-            wanted = FURNACE_HMI_STATE_AVAILABILITY_STALE;
+            watchdog_stale = false;
+            refresh = true;
+        } else if (!watchdog_stale && (uint32_t)(now - last_taken) >= GUI_MAILBOX_STALE_MS &&
+                   observation.availability == FURNACE_HMI_STATE_AVAILABILITY_CURRENT) {
+            /* The link thread is silent: show its last values as stale. */
+            observation.availability = FURNACE_HMI_STATE_AVAILABILITY_STALE;
+            watchdog_stale = true;
+            refresh = true;
         }
-        if (wanted != shown) {
-            shown = wanted;
-            if (!show_availability(shown)) {
-                printk("State-availability view creation failed.\n");
-                return 13;
-            }
+        if (refresh) {
+            furnace_hmi_controller_dashboard_state(&observation, &status);
+            (void)furnace_hmi_operator_screens_update(&screens, &status);
+        }
+        /* The screens raise no controller request without simulated answers; drain any. */
+        while (furnace_hmi_operator_screens_take_request(&screens, &request)) {
+            printk("hmi-screens: request %d not sent (not connected yet)\n", (int)request.kind);
         }
         sleep_ms = lv_timer_handler();
         if (sleep_ms == LV_NO_TIMER_READY || sleep_ms > GUI_MAX_SLEEP_MS) {

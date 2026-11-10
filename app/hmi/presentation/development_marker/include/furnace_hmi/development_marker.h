@@ -21,6 +21,13 @@ extern "C" {
  */
 bool furnace_hmi_development_marker_create(lv_obj_t *parent, furnace_hmi_ui_string_id_t text);
 
+/**
+ * The same marker as a small tag on LVGL's top layer, at the top right, over
+ * screens whose own layout has no room for a footer (the operator screens).
+ * It takes no input and stays until deleted. Call from the GUI context.
+ */
+lv_obj_t *furnace_hmi_development_tag_create(furnace_hmi_ui_string_id_t text);
+
 #ifdef __cplusplus
 }
 #endif

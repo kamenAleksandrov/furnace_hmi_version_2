@@ -12,9 +12,11 @@
 #include <lvgl.h>
 #include <SDL.h>
 
-#include "ui_lab_explorer.h"
+#include <furnace_hmi/operator_screens.h>
+#include "device_catalogue_file.h"
+#include "operator_fixtures.h"
 #include <furnace_hmi/support_qr.h>
-#include "ui_lab_theme.h"
+#include <furnace_hmi/operator_theme.h>
 
 #if defined(__ZEPHYR__)
 #error "The UI laboratory is host-only and must never be built for Zephyr."
@@ -26,8 +28,10 @@
 
 typedef struct {
     furnace_hmi_simulator_t simulator;
-    furnace_hmi_ui_lab_explorer_t explorer;
-    furnace_hmi_ui_lab_device_catalogue_t device_catalogue;
+    furnace_hmi_operator_screens_t explorer;
+    furnace_hmi_operator_device_catalogue_t device_catalogue;
+    /* SIMULATION ONLY: the controller-owned content the lab shows (operator_fixtures.c). */
+    furnace_hmi_operator_content_t content;
     lv_obj_t *simulation_marker;
     volatile int requested_scenario;
     volatile int requested_page;
@@ -61,20 +65,20 @@ static void handle_timers(uint32_t iterations)
  * simulated controller, then show the controller's answer. */
 static bool pump_controller_requests(ui_lab_context_t *context)
 {
-    furnace_hmi_ui_lab_request_t request;
-    if (!furnace_hmi_ui_lab_explorer_take_request(&context->explorer, &request)) {
+    furnace_hmi_operator_request_t request;
+    if (!furnace_hmi_operator_screens_take_request(&context->explorer, &request)) {
         return true;
     }
     switch (request.kind) {
-    case FURNACE_HMI_UI_LAB_REQUEST_START_PROGRAM: {
+    case FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM: {
         furnace_hmi_sim_program_t program;
         memset(&program, 0, sizeof(program));
         (void)snprintf(program.name, sizeof(program.name), "%s", request.program_name);
         program.stage_count = request.program.stage_count;
         for (uint8_t index = 0U; index < program.stage_count && index < FURNACE_HMI_SIM_MAX_STAGES; ++index) {
-            const furnace_hmi_ui_lab_program_stage_t *stage = &request.program.stages[index];
+            const furnace_hmi_operator_program_stage_t *stage = &request.program.stages[index];
             program.stages[index] = (furnace_hmi_sim_stage_t) {
-                .hold = stage->kind == FURNACE_HMI_UI_LAB_STAGE_HOLD,
+                .hold = stage->kind == FURNACE_HMI_OPERATOR_STAGE_HOLD,
                 .target_c = stage->target_c,
                 .rate_tenths_c_per_minute = stage->rate_tenths_c_per_minute,
                 .minutes = stage->minutes > 0 ? (uint32_t)stage->minutes : 0U,
@@ -83,27 +87,27 @@ static bool pump_controller_requests(ui_lab_context_t *context)
         (void)furnace_hmi_simulator_start_program(&context->simulator, &program);
         break;
     }
-    case FURNACE_HMI_UI_LAB_REQUEST_PAUSE:
+    case FURNACE_HMI_OPERATOR_REQUEST_PAUSE:
         (void)furnace_hmi_simulator_set_paused(&context->simulator, true);
         break;
-    case FURNACE_HMI_UI_LAB_REQUEST_RESUME:
+    case FURNACE_HMI_OPERATOR_REQUEST_RESUME:
         (void)furnace_hmi_simulator_set_paused(&context->simulator, false);
         break;
-    case FURNACE_HMI_UI_LAB_REQUEST_STOP:
+    case FURNACE_HMI_OPERATOR_REQUEST_STOP:
         (void)furnace_hmi_simulator_stop(&context->simulator);
         break;
-    case FURNACE_HMI_UI_LAB_REQUEST_CLOSE_RUN:
+    case FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN:
         (void)furnace_hmi_simulator_close_run(&context->simulator);
         break;
-    case FURNACE_HMI_UI_LAB_REQUEST_NONE:
+    case FURNACE_HMI_OPERATOR_REQUEST_NONE:
         break;
     }
-    return furnace_hmi_ui_lab_explorer_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator));
+    return furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator));
 }
 
 static void clear_views(ui_lab_context_t *context)
 {
-    furnace_hmi_ui_lab_explorer_destroy(&context->explorer);
+    furnace_hmi_operator_screens_destroy(&context->explorer);
     if (context->simulation_marker != NULL && lv_obj_is_valid(context->simulation_marker)) {
         lv_obj_delete(context->simulation_marker);
     }
@@ -143,8 +147,9 @@ static bool render_scenario(ui_lab_context_t *context)
     if (state == NULL) {
         return false;
     }
-    if (!furnace_hmi_ui_lab_explorer_create(
-            &context->explorer, lv_screen_active(), state, &context->device_catalogue)) {
+    furnace_hmi_operator_fixture_content(&context->content, &context->device_catalogue);
+    if (!furnace_hmi_operator_screens_create(
+            &context->explorer, lv_screen_active(), state, &context->content)) {
         return false;
     }
 
@@ -192,19 +197,19 @@ static int event_watch(void *userdata, SDL_Event *event)
         scenario = FURNACE_HMI_SIM_SCENARIO_COOLING;
         break;
     case SDLK_h:
-        context->requested_page = FURNACE_HMI_UI_LAB_PAGE_HOME;
+        context->requested_page = FURNACE_HMI_OPERATOR_PAGE_HOME;
         return 0;
     case SDLK_p:
-        context->requested_page = FURNACE_HMI_UI_LAB_PAGE_PROGRAMS;
+        context->requested_page = FURNACE_HMI_OPERATOR_PAGE_PROGRAMS;
         return 0;
     case SDLK_d:
-        context->requested_page = FURNACE_HMI_UI_LAB_PAGE_DEVICE;
+        context->requested_page = FURNACE_HMI_OPERATOR_PAGE_DEVICE;
         return 0;
     case SDLK_s:
-        context->requested_page = FURNACE_HMI_UI_LAB_PAGE_SETTINGS;
+        context->requested_page = FURNACE_HMI_OPERATOR_PAGE_SETTINGS;
         return 0;
     case SDLK_r:
-        context->requested_page = FURNACE_HMI_UI_LAB_PAGE_RUNNING;
+        context->requested_page = FURNACE_HMI_OPERATOR_PAGE_RUNNING;
         return 0;
     case SDLK_i:
         context->requested_service_dialog = true;
@@ -320,7 +325,7 @@ static int capture_frame(lv_display_t *display, ui_lab_context_t *context, const
     if (result != 0) { fprintf(stderr, "Capture failed: %s\n", SDL_GetError()); return 6; }
     printf("CAPTURE %s %dx%d\n", name, width, height);
     unsigned geometry_errors = audit_geometry(lv_screen_active());
-    furnace_hmi_ui_lab_explorer_t *explorer = &context->explorer;
+    furnace_hmi_operator_screens_t *explorer = &context->explorer;
     if (explorer->trajectory != NULL) {
         int32_t w = lv_obj_get_width(explorer->trajectory), h = lv_obj_get_height(explorer->trajectory);
         const furnace_hmi_dashboard_state_t *state = explorer->trajectory_uses_program_preview ? &explorer->preview_graph_state : explorer->state;
@@ -482,10 +487,10 @@ static bool tap_object(lv_obj_t *object)
 /* Open the stage editor from the stage's node on the Program details graph. */
 static bool open_stage_editor(ui_lab_context_t *context, uint8_t stage)
 {
-    if (stage >= FURNACE_HMI_UI_LAB_TRAJECTORY_STAGE_NODE_COUNT ||
-        !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL) ||
+    if (stage >= FURNACE_HMI_OPERATOR_TRAJECTORY_STAGE_NODE_COUNT ||
+        !furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
         !tap_object(context->explorer.trajectory_stage_nodes[stage]) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR ||
         context->explorer.selected_stage != stage) {
         fprintf(stderr, "Stage %u editor did not open\n", (unsigned)stage + 1U);
         return false;
@@ -560,8 +565,8 @@ static bool tap_device_category(
 /* Reading `index` has the given label and, when non-NULL, the given value. */
 static bool reading_is(const ui_lab_context_t *context, size_t index, const char *name, const char *value)
 {
-    const furnace_hmi_ui_lab_explorer_t *explorer = &context->explorer;
-    return index < FURNACE_HMI_UI_LAB_RUNNING_READING_COUNT &&
+    const furnace_hmi_operator_screens_t *explorer = &context->explorer;
+    return index < FURNACE_HMI_OPERATOR_RUNNING_READING_COUNT &&
            explorer->running_reading_names[index] != NULL &&
            strcmp(lv_label_get_text(explorer->running_reading_names[index]), name) == 0 &&
            (value == NULL || strcmp(lv_label_get_text(explorer->running_reading_values[index]), value) == 0);
@@ -571,24 +576,24 @@ static bool reading_is(const ui_lab_context_t *context, size_t index, const char
  * the delivered ones) and the last one has eight stages and a long name. */
 static void fill_program_library(ui_lab_context_t *context)
 {
-    furnace_hmi_ui_lab_explorer_t *explorer = &context->explorer;
-    for (size_t index = 3U; index < FURNACE_HMI_UI_LAB_MAX_PROGRAMS; ++index) {
+    furnace_hmi_operator_screens_t *explorer = &context->explorer;
+    for (size_t index = 3U; index < FURNACE_HMI_OPERATOR_MAX_PROGRAMS; ++index) {
         explorer->programs[index] = explorer->programs[index % 3U];
         explorer->programs[index].library = false;
-        (void)snprintf(explorer->program_name_overrides[index], FURNACE_HMI_UI_LAB_NAME_CAPACITY,
+        (void)snprintf(explorer->program_name_overrides[index], FURNACE_HMI_OPERATOR_NAME_CAPACITY,
                        "Operator program %u", (unsigned)index - 2U);
     }
-    furnace_hmi_ui_lab_program_t *longest = &explorer->programs[FURNACE_HMI_UI_LAB_MAX_PROGRAMS - 1U];
-    const furnace_hmi_ui_lab_program_stage_t stages[FURNACE_HMI_UI_LAB_MAX_STAGES] = {
-        { FURNACE_HMI_UI_LAB_STAGE_HEATING, 50, 10, 25 }, { FURNACE_HMI_UI_LAB_STAGE_HOLD, 50, 0, 30 },
-        { FURNACE_HMI_UI_LAB_STAGE_HEATING, 80, 10, 30 }, { FURNACE_HMI_UI_LAB_STAGE_HOLD, 80, 0, 30 },
-        { FURNACE_HMI_UI_LAB_STAGE_HEATING, 120, 10, 40 }, { FURNACE_HMI_UI_LAB_STAGE_HOLD, 120, 0, 60 },
-        { FURNACE_HMI_UI_LAB_STAGE_HEATING, 160, 10, 40 }, { FURNACE_HMI_UI_LAB_STAGE_HOLD, 160, 0, 90 },
+    furnace_hmi_operator_program_t *longest = &explorer->programs[FURNACE_HMI_OPERATOR_MAX_PROGRAMS - 1U];
+    const furnace_hmi_operator_program_stage_t stages[FURNACE_HMI_OPERATOR_MAX_STAGES] = {
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 50, 10, 25 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 50, 0, 30 },
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 80, 10, 30 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 80, 0, 30 },
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 120, 10, 40 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 120, 0, 60 },
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 160, 10, 40 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 160, 0, 90 },
     };
-    longest->stage_count = FURNACE_HMI_UI_LAB_MAX_STAGES;
+    longest->stage_count = FURNACE_HMI_OPERATOR_MAX_STAGES;
     memcpy(longest->stages, stages, sizeof(stages));
-    (void)snprintf(explorer->program_name_overrides[FURNACE_HMI_UI_LAB_MAX_PROGRAMS - 1U],
-                   FURNACE_HMI_UI_LAB_NAME_CAPACITY, "%s", "Long post-cure schedule review");
+    (void)snprintf(explorer->program_name_overrides[FURNACE_HMI_OPERATOR_MAX_PROGRAMS - 1U],
+                   FURNACE_HMI_OPERATOR_NAME_CAPACITY, "%s", "Long post-cure schedule review");
 }
 
 static int run_capture(lv_display_t *display, ui_lab_context_t *context, const char *directory)
@@ -596,27 +601,27 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
     /* "manual-setup" avoids colliding with the "manual" simulator-scenario capture. */
     static const char *names[] = { "home", "manual-setup", "loading", "running", "programs", "program-detail",
         "stages", "program-editor", "editor", "device", "settings" };
-    for (int page = 0; page < FURNACE_HMI_UI_LAB_PAGE_COUNT; ++page) {
+    for (int page = 0; page < FURNACE_HMI_OPERATOR_PAGE_COUNT; ++page) {
         furnace_hmi_simulator_set_scenario(&context->simulator,
-            page == FURNACE_HMI_UI_LAB_PAGE_RUNNING ? FURNACE_HMI_SIM_SCENARIO_RUNNING_NORMAL : FURNACE_HMI_SIM_SCENARIO_IDLE);
+            page == FURNACE_HMI_OPERATOR_PAGE_RUNNING ? FURNACE_HMI_SIM_SCENARIO_RUNNING_NORMAL : FURNACE_HMI_SIM_SCENARIO_IDLE);
         if (!render_scenario(context)) { return 3; }
         context->explorer.running_view_mode = 0;
-        if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, (furnace_hmi_ui_lab_page_t)page)) { return 3; }
+        if (!furnace_hmi_operator_screens_navigate(&context->explorer, (furnace_hmi_operator_page_t)page)) { return 3; }
         if (capture_frame(display, context, directory, names[page]) != 0) { return 6; }
         /* Manual setup opens with the readings strip in its Ready state. */
-        if (page == FURNACE_HMI_UI_LAB_PAGE_MANUAL &&
+        if (page == FURNACE_HMI_OPERATOR_PAGE_MANUAL &&
             (context->explorer.manual_readings == NULL ||
              find_label(context->explorer.manual_readings, "Ready") == NULL)) {
             fprintf(stderr, "Manual setup readings missing\n"); return 3;
         }
-        if (page == FURNACE_HMI_UI_LAB_PAGE_MANUAL) {
+        if (page == FURNACE_HMI_OPERATOR_PAGE_MANUAL) {
             if (!tap_text(context, "120") || context->explorer.modal == NULL ||
                 capture_frame(display, context, directory, "keyboard-numeric") != 0 ||
                 !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)) {
                 fprintf(stderr, "Numeric keypad capture failed\n"); return 3;
             }
         }
-        if (page == FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR) {
+        if (page == FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR) {
             const char *name = context->explorer.program_editor_name[0] != '\0'
                 ? context->explorer.program_editor_name : "Enter program name";
             if (!tap_text(context, name) || context->explorer.modal == NULL ||
@@ -625,7 +630,7 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
                 fprintf(stderr, "Text keyboard capture failed\n"); return 3;
             }
         }
-        if (page == FURNACE_HMI_UI_LAB_PAGE_RUNNING) {
+        if (page == FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
             if (!reading_is(context, 0U, "Elapsed", NULL) || !reading_is(context, 1U, "Remaining", NULL) ||
                 !reading_is(context, 4U, "Est. power kW", NULL)) {
                 fprintf(stderr, "Running reading line is incomplete\n"); return 3;
@@ -636,18 +641,18 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
             updated.elapsed_seconds.value += 60;
             updated.remaining_seconds.value -= 60;
             updated.current_temperature_c.value = 777;
-            if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &updated) ||
+            if (!furnace_hmi_operator_screens_update(&context->explorer, &updated) ||
                 !reading_is(context, 0U, "Elapsed", NULL) ||
                 !reading_is(context, 2U, "Current \xC2\xB0" "C", "777")) { return 3; }
             updated.remaining_seconds.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
-            if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &updated) ||
+            if (!furnace_hmi_operator_screens_update(&context->explorer, &updated) ||
                 !reading_is(context, 1U, "Remaining", "--:--")) { return 3; }
             if (capture_frame(display, context, directory, "running-time-unknown")) { return 6; }
-            if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &original)) { return 3; }
+            if (!furnace_hmi_operator_screens_update(&context->explorer, &original)) { return 3; }
             /* Automatic cooling keeps curing Elapsed and adds only cooling data. */
             furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_COOLING);
             if (!render_scenario(context) ||
-                !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_RUNNING) ||
+                !furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_RUNNING) ||
                 !reading_is(context, 0U, "Elapsed", "1:08") || !reading_is(context, 1U, "Cooling", "0:17") ||
                 !reading_is(context, 2U, "Est. remaining", "0:25") || !reading_is(context, 3U, "Current \xC2\xB0" "C", NULL) ||
                 !reading_is(context, 4U, "Target \xC2\xB0" "C", "30") ||
@@ -662,7 +667,7 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
             furnace_hmi_dashboard_state_t longer = context->explorer.observation;
             longer.cooling_elapsed_seconds.value = 3 * 3600;
             const int64_t short_window = context->explorer.trajectory_domain_maximum_seconds;
-            if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &longer) ||
+            if (!furnace_hmi_operator_screens_update(&context->explorer, &longer) ||
                 context->explorer.cooling_toggle == NULL ||
                 !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_SHOW_COOLING) ||
                 !context->explorer.running_cooling_full ||
@@ -675,15 +680,15 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
             furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_RUNNING_NORMAL);
             if (!render_scenario(context)) { return 3; }
         }
-        if (page == FURNACE_HMI_UI_LAB_PAGE_RUNNING || page == FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR) {
+        if (page == FURNACE_HMI_OPERATOR_PAGE_RUNNING || page == FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR) {
             for (uint8_t variant = 1; variant < 3; ++variant) {
                 context->explorer.running_view_mode = variant;
-                if (page == FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR) {
+                if (page == FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR) {
                     if (!render_scenario(context)) { return 3; }
                     context->explorer.selected_stage = (uint8_t)(variant + 1U);
                     if (!open_stage_editor(context, (uint8_t)(variant + 1U))) { return 3; }
-                } else if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, (furnace_hmi_ui_lab_page_t)page)) { return 3; }
-                if (page == FURNACE_HMI_UI_LAB_PAGE_RUNNING) {
+                } else if (!furnace_hmi_operator_screens_navigate(&context->explorer, (furnace_hmi_operator_page_t)page)) { return 3; }
+                if (page == FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
                     /* Split and Furnace views keep the same reading line. */
                     if (!reading_is(context, 0U, "Elapsed", NULL) || !reading_is(context, 3U, "Target \xC2\xB0" "C", NULL)) {
                         return 3;
@@ -699,7 +704,7 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
         fprintf(stderr, "Manual geometry check: could not render idle fixture\n");
         return 3;
     }
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_MANUAL)) {
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_MANUAL)) {
         fprintf(stderr, "Manual geometry check: could not enter Manual\n");
         return 3;
     }
@@ -708,7 +713,7 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
         return 3;
     }
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_MANUAL);
-    if (!furnace_hmi_ui_lab_explorer_update(
+    if (!furnace_hmi_operator_screens_update(
             &context->explorer, furnace_hmi_simulator_state(&context->simulator))) {
         fprintf(stderr, "Manual geometry check: could not apply elapsed fixture\n");
         return 3;
@@ -779,19 +784,19 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
         if (!render_scenario(context)) { return 3; }
         context->explorer.settings_tab = settings_tabs[index];
         context->explorer.settings_connections_enabled = settings_tabs[index] == 2U;
-        if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+        if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
             capture_frame(display, context, directory, settings_names[index])) { return 6; }
     }
     context->explorer.settings_connections_enabled = false;
     /* Set date & time over the Date & time page, then the Dim when idle choice. */
     context->explorer.settings_tab = 1U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_AND_TIME)) ||
         context->explorer.modal == NULL ||
         capture_frame(display, context, directory, "settings-set-date-time") ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)) { return 6; }
     context->explorer.settings_tab = 0U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DIM_WHEN_IDLE)) ||
         context->explorer.modal == NULL ||
         capture_frame(display, context, directory, "settings-dim-choice") ||
@@ -800,30 +805,30 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
     if (!render_scenario(context)) { return 3; }
     context->explorer.device_tab = 0U;
     context->explorer.device_filter = 0U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
         capture_frame(display, context, directory, "device-overview")) { return 6; }
     context->explorer.device_tab = 1U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
         capture_frame(display, context, directory, "device-log")) { return 6; }
     context->explorer.device_tab = 2U;
     context->explorer.device_page = 0U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
         capture_frame(display, context, directory, "device-maintenance")) { return 6; }
     context->explorer.device_page = 1U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
         capture_frame(display, context, directory, "device-maintenance-2")) { return 6; }
     context->explorer.device_tab = 3U;
     context->explorer.device_page = 0U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
         capture_frame(display, context, directory, "device-history")) { return 6; }
     context->explorer.device_tab = 4U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
         capture_frame(display, context, directory, "device-info")) { return 6; }
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
     furnace_hmi_dashboard_state_t stale_state =
         *furnace_hmi_simulator_state(&context->simulator);
     stale_state.availability = FURNACE_HMI_STATE_AVAILABILITY_STALE;
-    if (!furnace_hmi_ui_lab_explorer_update(
+    if (!furnace_hmi_operator_screens_update(
             &context->explorer, &stale_state)) {
         return 3;
     }
@@ -831,15 +836,15 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
     if (context->explorer.modal == NULL || capture_frame(display, context, directory, "alert-link-lost") ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) { return 6; }
     context->explorer.device_tab = 0U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE)) { return 3; }
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE)) { return 3; }
     if (capture_frame(display, context, directory, "device-stale")) { return 6; }
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
     if (!render_scenario(context)) { return 3; }
-    if (!furnace_hmi_ui_lab_explorer_show_service_warning(&context->explorer)) { return 3; }
+    if (!furnace_hmi_operator_screens_show_service_warning(&context->explorer)) { return 3; }
     if (capture_frame(display, context, directory, "service-dialog") != 0) { return 6; }
     /* Maintenance task dialog (corner X, Maintenance done) and its result. */
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
-    if (!render_scenario(context) || !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE) ||
+    if (!render_scenario(context) || !furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
         !tap_device_category(context, FURNACE_HMI_UI_STRING_UI_LAB_MAINTENANCE) ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_DUE_OVERDUE)) ||
         capture_frame(display, context, directory, "maintenance-task") ||
@@ -857,44 +862,44 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
         capture_frame(display, context, directory, "device-support")) { return 6; }
     /* Manual readings at the review sizes, while heating and after Stop (cooling). */
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
-    if (!render_scenario(context) || !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_MANUAL) ||
+    if (!render_scenario(context) || !furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_MANUAL) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START) || capture_frame(display, context, directory, "manual-heating") ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) || capture_frame(display, context, directory, "manual-cooling")) { return 6; }
     /* Date & time with the date format card; Delete programs with one chosen. */
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
     if (!render_scenario(context)) { return 3; }
     context->explorer.settings_tab = 1U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         capture_frame(display, context, directory, "settings-time")) { return 6; }
     context->explorer.settings_tab = 3U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_PROGRAMS)) ||
         capture_frame(display, context, directory, "settings-delete") ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)) { return 6; }
     context->explorer.settings_tab = 1U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_FORMAT)) ||
         capture_frame(display, context, directory, "settings-date-format")) { return 6; }
     for (unsigned variant = 0; variant < 10; ++variant) {
         furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
         if (!render_scenario(context)) { return 3; }
-        furnace_hmi_ui_lab_page_t page = FURNACE_HMI_UI_LAB_PAGE_PROGRAMS;
+        furnace_hmi_operator_page_t page = FURNACE_HMI_OPERATOR_PAGE_PROGRAMS;
         const char *name = "programs-last";
         if (variant == 0) { fill_program_library(context); context->explorer.program_page = 1; }
         if (variant == 1) { fill_program_library(context); context->explorer.program_page = 1; context->explorer.library_count = 0; name = "programs-partial"; }
         if (variant == 2) { context->explorer.library_count = 0; name = "programs-empty"; }
-        if (variant == 3) { page = FURNACE_HMI_UI_LAB_PAGE_PROGRAM_STAGES; context->explorer.program_stage_page = 0; name = "stages-last"; }
-        if (variant == 4) { page = FURNACE_HMI_UI_LAB_PAGE_PROGRAM_STAGES; fill_program_library(context); context->explorer.selected_program = 11; context->explorer.program_stage_page = 0; name = "stages-maximum"; }
-        if (variant == 5) { page = FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL; context->explorer.favourite_count = 1; name = "remove-favourite"; }
+        if (variant == 3) { page = FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES; context->explorer.program_stage_page = 0; name = "stages-last"; }
+        if (variant == 4) { page = FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES; fill_program_library(context); context->explorer.selected_program = 11; context->explorer.program_stage_page = 0; name = "stages-maximum"; }
+        if (variant == 5) { page = FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL; context->explorer.favourite_count = 1; name = "remove-favourite"; }
         if (variant >= 6 && variant <= 8) {
-            page = FURNACE_HMI_UI_LAB_PAGE_HOME; context->explorer.recent_count = 0;
+            page = FURNACE_HMI_OPERATOR_PAGE_HOME; context->explorer.recent_count = 0;
             context->explorer.favourite_count = (uint8_t)(variant - 6);
             if (variant == 8) { context->explorer.favourite_count = 3; }
             for (uint8_t k = 0; k < context->explorer.favourite_count; ++k) { context->explorer.quick_launch_favourites[k] = k; }
             name = variant == 6 ? "home-empty" : variant == 7 ? "home-few" : "home-full";
         }
-        if (variant == 9) { page = FURNACE_HMI_UI_LAB_PAGE_PROGRAM_LOADING; fill_program_library(context); context->explorer.selected_program = 11; name = "loading-long"; }
-        if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, page) || capture_frame(display, context, directory, name)) { return 6; }
+        if (variant == 9) { page = FURNACE_HMI_OPERATOR_PAGE_PROGRAM_LOADING; fill_program_library(context); context->explorer.selected_program = 11; name = "loading-long"; }
+        if (!furnace_hmi_operator_screens_navigate(&context->explorer, page) || capture_frame(display, context, directory, name)) { return 6; }
     }
     const furnace_hmi_ui_string_id_t dialog_actions[] = {
         FURNACE_HMI_UI_STRING_UI_LAB_MAINTENANCE, FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT,
@@ -906,10 +911,10 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
     for (unsigned i = 0; i < 7; ++i) {
         furnace_hmi_simulator_set_scenario(&context->simulator, i >= 5 ? FURNACE_HMI_SIM_SCENARIO_RUNNING_NORMAL : FURNACE_HMI_SIM_SCENARIO_IDLE);
         if (!render_scenario(context)) { return 3; }
-        furnace_hmi_ui_lab_page_t page = i >= 5 ? FURNACE_HMI_UI_LAB_PAGE_RUNNING : i >= 3 ? FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR : FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL;
-        if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, page)) { return 3; }
+        furnace_hmi_operator_page_t page = i >= 5 ? FURNACE_HMI_OPERATOR_PAGE_RUNNING : i >= 3 ? FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR : FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL;
+        if (!furnace_hmi_operator_screens_navigate(&context->explorer, page)) { return 3; }
         const bool opened = i == 0U
-            ? furnace_hmi_ui_lab_explorer_show_service_warning(&context->explorer)
+            ? furnace_hmi_operator_screens_show_service_warning(&context->explorer)
             : (i == 2U ? tap(context, FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM) : tap(context, dialog_actions[i]));
         if (!opened || !pump_controller_requests(context)) { return 3; }
         if (capture_frame(display, context, directory, dialog_names[i])) { return 6; }
@@ -920,7 +925,7 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
     for (furnace_hmi_sim_scenario_t scenario = 0; scenario < FURNACE_HMI_SIM_SCENARIO_COUNT; ++scenario) {
         furnace_hmi_simulator_set_scenario(&context->simulator, scenario);
         if (!render_scenario(context)) { return 3; }
-        if (scenario == FURNACE_HMI_SIM_SCENARIO_MANUAL && !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_RUNNING)) { return 3; }
+        if (scenario == FURNACE_HMI_SIM_SCENARIO_MANUAL && !furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_RUNNING)) { return 3; }
         if (capture_frame(display, context, directory, furnace_hmi_sim_scenario_name(scenario))) { return 6; }
     }
     for (unsigned i = 0; i < 8; ++i) {
@@ -928,10 +933,10 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
         if (!render_scenario(context)) { return 3; }
         const char *name = "new-program";
         if (i == 0) {
-            if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer,FURNACE_HMI_UI_LAB_PAGE_PROGRAMS) || !tap(context,FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)) { return 3; }
+            if (!furnace_hmi_operator_screens_navigate(&context->explorer,FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) || !tap(context,FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)) { return 3; }
         } else if (i == 1) {
             name = "add-stage";
-            if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer,FURNACE_HMI_UI_LAB_PAGE_PROGRAM_STAGES) ||
+            if (!furnace_hmi_operator_screens_navigate(&context->explorer,FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES) ||
                 !tap(context,FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM) || !tap_text(context, "+ Add stage")) { return 3; }
         } else if (i == 2) {
             name = "resume-preview"; if (!tap(context,FURNACE_HMI_UI_STRING_UI_LAB_RESUME_PREVIEW)) { return 3; }
@@ -951,7 +956,7 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
                 state.graph_samples[0].measured_temperature_c = -1234;
                 ++state.program_id;
             }
-            if (!furnace_hmi_ui_lab_explorer_update(&context->explorer,&state)) { return 3; }
+            if (!furnace_hmi_operator_screens_update(&context->explorer,&state)) { return 3; }
         } else if (i == 6) {
             name = "automatic-cooling";
             context->explorer.selected_stage = 3;
@@ -961,36 +966,36 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
             fill_program_library(context);
             for (unsigned k = 0; k < 3; ++k) { context->explorer.quick_launch_favourites[k] = (uint8_t)k; }
             context->explorer.selected_program = 3;
-            if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer,FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL) || !tap_program_favourite(context)) { return 3; }
+            if (!furnace_hmi_operator_screens_navigate(&context->explorer,FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) || !tap_program_favourite(context)) { return 3; }
         }
         if (capture_frame(display, context,directory,name)) { return 6; }
     }
     furnace_hmi_simulator_set_scenario(&context->simulator,FURNACE_HMI_SIM_SCENARIO_DISCONNECTED);
-    if (!render_scenario(context) || !furnace_hmi_ui_lab_explorer_navigate(&context->explorer,FURNACE_HMI_UI_LAB_PAGE_DEVICE) || capture_frame(display, context,directory,"device-unavailable") ||
-        !furnace_hmi_ui_lab_explorer_show_service_warning(&context->explorer) || capture_frame(display, context,directory,"service-unavailable")) { return 6; }
+    if (!render_scenario(context) || !furnace_hmi_operator_screens_navigate(&context->explorer,FURNACE_HMI_OPERATOR_PAGE_DEVICE) || capture_frame(display, context,directory,"device-unavailable") ||
+        !furnace_hmi_operator_screens_show_service_warning(&context->explorer) || capture_frame(display, context,directory,"service-unavailable")) { return 6; }
     furnace_hmi_simulator_set_scenario(&context->simulator,FURNACE_HMI_SIM_SCENARIO_IDLE);
     if (!render_scenario(context)) { return 3; }
     /* Start asks on Program details; Load program starts at once. The run
      * follows the controller's reports; Stop returns Home. */
     fill_program_library(context);
     context->explorer.selected_program = 11;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer,FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer,FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
         !tap(context,FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM) || capture_frame(display,context,directory,"start-confirm") ||
         !tap(context,FURNACE_HMI_UI_STRING_UI_LAB_CANCEL) ||
-        !furnace_hmi_ui_lab_explorer_navigate(&context->explorer,FURNACE_HMI_UI_LAB_PAGE_PROGRAM_LOADING) ||
+        !furnace_hmi_operator_screens_navigate(&context->explorer,FURNACE_HMI_OPERATOR_PAGE_PROGRAM_LOADING) ||
         !tap(context,FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM) || !pump_controller_requests(context) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_RUNNING || capture_frame(display,context,directory,"start-running")) { return 6; }
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING || capture_frame(display,context,directory,"start-running")) { return 6; }
     furnace_hmi_simulator_tick(&context->simulator, 150U * 60U);
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) ||
+    if (!furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) ||
         capture_frame(display,context,directory,"program-run") ||
         !tap(context,FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) || !pump_controller_requests(context) ||
         capture_frame(display,context,directory,"program-stopped") ||
         !tap(context,FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME) || !pump_controller_requests(context) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_HOME || capture_frame(display,context,directory,"home-changed-recents")) { return 6; }
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_HOME || capture_frame(display,context,directory,"home-changed-recents")) { return 6; }
     context->explorer.draft_target_c = -1;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR) || capture_frame(display, context, directory, "editor-validation")) { return 6; }
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR) || capture_frame(display, context, directory, "editor-validation")) { return 6; }
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_MANUAL);
-    if (!render_scenario(context) || !furnace_hmi_ui_lab_explorer_navigate(&context->explorer,FURNACE_HMI_UI_LAB_PAGE_RUNNING) || !furnace_hmi_ui_lab_explorer_show_service_warning(&context->explorer) || capture_frame(display,context,directory,"manual-maintenance")) { return 6; }
+    if (!render_scenario(context) || !furnace_hmi_operator_screens_navigate(&context->explorer,FURNACE_HMI_OPERATOR_PAGE_RUNNING) || !furnace_hmi_operator_screens_show_service_warning(&context->explorer) || capture_frame(display,context,directory,"manual-maintenance")) { return 6; }
     lv_obj_t *manual_stop = find_button(context->explorer.content,ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
     lv_area_t stop_area, modal_area;
     if (!manual_stop) { return 3; }
@@ -1012,13 +1017,13 @@ static int check_controller_alerts(ui_lab_context_t *context)
     static const struct {
         furnace_hmi_sim_scenario_t scenario;
         furnace_hmi_ui_string_id_t title;
-        furnace_hmi_ui_lab_page_t page;
+        furnace_hmi_operator_page_t page;
     } faults[] = {
-        { FURNACE_HMI_SIM_SCENARIO_FAULT, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_DOOR_OPEN_TITLE, FURNACE_HMI_UI_LAB_PAGE_RUNNING },
-        { FURNACE_HMI_SIM_SCENARIO_OVER_TEMPERATURE, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_OVER_TEMPERATURE_TITLE, FURNACE_HMI_UI_LAB_PAGE_RUNNING },
-        { FURNACE_HMI_SIM_SCENARIO_HEATING_SLOW, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_TARGET_NOT_REACHED_TITLE, FURNACE_HMI_UI_LAB_PAGE_RUNNING },
-        { FURNACE_HMI_SIM_SCENARIO_SENSOR_FAULT, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_SENSOR_TITLE, FURNACE_HMI_UI_LAB_PAGE_RUNNING },
-        { FURNACE_HMI_SIM_SCENARIO_POWER_LOSS, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_POWER_INTERRUPTED_TITLE, FURNACE_HMI_UI_LAB_PAGE_HOME },
+        { FURNACE_HMI_SIM_SCENARIO_FAULT, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_DOOR_OPEN_TITLE, FURNACE_HMI_OPERATOR_PAGE_RUNNING },
+        { FURNACE_HMI_SIM_SCENARIO_OVER_TEMPERATURE, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_OVER_TEMPERATURE_TITLE, FURNACE_HMI_OPERATOR_PAGE_RUNNING },
+        { FURNACE_HMI_SIM_SCENARIO_HEATING_SLOW, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_TARGET_NOT_REACHED_TITLE, FURNACE_HMI_OPERATOR_PAGE_RUNNING },
+        { FURNACE_HMI_SIM_SCENARIO_SENSOR_FAULT, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_SENSOR_TITLE, FURNACE_HMI_OPERATOR_PAGE_RUNNING },
+        { FURNACE_HMI_SIM_SCENARIO_POWER_LOSS, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_POWER_INTERRUPTED_TITLE, FURNACE_HMI_OPERATOR_PAGE_HOME },
     };
     for (size_t i = 0; i < sizeof(faults) / sizeof(faults[0]); ++i) {
         furnace_hmi_simulator_set_scenario(&context->simulator, faults[i].scenario);
@@ -1031,13 +1036,13 @@ static int check_controller_alerts(ui_lab_context_t *context)
             fprintf(stderr, "Alert did not close for %s\n", furnace_hmi_sim_scenario_name(faults[i].scenario));
             return 3;
         }
-        if (faults[i].page != FURNACE_HMI_UI_LAB_PAGE_RUNNING) { continue; }
+        if (faults[i].page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) { continue; }
         /* The run has ended: the fault replaces the stage label, Pause is gone and Stop is Return Home. */
         if (find_label(context->explorer.content, ui_string(faults[i].title)) == NULL ||
             find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PAUSE_PREVIEW)) != NULL ||
             find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW)) != NULL ||
             !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME) ||
-            context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_HOME) {
+            context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_HOME) {
             fprintf(stderr, "Faulted Running did not end the run for %s\n", furnace_hmi_sim_scenario_name(faults[i].scenario));
             return 3;
         }
@@ -1049,15 +1054,15 @@ static int check_controller_alerts(ui_lab_context_t *context)
     furnace_hmi_dashboard_state_t state = *furnace_hmi_simulator_state(&context->simulator);
     state.run_state = FURNACE_HMI_RUN_STATE_FAULT;
     state.fault_kind = FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE;
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &state) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_RUNNING ||
+    if (!furnace_hmi_operator_screens_update(&context->explorer, &state) ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING ||
         !modal_shows(context, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_OVER_TEMPERATURE_TITLE)) {
         fprintf(stderr, "Live fault did not raise its alert\n");
         return 3;
     }
     /* The same report again does not reopen a closed alert. */
     if (!tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) ||
-        !furnace_hmi_ui_lab_explorer_update(&context->explorer, &state) || context->explorer.modal != NULL) {
+        !furnace_hmi_operator_screens_update(&context->explorer, &state) || context->explorer.modal != NULL) {
         fprintf(stderr, "Repeated fault reopened its alert\n");
         return 3;
     }
@@ -1069,14 +1074,14 @@ static int check_controller_alerts(ui_lab_context_t *context)
     furnace_hmi_dashboard_state_t stale = current;
     stale.availability = FURNACE_HMI_STATE_AVAILABILITY_STALE;
     lv_obj_t *stop = NULL;
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &stale) ||
+    if (!furnace_hmi_operator_screens_update(&context->explorer, &stale) ||
         !modal_shows(context, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_LOST_TITLE) ||
         (stop = find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW))) == NULL ||
         !lv_obj_has_state(stop, LV_STATE_DISABLED)) {
         fprintf(stderr, "Link loss did not raise its alert or disable Stop\n");
         return 3;
     }
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &current) ||
+    if (!furnace_hmi_operator_screens_update(&context->explorer, &current) ||
         !modal_shows(context, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_RESTORED_TITLE) ||
         (stop = find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW))) == NULL ||
         lv_obj_has_state(stop, LV_STATE_DISABLED) || !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) {
@@ -1084,8 +1089,8 @@ static int check_controller_alerts(ui_lab_context_t *context)
         return 3;
     }
     /* Restored after the operator closed the link-lost alert: nothing reopens. */
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &stale) || !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) ||
-        !furnace_hmi_ui_lab_explorer_update(&context->explorer, &current) || context->explorer.modal != NULL) {
+    if (!furnace_hmi_operator_screens_update(&context->explorer, &stale) || !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) ||
+        !furnace_hmi_operator_screens_update(&context->explorer, &current) || context->explorer.modal != NULL) {
         fprintf(stderr, "Restored link reopened a closed alert\n");
         return 3;
     }
@@ -1185,24 +1190,24 @@ static int check_theme_switch(ui_lab_context_t *context)
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
     if (!render_scenario(context)) { return 3; }
     /* Switching in place restyles the chrome built at creation and the page. */
-    ui_lab_theme_use_palette(probe_palette);
-    if (!furnace_hmi_ui_lab_explorer_refresh_presentation(&context->explorer)) {
+    operator_theme_use_palette(probe_palette);
+    if (!furnace_hmi_operator_screens_refresh_presentation(&context->explorer)) {
         fprintf(stderr, "Theme switch: refresh failed\n");
-        ui_lab_theme_use_palette(NULL);
+        operator_theme_use_palette(NULL);
         return 3;
     }
     if (count_stale_colors(context->explorer.root, "Home after refresh") != 0U) {
-        ui_lab_theme_use_palette(NULL);
+        operator_theme_use_palette(NULL);
         return 3;
     }
     unsigned stale = 0U;
-    for (int page = 0; page < FURNACE_HMI_UI_LAB_PAGE_COUNT && stale == 0U; ++page) {
+    for (int page = 0; page < FURNACE_HMI_OPERATOR_PAGE_COUNT && stale == 0U; ++page) {
         /* Each route from a fresh screen, as in the structural route check. */
         furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
         if (!render_scenario(context) ||
-            !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, (furnace_hmi_ui_lab_page_t)page)) {
+            !furnace_hmi_operator_screens_navigate(&context->explorer, (furnace_hmi_operator_page_t)page)) {
             fprintf(stderr, "Theme switch: page %d failed to open\n", page);
-            ui_lab_theme_use_palette(NULL);
+            operator_theme_use_palette(NULL);
             return 3;
         }
         char where[32];
@@ -1212,8 +1217,8 @@ static int check_theme_switch(ui_lab_context_t *context)
     context->explorer.settings_connections_enabled = true;
     for (uint8_t tab = 0U; tab < 4U && stale == 0U; ++tab) {
         context->explorer.settings_tab = tab;
-        if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS)) {
-            ui_lab_theme_use_palette(NULL);
+        if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
+            operator_theme_use_palette(NULL);
             return 3;
         }
         stale += count_stale_colors(context->explorer.root, "Settings tab");
@@ -1222,8 +1227,8 @@ static int check_theme_switch(ui_lab_context_t *context)
     context->explorer.settings_tab = 0U;
     for (uint8_t tab = 0U; tab < 5U && stale == 0U; ++tab) {
         context->explorer.device_tab = tab;
-        if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE)) {
-            ui_lab_theme_use_palette(NULL);
+        if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE)) {
+            operator_theme_use_palette(NULL);
             return 3;
         }
         stale += count_stale_colors(context->explorer.root, "Device tab");
@@ -1231,14 +1236,14 @@ static int check_theme_switch(ui_lab_context_t *context)
     context->explorer.device_tab = 0U;
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_RUNNING_NORMAL);
     if (!render_scenario(context) ||
-        !furnace_hmi_ui_lab_explorer_show_service_warning(&context->explorer)) {
-        ui_lab_theme_use_palette(NULL);
+        !furnace_hmi_operator_screens_show_service_warning(&context->explorer)) {
+        operator_theme_use_palette(NULL);
         return 3;
     }
     stale += count_stale_colors(context->explorer.root, "Running with a dialog");
     /* Back to the default theme: the root takes the theme's page colour again. */
-    if (!ui_lab_theme_select((furnace_hmi_theme_id_t)0) ||
-        !furnace_hmi_ui_lab_explorer_refresh_presentation(&context->explorer) ||
+    if (!operator_theme_select((furnace_hmi_theme_id_t)0) ||
+        !furnace_hmi_operator_screens_refresh_presentation(&context->explorer) ||
         (lv_color_to_u32(lv_obj_get_style_bg_color(context->explorer.root, LV_PART_MAIN)) & 0xFFFFFFU) !=
             furnace_hmi_theme((furnace_hmi_theme_id_t)0)->colors[FURNACE_HMI_COLOR_PAGE].rgb) {
         fprintf(stderr, "Theme switch back to the default theme failed\n");
@@ -1305,19 +1310,19 @@ static bool contains_field(const char *text, const char *field)
 
 static bool is_catalogue_data(const ui_lab_context_t *context, const char *text)
 {
-    const furnace_hmi_ui_lab_device_catalogue_t *catalogue = &context->device_catalogue;
+    const furnace_hmi_operator_device_catalogue_t *catalogue = &context->device_catalogue;
     if (contains_field(text, catalogue->revision)) {
         return true;
     }
     for (uint8_t part = 0U; part < catalogue->component_count; ++part) {
-        const furnace_hmi_ui_lab_device_component_t *component = &catalogue->components[part];
+        const furnace_hmi_operator_device_component_t *component = &catalogue->components[part];
         if (contains_field(text, component->name) || contains_field(text, component->part) ||
             contains_field(text, component->location) || contains_field(text, component->usage) ||
             contains_field(text, component->source)) {
             return true;
         }
         for (uint8_t task = 0U; task < component->task_count; ++task) {
-            const furnace_hmi_ui_lab_device_task_t *item = &component->tasks[task];
+            const furnace_hmi_operator_device_task_t *item = &component->tasks[task];
             if (contains_field(text, item->name) || contains_field(text, item->basis) ||
                 contains_field(text, item->interval) || contains_field(text, item->remaining) ||
                 contains_field(text, item->last) || contains_field(text, item->procedure)) {
@@ -1372,16 +1377,16 @@ static int check_pseudo_language(ui_lab_context_t *context, bool report_only)
         return 3;
     }
     furnace_hmi_ui_strings_override(pseudo_table);
-    if (!furnace_hmi_ui_lab_explorer_refresh_presentation(&context->explorer) ||
+    if (!furnace_hmi_operator_screens_refresh_presentation(&context->explorer) ||
         find_button(context->explorer.nav, pseudo_table[FURNACE_HMI_UI_STRING_DASHBOARD_HOME]) == NULL) {
         fprintf(stderr, "Pseudo language: navigation kept its old labels after a refresh\n");
         furnace_hmi_ui_strings_override(NULL);
         return 3;
     }
-    for (int page = 0; page < FURNACE_HMI_UI_LAB_PAGE_COUNT; ++page) {
+    for (int page = 0; page < FURNACE_HMI_OPERATOR_PAGE_COUNT; ++page) {
         furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
         if (!render_scenario(context) ||
-            !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, (furnace_hmi_ui_lab_page_t)page)) {
+            !furnace_hmi_operator_screens_navigate(&context->explorer, (furnace_hmi_operator_page_t)page)) {
             furnace_hmi_ui_strings_override(NULL);
             return 3;
         }
@@ -1391,7 +1396,7 @@ static int check_pseudo_language(ui_lab_context_t *context, bool report_only)
     context->explorer.settings_connections_enabled = true;
     for (uint8_t tab = 0U; tab < 4U; ++tab) {
         context->explorer.settings_tab = tab;
-        (void)furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS);
+        (void)furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS);
         (void)snprintf(where, sizeof(where), "Settings tab %u", (unsigned)tab);
         found += count_hard_coded(context, context->explorer.root, where);
     }
@@ -1399,7 +1404,7 @@ static int check_pseudo_language(ui_lab_context_t *context, bool report_only)
     context->explorer.settings_tab = 0U;
     for (uint8_t tab = 0U; tab < 5U; ++tab) {
         context->explorer.device_tab = tab;
-        (void)furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE);
+        (void)furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE);
         (void)snprintf(where, sizeof(where), "Device tab %u", (unsigned)tab);
         found += count_hard_coded(context, context->explorer.root, where);
     }
@@ -1417,7 +1422,7 @@ static int check_pseudo_language(ui_lab_context_t *context, bool report_only)
         (void)snprintf(where, sizeof(where), "scenario %d", (int)scenarios[index]);
         found += count_hard_coded(context, context->explorer.root, where);
     }
-    if (furnace_hmi_ui_lab_explorer_show_service_warning(&context->explorer)) {
+    if (furnace_hmi_operator_screens_show_service_warning(&context->explorer)) {
         found += count_hard_coded(context, context->explorer.root, "service dialog");
     }
     furnace_hmi_ui_strings_override(NULL);
@@ -1435,10 +1440,10 @@ static int check_pseudo_language(ui_lab_context_t *context, bool report_only)
 static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
 {
     lv_display_set_resolution(display, 640, 360); lv_obj_update_layout(lv_screen_active());
-    for (int page = 0; page < FURNACE_HMI_UI_LAB_PAGE_COUNT; ++page) {
+    for (int page = 0; page < FURNACE_HMI_OPERATOR_PAGE_COUNT; ++page) {
         furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
         if (!render_scenario(context)) { return 3; }
-        if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, (furnace_hmi_ui_lab_page_t)page)) {
+        if (!furnace_hmi_operator_screens_navigate(&context->explorer, (furnace_hmi_operator_page_t)page)) {
             fprintf(stderr, "Structural route failed: %d\n", page); return 3;
         }
         handle_timers(1U);
@@ -1451,7 +1456,7 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     }
     lv_area_t light_target;
     lv_obj_get_coords(context->explorer.state_strip, &light_target);
-    if (lv_obj_get_height(context->explorer.state_strip) < FURNACE_HMI_UI_LAB_LIGHT_TARGET_HEIGHT ||
+    if (lv_obj_get_height(context->explorer.state_strip) < FURNACE_HMI_OPERATOR_LIGHT_TARGET_HEIGHT ||
         light_target.x1 > 0 ||
         light_target.x2 < lv_display_get_horizontal_resolution(display) - 1) {
         fprintf(stderr, "Top-line light hit target is too small\n"); return 3;
@@ -1474,7 +1479,7 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     }
     /* Display: the brightness gauge steps and -/+ (no number shown), the dim
      * choice (Off by default), Discard and Save. */
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_MORE)) != NULL ||
         find_label(context->explorer.content, "80%") != NULL ||
         context->explorer.settings_saved_numeric[4] != 0 ||
@@ -1511,14 +1516,14 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         fprintf(stderr, "Settings rail without Connections failed\n"); return 3;
     }
     context->explorer.settings_connections_enabled = true;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         !tap_content_text(context, connections) ||
         context->explorer.settings_tab != 2U ||
         find_label(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SERVER)) == NULL) {
         fprintf(stderr, "Settings Connections when enabled failed\n"); return 3;
     }
     context->explorer.settings_connections_enabled = false;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         context->explorer.settings_tab != 0U ||
         find_button(context->explorer.content, connections) != NULL) {
         fprintf(stderr, "Settings Connections fallback failed\n"); return 3;
@@ -1526,7 +1531,7 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     /* Set date & time: 31 Jan -> Feb clamps the day; Cancel keeps the clock;
      * Set changes it; the 12-hour format adds an AM/PM column. */
     context->explorer.settings_tab = 1U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         find_label(context->explorer.content, "Clock source") != NULL ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_AND_TIME)) ||
         clock_column_count(context) != 5U) {
@@ -1558,32 +1563,32 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         !context->explorer.settings_candidate_24_hour) {
         fprintf(stderr, "Set date & time flow failed\n"); return 3;
     }
-    context->explorer.clock = (furnace_hmi_ui_lab_clock_t){ 2026U, 9U, 14U, 14U, 32U };
+    context->explorer.clock = (furnace_hmi_operator_clock_t){ 2026U, 9U, 14U, 14U, 32U };
     context->explorer.settings_tab = 0U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_PROGRAMS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_EPOXY_1)) ||
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM) ||
-         context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR ||
+         context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR ||
          /* First stage card: its detail line is "50 min  ·  0.3 C/min". */
          !tap_label_button(context, "50 min  \xC2\xB7  0.3 \xC2\xB0" "C/min") ||
-         context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR ||
+         context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR ||
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STAGE_HOLD) ||
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
-         context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR ||
+         context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR ||
          /* Unchanged draft: Back leaves without asking. */
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_BACK) || context->explorer.modal != NULL ||
-         context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL ||
+         context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL ||
          /* A new stage makes the draft dirty: Back asks before discarding it. */
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM) ||
          !tap_text(context, "+ Add stage") ||
-         context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR ||
+         context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR ||
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
-         context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR ||
+         context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR ||
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_BACK) || context->explorer.modal == NULL ||
          !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
-         context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL) {
+         context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) {
         fprintf(stderr, "Program edit flow failed\\n"); return 3;
     }
     lv_obj_t *favourite_button = find_program_favourite_button(context);
@@ -1597,23 +1602,23 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
      * controller's run opens Running; Pause, Resume and Stop are requests too. */
     context->explorer.selected_program = 2U;
     const uint8_t recent_before = context->explorer.quick_launch_recent[0];
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM) || context->explorer.modal == NULL ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CANCEL) || context->explorer.modal != NULL ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL ||
         context->explorer.quick_launch_recent[0] != recent_before ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM) || context->explorer.modal != NULL ||
         context->explorer.quick_launch_recent[0] != 2U ||
-        context->explorer.request.kind != FURNACE_HMI_UI_LAB_REQUEST_START_PROGRAM ||
-        !pump_controller_requests(context) || context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_RUNNING ||
+        context->explorer.request.kind != FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM ||
+        !pump_controller_requests(context) || context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING ||
         strcmp(context->explorer.state->program_name, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_EPOXY_3)) != 0 ||
         context->explorer.state->stage_count != 6U) {
         fprintf(stderr, "Program details start confirmation failed\n"); return 3;
     }
     /* 70 minutes in: the first Hold (stage 2 of 6). */
     furnace_hmi_simulator_tick(&context->simulator, 70U * 60U);
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) ||
+    if (!furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) ||
         context->explorer.state->stage_index != 1U || context->explorer.state->current_temperature_c.value != 90 ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_PAUSE_PREVIEW) || !pump_controller_requests(context) ||
         context->explorer.state->run_state != FURNACE_HMI_RUN_STATE_PAUSED ||
@@ -1622,31 +1627,33 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         /* Stop: the run is cut at 70 min and cools on Running, with Start again
          * and Return Home; Start again runs the same program from the start. */
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) || !pump_controller_requests(context) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_RUNNING ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING ||
         context->explorer.state->run_phase != FURNACE_HMI_RUN_PHASE_COOLING ||
         context->explorer.state->elapsed_seconds.value != 70 * 60 ||
         find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PAUSE_PREVIEW)) != NULL ||
         find_label(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_STOPPED_COOLING)) == NULL ||
-        furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_HOME) ||
+        furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_HOME) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_AGAIN) || !pump_controller_requests(context) ||
         context->explorer.state->run_phase != FURNACE_HMI_RUN_PHASE_CURING ||
         context->explorer.state->elapsed_seconds.value != 0 ||
         strcmp(context->explorer.state->program_name, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_EPOXY_3)) != 0 ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) || !pump_controller_requests(context) ||
+        /* Return Home leaves the stopped run cooling: navigation never ends it. */
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME) || !pump_controller_requests(context) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_HOME ||
-        context->explorer.state->mode != FURNACE_HMI_MACHINE_MODE_IDLE) {
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_HOME ||
+        context->explorer.state->mode != FURNACE_HMI_MACHINE_MODE_PROGRAM ||
+        context->explorer.state->run_phase != FURNACE_HMI_RUN_PHASE_COOLING) {
         fprintf(stderr, "Program run pause/resume/stop failed\n"); return 3;
     }
     /* Stage dialog over the program editor: add after, move by position,
      * delete with confirmation; Discard restores every stage, Save keeps them
      * and marks the draft changed; a Hold locks Target and Rate. */
     context->explorer.selected_program = 0U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR ||
         !tap_label_button(context, "50 min  \xC2\xB7  0.3 \xC2\xB0" "C/min") ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR ||
         context->explorer.stage_dialog == NULL || context->explorer.staged_stage_count != 4U ||
         !tap_object(stage_dialog_top(context, 2U)) ||
         context->explorer.staged_stage_count != 5U || context->explorer.selected_stage != 1U ||
@@ -1662,7 +1669,7 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STAGE_HOLD) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR ||
         context->explorer.stage_dialog != NULL || context->explorer.program_editor_dirty ||
         context->explorer.staged_stage_count != 4U ||
         /* The editor shows the original stages again: no added 20-minute 60 C ramp. */
@@ -1678,69 +1685,69 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     if (hold_plus == NULL || !lv_obj_has_state(hold_plus, LV_STATE_DISABLED) ||
         !tap_object(stage_dialog_top(context, 2U)) || context->explorer.staged_stage_count != 5U ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_SAVE_DRAFT) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR ||
         !context->explorer.program_editor_dirty || context->explorer.staged_stage_count != 5U ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_BACK) || context->explorer.modal == NULL ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL) {
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) {
         fprintf(stderr, "Stage dialog hold lock/save failed\n"); return 3;
     }
     /* A new program: Save waits for a stage; one added stage is enough. Saved, it
      * opens in the library, starts, runs through automatic cooling to complete,
      * returns Home, and can be deleted. */
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_PROGRAMS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR ||
         find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)) == NULL ||
         !lv_obj_has_state(find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)),
                           LV_STATE_DISABLED) ||
-        !tap_text(context, "+ Add stage") || context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR ||
+        !tap_text(context, "+ Add stage") || context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_SAVE_DRAFT) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR) {
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR) {
         fprintf(stderr, "New program stage entry failed\n"); return 3;
     }
     /* The operator's name (the keyboard flow has its own checks). */
     (void)snprintf(context->explorer.program_editor_name, sizeof(context->explorer.program_editor_name), "%s", "Customer cure A");
     if (!tap(context, FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL || context->explorer.selected_program != 3U ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || context->explorer.selected_program != 3U ||
         !context->explorer.programs[3].present || context->explorer.programs[3].library ||
         context->explorer.programs[3].stage_count != 1U || context->explorer.programs[3].stages[0].target_c != 120 ||
-        !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_PROGRAMS) ||
+        !furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) ||
         strcmp(context->explorer.program_name_overrides[3], "Customer cure A") != 0 ||
         !tap_row_text(context, "Customer cure A") ||
         context->explorer.selected_program != 3U ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM) || !pump_controller_requests(context) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_RUNNING ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING ||
         strcmp(context->explorer.state->program_name, "Customer cure A") != 0) {
         fprintf(stderr, "New program save/list/start failed\n"); return 3;
     }
     /* 95 minutes of heating to 120 C, then 75 minutes of automatic cooling. */
     furnace_hmi_simulator_tick(&context->simulator, 95U * 60U);
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) ||
+    if (!furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) ||
         context->explorer.state->run_phase != FURNACE_HMI_RUN_PHASE_COOLING) {
         fprintf(stderr, "New program did not reach automatic cooling\n"); return 3;
     }
     furnace_hmi_simulator_tick(&context->simulator, 75U * 60U);
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) ||
+    if (!furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) ||
         context->explorer.state->run_state != FURNACE_HMI_RUN_STATE_COMPLETE ||
         find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PAUSE_PREVIEW)) != NULL ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME) || !pump_controller_requests(context) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_HOME ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_HOME ||
         context->explorer.quick_launch_recent[0] != 3U) {
         fprintf(stderr, "New program completion/Return Home failed\n"); return 3;
     }
     context->explorer.selected_program = 3U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_PROGRAM_DETAIL) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT) || context->explorer.modal == NULL ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT) ||
-        context->explorer.programs[3].present || context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAMS ||
+        context->explorer.programs[3].present || context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS ||
         context->explorer.recent_count == 0U || context->explorer.quick_launch_recent[0] == 3U ||
         find_label(context->explorer.modal, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED)) == NULL ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) {
         fprintf(stderr, "Program delete failed\n"); return 3;
     }
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS)) {
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
         fprintf(stderr, "Program refinement smoke return failed\\n");
         return 3;
     }
@@ -1764,10 +1771,10 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     handle_timers(2U);
     if (context->explorer.modal == NULL ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DISCARD)) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_DEVICE) {
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_DEVICE) {
         fprintf(stderr, "Settings dirty navigation guard failed\n"); return 3;
     }
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
         context->explorer.device_tab != 0U ||
         context->device_catalogue.component_count == 0U) {
         fprintf(stderr, "Device overview route failed\n"); return 3;
@@ -1779,7 +1786,7 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
      * (navigation stays locked); Start new keeps target and rate. */
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
     if (!render_scenario(context) ||
-        !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_MANUAL)) {
+        !furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_MANUAL)) {
         fprintf(stderr, "Manual cooling setup failed\n"); return 3;
     }
     const int32_t manual_target = context->explorer.manual_target_c;
@@ -1790,12 +1797,12 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_EXIT)) == NULL ||
         find_label(context->explorer.manual_readings, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_READING_EST_REMAINING)) == NULL ||
         !lv_obj_has_state(lv_obj_get_child(lv_obj_get_child(context->explorer.manual_steppers, 0), 1), LV_STATE_DISABLED) ||
-        furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_HOME) ||
+        furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_HOME) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_START_NEW) || context->explorer.manual_cooling ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_MANUAL || context->explorer.manual_target_c != manual_target ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_MANUAL || context->explorer.manual_target_c != manual_target ||
         find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START)) == NULL ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START) || !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) ||
-        !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_EXIT) || context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_HOME) {
+        !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_EXIT) || context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_HOME) {
         fprintf(stderr, "Manual stop/cooling/Exit/Start new failed\n"); return 3;
     }
     /* Date format: a choice of five; dates on the page follow the edited one,
@@ -1804,7 +1811,7 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     context->explorer.settings_tab = 1U;
     if (!render_scenario(context)) { return 3; }
     context->explorer.settings_tab = 1U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         find_label(context->explorer.content, "14 Sep 2026") == NULL ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_FORMAT)) ||
         !tap_text(context, "14.09.2026") || context->explorer.settings_candidate_date_format != 1U ||
@@ -1817,7 +1824,7 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
      * confirmation that names them; then there is nothing to delete. Reset of
      * the formats restores the date format. */
     context->explorer.settings_tab = 3U;
-    if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_SETTINGS) ||
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_PROGRAMS)) ||
         find_label(context->explorer.modal, "Delete all 3 programs?") == NULL ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CANCEL) || !context->explorer.programs[1].present ||
@@ -1838,10 +1845,10 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     }
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
     if (!render_scenario(context) ||
-        !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE)) {
+        !furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE)) {
         fprintf(stderr, "Device log setup failed\n"); return 3;
     }
-    const furnace_hmi_ui_lab_explorer_t *log_explorer = &context->explorer;
+    const furnace_hmi_operator_screens_t *log_explorer = &context->explorer;
     bool log_sorted = log_explorer->log_count > 40U;
     for (uint16_t index = 1U; index < log_explorer->log_count; ++index) {
         log_sorted = log_sorted && log_explorer->log_events[index].minute <= log_explorer->log_events[index - 1U].minute;
@@ -1878,7 +1885,7 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         find_label(context->explorer.modal, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_MAINTENANCE_RECORDED)) == NULL ||
         context->explorer.service_record_count != 1U ||
         context->explorer.device_catalogue.components[task_component].tasks[task_index].task_state !=
-            FURNACE_HMI_UI_LAB_DEVICE_TASK_UP_TO_DATE ||
+            FURNACE_HMI_OPERATOR_DEVICE_TASK_UP_TO_DATE ||
         strcmp(context->explorer.device_catalogue.components[task_component].tasks[task_index].last, "14 Sep 2026") != 0) {
         fprintf(stderr, "Maintenance done flow failed\n"); return 3;
     }
@@ -1919,11 +1926,11 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     clear_views(context);
     printf("UI lab: Device overview, log, maintenance, history and info navigation passed.\n");
     if (!render_scenario(context) ||
-        !furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_PROGRAMS) ||
+        !furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR ||
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR ||
         !tap_text(context, "+ Add stage") ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_STAGE_EDITOR) { return 3; }
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR) { return 3; }
     int32_t before = context->explorer.draft_target_c;
     lv_obj_t *increase = find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_INCREASE));
     if (!increase) { return 3; }
@@ -1933,30 +1940,30 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     if (!tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DECREASE) || context->explorer.draft_target_c != before ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STAGE_HOLD) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STAGE_HEATING)) { return 3; }
-    if (furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_HOME)) { return 3; }
+    if (furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_HOME)) { return 3; }
     if (!tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES)) { return 3; }
     lv_obj_t *modal = context->explorer.modal;
     int32_t target = context->explorer.draft_target_c;
     furnace_hmi_simulator_tick(&context->simulator, 1);
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) || context->explorer.modal != modal) { fprintf(stderr,"Telemetry lost modal\n"); return 3; }
+    if (!furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) || context->explorer.modal != modal) { fprintf(stderr,"Telemetry lost modal\n"); return 3; }
     if (!tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CANCEL) || context->explorer.draft_target_c != target ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES) ||
-        context->explorer.page != FURNACE_HMI_UI_LAB_PAGE_PROGRAM_EDITOR) { return 3; }
+        context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR) { return 3; }
     for (furnace_hmi_sim_scenario_t scenario = 0; scenario < FURNACE_HMI_SIM_SCENARIO_COUNT; ++scenario) {
         furnace_hmi_simulator_set_scenario(&context->simulator, scenario);
         if (!render_scenario(context)) { return 3; }
         handle_timers(2U);
         /* Fault scenarios open with their alert; close it as an operator would. */
         if (context->explorer.alert_open != 0U && !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) { return 3; }
-        if (context->explorer.page == FURNACE_HMI_UI_LAB_PAGE_RUNNING) {
-            if (furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_HOME)) { return 3; }
+        if (context->explorer.page == FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
+            if (furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_HOME)) { return 3; }
             int64_t domain = context->explorer.trajectory_domain_maximum_seconds;
             if (!tap(context, FURNACE_HMI_UI_STRING_UI_LAB_FULL_VISUAL) || !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_FULL_GRAPH) || domain != context->explorer.trajectory_domain_maximum_seconds) { return 3; }
             lv_obj_t *content = context->explorer.content;
             furnace_hmi_simulator_tick(&context->simulator, 1);
-            if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) || context->explorer.content != content) { return 3; }
-            if (!furnace_hmi_ui_lab_explorer_show_service_warning(&context->explorer)) { return 3; }
+            if (!furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) || context->explorer.content != content) { return 3; }
+            if (!furnace_hmi_operator_screens_show_service_warning(&context->explorer)) { return 3; }
             /* A run the controller ended offers Return Home where Stop was. */
             const bool ended = context->explorer.state->run_state == FURNACE_HMI_RUN_STATE_FAULT;
             lv_obj_t *stop = find_button(context->explorer.content, ui_string(ended ? FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME
@@ -1968,8 +1975,8 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
             lv_obj_send_event(stop, LV_EVENT_CLICKED, NULL); handle_timers(2U);
         }
         if (scenario == FURNACE_HMI_SIM_SCENARIO_MANUAL) {
-            if (!furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_RUNNING) ||
-                furnace_hmi_ui_lab_explorer_navigate(&context->explorer, FURNACE_HMI_UI_LAB_PAGE_DEVICE)) { return 3; }
+            if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_RUNNING) ||
+                furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE)) { return 3; }
         }
     }
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_RUNNING_NORMAL);
@@ -1980,20 +1987,20 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     changed.graph_samples[1].measured_validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
     changed.door_closed.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
     changed.fan_rpm.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &changed) ||
+    if (!furnace_hmi_operator_screens_update(&context->explorer, &changed) ||
         !lv_obj_has_flag(context->explorer.measured_segments[0], LV_OBJ_FLAG_HIDDEN) ||
         !lv_obj_has_flag(context->explorer.measured_segments[1], LV_OBJ_FLAG_HIDDEN) ||
         strcmp(lv_label_get_text(context->explorer.live_door), ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_UNKNOWN))) { fprintf(stderr,"Invalid observation became valid\n"); return 3; }
     changed.graph_samples[0].measured_temperature_c = -1234;
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &changed) || context->explorer.trajectory_domain_minimum_temperature_c >= -1234) { fprintf(stderr,"Negative measurement escaped domain\n"); return 3; }
+    if (!furnace_hmi_operator_screens_update(&context->explorer, &changed) || context->explorer.trajectory_domain_minimum_temperature_c >= -1234) { fprintf(stderr,"Negative measurement escaped domain\n"); return 3; }
     changed.graph_samples[0].measured_temperature_c = 3000;
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &changed) || context->explorer.trajectory_domain_maximum_temperature_c <= original_domain) { fprintf(stderr,"Domain did not expand\n"); return 3; }
+    if (!furnace_hmi_operator_screens_update(&context->explorer, &changed) || context->explorer.trajectory_domain_maximum_temperature_c <= original_domain) { fprintf(stderr,"Domain did not expand\n"); return 3; }
     int32_t expanded = context->explorer.trajectory_domain_maximum_temperature_c;
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &original) || context->explorer.trajectory_domain_maximum_temperature_c != expanded) { fprintf(stderr,"Domain contracted\n"); return 3; }
+    if (!furnace_hmi_operator_screens_update(&context->explorer, &original) || context->explorer.trajectory_domain_maximum_temperature_c != expanded) { fprintf(stderr,"Domain contracted\n"); return 3; }
     changed = original; ++changed.controller_session_epoch;
-    if (!furnace_hmi_ui_lab_explorer_update(&context->explorer, &changed) || context->explorer.trajectory_domain_maximum_temperature_c != original_domain) { fprintf(stderr,"New session retained old domain\n"); return 3; }
+    if (!furnace_hmi_operator_screens_update(&context->explorer, &changed) || context->explorer.trajectory_domain_maximum_temperature_c != original_domain) { fprintf(stderr,"New session retained old domain\n"); return 3; }
     for (unsigned i = 0; i < 20; ++i) {
-        if (!furnace_hmi_ui_lab_explorer_show_service_warning(&context->explorer) ||
+        if (!furnace_hmi_operator_screens_show_service_warning(&context->explorer) ||
             !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)) { return 3; }
     }
     const int alerts = check_controller_alerts(context);
@@ -2015,7 +2022,7 @@ static bool load_device_catalogue(ui_lab_context_t *context)
         "simulator/ui_lab/Debug/device_service_catalogue.txt",
     };
     for (size_t index = 0U; index < sizeof(paths) / sizeof(paths[0]); ++index) {
-        if (furnace_hmi_ui_lab_device_catalogue_load(&context->device_catalogue, paths[index])) {
+        if (furnace_hmi_operator_device_catalogue_load(&context->device_catalogue, paths[index])) {
             (void)printf("Device catalogue loaded: %s (%u components, revision %s)\n",
                          paths[index], (unsigned)context->device_catalogue.component_count,
                          context->device_catalogue.revision);
@@ -2109,19 +2116,19 @@ int main(int argc, char **argv)
         }
         const int requested_page = context.requested_page;
         context.requested_page = -1;
-        if (requested_page >= 0 && requested_page < FURNACE_HMI_UI_LAB_PAGE_COUNT &&
-            !(context.explorer.page == FURNACE_HMI_UI_LAB_PAGE_RUNNING &&
-              requested_page != FURNACE_HMI_UI_LAB_PAGE_RUNNING) &&
-            !furnace_hmi_ui_lab_explorer_navigate(
+        if (requested_page >= 0 && requested_page < FURNACE_HMI_OPERATOR_PAGE_COUNT &&
+            !(context.explorer.page == FURNACE_HMI_OPERATOR_PAGE_RUNNING &&
+              requested_page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) &&
+            !furnace_hmi_operator_screens_navigate(
                 &context.explorer,
-                (furnace_hmi_ui_lab_page_t)requested_page
+                (furnace_hmi_operator_page_t)requested_page
             )) {
             (void)fprintf(stderr, "Requested UI laboratory page could not be rendered.\n");
             /* A contained Program/editor/modal rejects ordinary shortcuts. */
         }
         if (context.requested_service_dialog) {
             context.requested_service_dialog = false;
-            if (!furnace_hmi_ui_lab_explorer_show_service_warning(&context.explorer)) {
+            if (!furnace_hmi_operator_screens_show_service_warning(&context.explorer)) {
                 (void)fprintf(stderr, "UI laboratory service dialog could not be rendered.\n");
                 result = 4;
                 goto cleanup;
@@ -2139,7 +2146,7 @@ int main(int argc, char **argv)
                 (context.simulator.program_run ? UI_LAB_PROGRAM_RUN_SPEED : 1U));
             last_tick = now;
             if (context.explorer.root != NULL &&
-                !furnace_hmi_ui_lab_explorer_update(
+                !furnace_hmi_operator_screens_update(
                     &context.explorer, furnace_hmi_simulator_state(&context.simulator))) {
                 (void)fprintf(stderr, "UI laboratory explorer update failed.\n");
                 result = 5;

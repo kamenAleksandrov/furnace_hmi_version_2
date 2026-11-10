@@ -13,7 +13,7 @@ void controller_client_tests_report(const char *check, const char *scenario)
 
 int main(void)
 {
-    const int failures = controller_client_tests_run();
+    const int failures = controller_client_tests_run() + controller_dashboard_tests_run();
 
     printf("controller client: %d failure(s)\n", failures);
     return (failures == 0) ? 0 : 1;

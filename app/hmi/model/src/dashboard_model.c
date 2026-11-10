@@ -53,6 +53,7 @@ void furnace_hmi_dashboard_state_initialize(furnace_hmi_dashboard_state_t *state
     state->service_run_gate = FURNACE_HMI_SERVICE_RUN_GATE_UNKNOWN;
     state->door_closed.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
     state->fan_running.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
+    state->navigation_permitted.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
 }
 
 bool furnace_hmi_dashboard_state_is_well_formed(
@@ -83,6 +84,7 @@ bool furnace_hmi_dashboard_state_is_well_formed(
         !valid_i32_value(&state->service_forecast_completion_hours) ||
         !valid_bool_value(&state->door_closed) ||
         !valid_bool_value(&state->fan_running) ||
+        !valid_bool_value(&state->navigation_permitted) ||
         !has_terminator(state->program_name, sizeof(state->program_name)) ||
         !has_terminator(state->stage_name, sizeof(state->stage_name))) {
         return false;

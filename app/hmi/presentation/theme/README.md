@@ -34,9 +34,9 @@ python tools/build_theme.py --check   # fail if stale, invalid or below contrast
 
 ## Use
 
-- LVGL: `ui_lab_theme_select(id)` selects a theme; colours come from
-  `ui_lab_color(role)` / `ui_lab_opa(role)` at use time;
-  `furnace_hmi_ui_lab_explorer_refresh_presentation()` restyles what is on
+- LVGL: `operator_theme_select(id)` selects a theme; colours come from
+  `operator_color(role)` / `operator_opa(role)` at use time;
+  `furnace_hmi_operator_screens_refresh_presentation()` restyles what is on
   screen. GUI context only.
 - Web: CSS uses `var(--token)`; drawing code uses `themeColor('token')`;
   `setHmiTheme(id)` switches.

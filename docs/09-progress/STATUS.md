@@ -1,5 +1,17 @@
 # Project status
 
+**Fact (2026-11-10, Phase 21 M21-2b):** the operator screens are one shared
+implementation, `app/hmi/presentation/operator`, used by the UI lab, the desktop
+program's checks and the Zephyr application.
+- **On Zephyr** they show the controller's status through an adapter. The
+  library, log, clock and catalogue are shown unavailable until the controller
+  provides them, and actions that would change controller state send nothing.
+- **In both presentations:**
+  - no forecast from an assumed temperature;
+  - navigation never ends the final cooling.
+- **Evidence:** lab captures byte-identical through the move; the lab, desktop,
+  web demo and Zephyr tests pass; the end-to-end demonstration passes 10 of 10.
+
 **Fact (2026-11-10, Phase 21 M21-3):** the Zephyr HMI connects to the actual
 controller program over the simulated link. The controller is the furnace
 firmware's simulated `link_pty` program at `721f3cb`, the codec copy's revision;
@@ -13,7 +25,8 @@ the two run as separate processes in WSL.
 - Evidence: 35 client scenarios, in CTest and in Zephyr; `tools/controller_link_demo.py`
   passes 10 of 10 end-to-end checks against controller main `721f3cb`. The protocol
   review's findings were fixed test-first.
-- The operator screens are not connected yet (M21-2b, M21-5).
+- The operator screens were not connected yet at M21-3; M21-2b connects them, and the
+  state-changing workflows come with M21-5.
 
 **Fact (2026-11-10, Phase 21 M21-2):** the HMI runs as a Zephyr application on
 `native_sim/native/64` in WSL: LVGL `85aa60d1` through Zephyr's SDL display

@@ -78,6 +78,48 @@ if(NOT TARGET furnace_hmi_availability_presentation_checks)
   )
 endif()
 
+if(NOT TARGET furnace_hmi_model)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/model"
+    "${CMAKE_CURRENT_BINARY_DIR}/model"
+  )
+endif()
+
+if(NOT TARGET furnace_hmi_theme)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/theme"
+    "${CMAKE_CURRENT_BINARY_DIR}/hmi_theme"
+  )
+endif()
+
+if(NOT TARGET furnace_hmi_fonts)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/fonts"
+    "${CMAKE_CURRENT_BINARY_DIR}/hmi_fonts"
+  )
+endif()
+
+if(NOT TARGET furnace_hmi_icons)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/icons"
+    "${CMAKE_CURRENT_BINARY_DIR}/hmi_icons"
+  )
+endif()
+
+if(NOT TARGET furnace_hmi_operator_screens)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/presentation/operator"
+    "${CMAKE_CURRENT_BINARY_DIR}/operator_screens"
+  )
+endif()
+
+if(NOT TARGET furnace_hmi_operator_content_checks)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/tests/presentation/operator"
+    "${CMAKE_CURRENT_BINARY_DIR}/operator_content_checks"
+  )
+endif()
+
 add_executable(furnace_hmi_desktop src/main.c)
 
 target_compile_definitions(
@@ -91,6 +133,7 @@ target_link_libraries(furnace_hmi_desktop
   PRIVATE
     furnace_hmi::availability_presentation_checks
     furnace_hmi::development_marker
+    furnace_hmi::operator_content_checks
     furnace_hmi::foundation
     furnace_hmi::state_availability_view
     furnace_hmi::ui_strings
@@ -128,9 +171,14 @@ if(BUILD_TESTING)
     NAME desktop.state_availability_smoke
     COMMAND furnace_hmi_desktop --presentation-smoke-test
   )
+  add_test(
+    NAME desktop.operator_content_smoke
+    COMMAND furnace_hmi_desktop --operator-content-smoke-test
+  )
   set_tests_properties(
     desktop.lvgl_sdl_smoke
     desktop.state_availability_smoke
+    desktop.operator_content_smoke
     PROPERTIES
       ENVIRONMENT "SDL_VIDEODRIVER=dummy"
       TIMEOUT 15

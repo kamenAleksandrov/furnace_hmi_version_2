@@ -37,24 +37,40 @@ if(BOARD STREQUAL "native_sim" AND BOARD_QUALIFIERS MATCHES "^/?native/64$" AND 
 endif()
 
 if(CONFIG_LVGL)
-  # The GUI build is the HMI: the screen, and the controller link (Phase 21 M21-3).
-  set(FURNACE_HMI_MARKER_DIR "${CMAKE_CURRENT_LIST_DIR}/../hmi/presentation/development_marker")
+  # The GUI build is the HMI: the operator screens (Phase 21 M21-2b) and the
+  # controller link (M21-3).
+  set(FURNACE_HMI_PRESENTATION_DIR "${CMAKE_CURRENT_LIST_DIR}/../hmi/presentation")
+  set(FURNACE_HMI_MARKER_DIR "${FURNACE_HMI_PRESENTATION_DIR}/development_marker")
+  set(FURNACE_HMI_OPERATOR_DIR "${FURNACE_HMI_PRESENTATION_DIR}/operator")
+  set(FURNACE_HMI_FONTS_DIR "${FURNACE_HMI_PRESENTATION_DIR}/fonts")
+  set(FURNACE_HMI_ICONS_DIR "${FURNACE_HMI_PRESENTATION_DIR}/icons")
+  set(FURNACE_HMI_THEME_DIR "${FURNACE_HMI_PRESENTATION_DIR}/theme")
   set(FURNACE_HMI_CLIENT_DIR "${CMAKE_CURRENT_LIST_DIR}/../hmi/client")
   set(FURNACE_HMI_TRANSPORT_DIR "${CMAKE_CURRENT_LIST_DIR}/../hmi/transport")
   set(FURNACE_HMI_WIRE_DIR "${CMAKE_CURRENT_LIST_DIR}/../hmi/protocol/wire")
+  file(GLOB FURNACE_HMI_FONT_SOURCES "${FURNACE_HMI_FONTS_DIR}/generated/*.c")
   target_sources(app PRIVATE
     src/gui_main.c
     src/controller_link.c
-    "${FURNACE_HMI_AVAILABILITY_DIR}/src/state_availability_view.c"
+    "${FURNACE_HMI_OPERATOR_DIR}/src/operator_screens.c"
+    "${FURNACE_HMI_OPERATOR_DIR}/src/operator_theme.c"
     "${FURNACE_HMI_MARKER_DIR}/src/development_marker.c"
+    ${FURNACE_HMI_FONT_SOURCES}
+    "${FURNACE_HMI_ICONS_DIR}/generated/hmi_icons.c"
+    "${FURNACE_HMI_ICONS_DIR}/generated/support_qr.c"
+    "${FURNACE_HMI_THEME_DIR}/generated/hmi_theme.c"
     "${FURNACE_HMI_CLIENT_DIR}/src/controller_client.c"
+    "${FURNACE_HMI_CLIENT_DIR}/src/controller_dashboard.c"
     "${FURNACE_HMI_WIRE_DIR}/src/crc32.c"
     "${FURNACE_HMI_WIRE_DIR}/src/wire_frame.c"
     "${FURNACE_HMI_WIRE_DIR}/src/wire_messages.c"
   )
   target_include_directories(app PRIVATE
-    "${FURNACE_HMI_AVAILABILITY_DIR}/include"
+    "${FURNACE_HMI_OPERATOR_DIR}/include"
     "${FURNACE_HMI_MARKER_DIR}/include"
+    "${FURNACE_HMI_FONTS_DIR}/include"
+    "${FURNACE_HMI_ICONS_DIR}/include"
+    "${FURNACE_HMI_THEME_DIR}/include"
     "${FURNACE_HMI_CLIENT_DIR}/include"
     "${FURNACE_HMI_TRANSPORT_DIR}/include"
     "${FURNACE_HMI_WIRE_DIR}/include"
