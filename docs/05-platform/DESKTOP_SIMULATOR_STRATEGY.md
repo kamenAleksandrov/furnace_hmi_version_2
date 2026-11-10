@@ -27,7 +27,9 @@ the reusable availability layout is tested down to 640 x 360. Neither size is a
 production display selection. The executable modes are:
 
 - no argument: visible state-availability UI, initially `UNAVAILABLE`;
-- `--presentation-smoke-test`: headless state mapping, lifetime, read-only, and
+- `--presentation-smoke-test`: the checks in `tests/presentation/availability`,
+  which the Zephyr test `furnace_hmi.presentation.availability` also runs:
+  headless state mapping, lifetime, read-only, and
   bounds checks;
 - `--smoke-test`: the original SDL pointer/text input diagnostic.
 

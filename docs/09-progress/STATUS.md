@@ -1,5 +1,15 @@
 # Project status
 
+**Fact (2026-11-10, Phase 21 M21-2):** the HMI runs as a Zephyr application on
+`native_sim/native/64` in WSL: LVGL `85aa60d1` through Zephyr's SDL display
+opens a WSLg window with the shared state-availability screen. `qemu_x86`
+still builds the console probe. The availability presentation checks are one
+definition in `tests/presentation/availability`, run by the desktop smoke test
+and by the Zephyr test `furnace_hmi.presentation.availability` (Twister, both
+native_sim variants, a headless display). The operator screens are still only
+in the host UI lab; moving them into the shared presentation is the new
+milestone M21-2b.
+
 **Fact (2026-11-10, Phase 21 M21-1):** the controller's wire codec is copied
 into `app/hmi/protocol/wire` at controller revision `721f3cb` (ADR-0009), with a
 manifest of hashes and `tools/sync_controller_wire.py`. The controller's golden

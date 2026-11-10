@@ -64,6 +64,13 @@ if(NOT TARGET furnace_hmi_state_availability_view)
   )
 endif()
 
+if(NOT TARGET furnace_hmi_availability_presentation_checks)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/tests/presentation/availability"
+    "${CMAKE_CURRENT_BINARY_DIR}/availability_presentation_checks"
+  )
+endif()
+
 add_executable(furnace_hmi_desktop src/main.c)
 
 target_compile_definitions(
@@ -75,6 +82,7 @@ target_compile_definitions(
 )
 target_link_libraries(furnace_hmi_desktop
   PRIVATE
+    furnace_hmi::availability_presentation_checks
     furnace_hmi::foundation
     furnace_hmi::state_availability_view
     furnace_hmi::ui_strings

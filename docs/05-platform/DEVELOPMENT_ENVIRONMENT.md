@@ -27,12 +27,19 @@ the [developer runbook](DEVELOPER_RUNBOOK.md).
 | VS Code | 1.132.0 | Project recommendations and tasks are under `.vscode/` |
 
 **Phase 21 (2026-11-10): WSL for native_sim.** native_sim is Linux-only.
-Zephyr tests that target it (`furnace_hmi.wire.conformance`) run with Twister
-in WSL (Ubuntu 24.04), with a Zephyr 4.4.0 workspace at the same pinned commit
-as `west.yml`, at present the furnace firmware's workspace. Whether the LVGL
-application also runs there, through SDL and WSLg, is the evidence gate at the
-start of Phase 21's M21-2; until then the Windows environment above stays the
-recorded one.
+The Zephyr tests that target it and the application's window build run in WSL,
+beside the Windows environment above (commands: the
+[runbook](DEVELOPER_RUNBOOK.md#zephyr-native_sim-in-wsl)):
+
+| Item | Version | Notes |
+|---|---|---|
+| WSL distribution | Ubuntu 24.04 | Named with `wsl -d Ubuntu-24.04`; it need not be the default distribution. WSLg supplies the display |
+| Zephyr workspace | 4.4.0 at the commit `west.yml` pins | At present the furnace firmware's WSL workspace, which has no LVGL module |
+| LVGL | commit `85aa60d18b3d5e5588d7b247abf90198f07c8a63` | A clone outside the workspace, given to the build with `-DZEPHYR_EXTRA_MODULES` |
+| SDL2 | 2.30.0, Ubuntu `libsdl2-dev` (amd64) | Linked by Zephyr's SDL display. Only the 64-bit `native_sim/native/64` can link it, so the window application uses that board. The 2.32.10 floor above is the desktop program's |
+
+The M21-2 evidence gate passed on 2026-11-10: the application opened its window
+on the Windows desktop through WSLg and drew the shared screen.
 
 All project-owned production and foundation sources are C. The pinned LVGL
 desktop CMake integration enables a C++ compiler (and ASM outside MSVC)

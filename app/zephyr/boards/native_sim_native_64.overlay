@@ -1,0 +1,10 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/*
+ * The desktop program's 800 x 480 development viewport. Not a production
+ * display selection.
+ */
+&sdl_dc {
+	width = <800>;
+	height = <480>;
+};

@@ -277,6 +277,39 @@ For Zephyr source debugging, select `Zephyr qemu_x86: break at main` in VS Code
 and press **F5**. It builds, starts the generated QEMU debug server, attaches
 the SDK GDB, and stops in the real Zephyr application `main`.
 
+## Zephyr native_sim in WSL
+
+native_sim runs only on Linux. In WSL (environment:
+[DEVELOPMENT_ENVIRONMENT.md](DEVELOPMENT_ENVIRONMENT.md)), from a Zephyr 4.4.0
+workspace at the pinned commit, with its Python environment active and
+`ZEPHYR_BASE` set. `<hmi>` is this repository as WSL sees it, for example
+`/mnt/c/dev/Furnance_project/furnace_hmi_version_2`.
+
+Once, clone LVGL at the pinned commit outside the workspace (from the Windows
+`.deps` copy, or from `https://github.com/zephyrproject-rtos/lvgl`):
+
+```bash
+git clone --no-checkout <hmi>/.deps/zephyr-workspace/modules/lib/gui/lvgl ~/work/hmi-deps/lvgl
+git -C ~/work/hmi-deps/lvgl checkout 85aa60d18b3d5e5588d7b247abf90198f07c8a63
+```
+
+Build and run the application; its window, titled "Zephyr Display", opens on
+the Windows desktop. Stop it with Ctrl+C:
+
+```bash
+west build -p always -b native_sim/native/64 -d ~/work/hmi-build/gui <hmi>/app/zephyr \
+  -- -DZEPHYR_EXTRA_MODULES=$HOME/work/hmi-deps/lvgl
+~/work/hmi-build/gui/zephyr/zephyr.exe
+```
+
+Run the Zephyr tests on both native_sim variants. The application itself is
+build-only there, because it opens a window:
+
+```bash
+west twister -T <hmi>/tests/zephyr -T <hmi>/app/zephyr -p native_sim -p native_sim/native/64 \
+  -x=ZEPHYR_EXTRA_MODULES=$HOME/work/hmi-deps/lvgl -O ~/work/hmi-build/twister
+```
+
 ## HMI fonts and icons
 
 The typeface (Tomorrow HMI, see app/hmi/presentation/fonts/README.md) and the icon set are shared by the web demo and the LVGL
