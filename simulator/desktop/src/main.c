@@ -263,6 +263,9 @@ int main(int argc, char **argv)
         if (result == 0) {
             result = furnace_hmi_operator_lifecycle_check(display, &failure);
         }
+        if (result == 0) {
+            result = furnace_hmi_operator_manual_command_check(display, &failure);
+        }
 
         if (result != 0) {
             (void)fprintf(stderr, "%s\n", failure);

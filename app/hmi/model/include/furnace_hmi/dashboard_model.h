@@ -115,6 +115,33 @@ typedef enum {
     FURNACE_HMI_SERVICE_RUN_GATE_COUNT,
 } furnace_hmi_service_run_gate_t;
 
+/**
+ * What became of an operator command (Phase 21 M21-5). Only the controller's
+ * result makes it ACCEPTED or REJECTED; sent is never done.
+ */
+typedef enum {
+    FURNACE_HMI_FEEDBACK_NONE = 0,
+    /** Sent, no result yet. */
+    FURNACE_HMI_FEEDBACK_PENDING,
+    FURNACE_HMI_FEEDBACK_ACCEPTED,
+    /** The controller refused it; reason is its run-command or fault reply code. */
+    FURNACE_HMI_FEEDBACK_REJECTED,
+    /** The controller's service refused it before the controller saw it; reason is its code. */
+    FURNACE_HMI_FEEDBACK_REFUSED,
+    /** Not known whether it ran; the state is the controller's status. reason: the cause. */
+    FURNACE_HMI_FEEDBACK_UNRESOLVED,
+    /** The HMI did not send it (link not current, busy, superseded by Stop); reason: why. */
+    FURNACE_HMI_FEEDBACK_NOT_SENT,
+    FURNACE_HMI_FEEDBACK_COUNT,
+} furnace_hmi_feedback_state_t;
+
+typedef struct {
+    /** The number the host gave the command when it was handed over (0: none). */
+    uint32_t submission;
+    furnace_hmi_feedback_state_t state;
+    uint8_t reason;
+} furnace_hmi_command_feedback_t;
+
 typedef struct {
     uint32_t elapsed_seconds;
     int32_t planned_temperature_c;
@@ -181,6 +208,20 @@ typedef struct {
     furnace_hmi_service_run_gate_t service_run_gate;
     furnace_hmi_bool_value_t door_closed;
     furnace_hmi_bool_value_t fan_running;
+
+    /** The controller's run or Manual session ID; commands name the run they mean. */
+    uint32_t run_id;
+    /** A Manual session: its requested target and rate, and its time left. */
+    furnace_hmi_i32_value_t manual_target_c;
+    furnace_hmi_i32_value_t manual_rate_tenths_c_per_minute;
+    furnace_hmi_i32_value_t manual_remaining_seconds;
+    /** The controller's longest Manual session; a Manual Start asks for it (owner 2026-11-11). */
+    furnace_hmi_i32_value_t manual_max_minutes;
+    /** The controller can record faults for a Start (store readiness READY, FAULT-12). */
+    furnace_hmi_bool_value_t start_ready;
+    /** The operator's latest ordinary command and latest Stop. */
+    furnace_hmi_command_feedback_t command_feedback;
+    furnace_hmi_command_feedback_t stop_feedback;
 
     size_t graph_sample_count;
     furnace_hmi_graph_sample_t graph_samples[FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS];

@@ -300,6 +300,19 @@ static bool navigation_locked(const furnace_hmi_dashboard_state_t *state)
            !state->navigation_permitted.value && state->mode != FURNACE_HMI_MACHINE_MODE_IDLE;
 }
 
+/*
+ * The running screen the controller holds: Manual for a controller Manual
+ * session (the UX baseline, M21-5b), Running otherwise. The UI lab's simulated
+ * Manual scenario keeps Running.
+ */
+static furnace_hmi_operator_page_t held_page(const furnace_hmi_operator_screens_t *explorer)
+{
+    return (!explorer->simulated_responses && explorer->state != NULL &&
+            explorer->state->mode == FURNACE_HMI_MACHINE_MODE_MANUAL)
+               ? FURNACE_HMI_OPERATOR_PAGE_MANUAL
+               : FURNACE_HMI_OPERATOR_PAGE_RUNNING;
+}
+
 static void copy_text_bounded(char *destination, size_t capacity, const char *source)
 {
     if (destination == NULL || capacity == 0U) {
@@ -1201,6 +1214,7 @@ static void action_callback(lv_event_t *event);
 static bool rebuild_page(furnace_hmi_operator_screens_t *explorer);
 static bool update_manual_prediction(furnace_hmi_operator_screens_t *explorer);
 static bool update_manual_run_state(furnace_hmi_operator_screens_t *explorer);
+static void manual_value_changed(furnace_hmi_operator_screens_t *explorer);
 static bool settings_show_message(
     furnace_hmi_operator_screens_t *explorer,
     const char *title_text,
@@ -3156,6 +3170,7 @@ static void keyboard_apply_value(furnace_hmi_operator_screens_t *explorer)
         target == OPERATOR_KEYBOARD_TARGET_MANUAL_RATE;
     clear_modal(explorer);
     if (manual_value) {
+        manual_value_changed(explorer);
         (void)update_manual_prediction(explorer);
     }
     else {
@@ -3788,7 +3803,10 @@ static void refresh_manual_readings(furnace_hmi_operator_screens_t *explorer)
                                  FURNACE_HMI_UI_STRING_UI_LAB_VALUE_FORMAT_NUMBER);
         add_manual_reading(strip, FURNACE_HMI_UI_STRING_UI_LAB_READING_CURRENT, value);
         add_manual_reading(strip, FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_EST_TO_TARGET, to_target);
-        lv_obj_t *note = create_label(strip, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_IDLE_NOTE),
+        const bool waiting = !explorer->simulated_responses &&
+            !(state->start_ready.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT && state->start_ready.value);
+        lv_obj_t *note = create_label(strip, ui_string(waiting ? FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_NOT_READY_NOTE
+                                                               : FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_IDLE_NOTE),
                                       &furnace_hmi_font_regular_13, OPERATOR_MUTED);
         if (note != NULL) {
             lv_obj_set_width(note, 0);
@@ -3907,6 +3925,38 @@ static void set_subtree_disabled(lv_obj_t *parent, bool disabled)
     }
 }
 
+/* Without simulated answers: Start only when the controller is ready, one command per slot. */
+static bool manual_start_possible(const furnace_hmi_operator_screens_t *explorer)
+{
+    const furnace_hmi_dashboard_state_t *state = explorer->state;
+    return state_is_current(state) && !explorer->command_awaiting && !explorer->manual_running &&
+           state->start_ready.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT && state->start_ready.value &&
+           state->manual_max_minutes.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT &&
+           state->manual_max_minutes.value > 0;
+}
+
+static void set_button_enabled(lv_obj_t *button, bool enabled)
+{
+    if (button == NULL) {
+        return;
+    }
+    if (enabled) { lv_obj_remove_state(button, LV_STATE_DISABLED); }
+    else { lv_obj_add_state(button, LV_STATE_DISABLED); }
+}
+
+static void follow_controller_buttons(furnace_hmi_operator_screens_t *explorer)
+{
+    const bool current = state_is_current(explorer->state);
+    const bool faulted = explorer->state->run_state == FURNACE_HMI_RUN_STATE_FAULT;
+    set_button_enabled(explorer->manual_start_button, manual_start_possible(explorer));
+    /* A faulted session takes only Stop (interface: FAULT_LATCHED). */
+    if (faulted) {
+        lv_obj_add_flag(explorer->manual_pause_button, LV_OBJ_FLAG_HIDDEN);
+    }
+    set_button_enabled(explorer->manual_pause_button, current && !explorer->command_awaiting && !faulted);
+    set_button_enabled(explorer->manual_stop_button, current && !explorer->stop_awaiting);
+}
+
 static bool update_manual_run_state(furnace_hmi_operator_screens_t *explorer)
 {
     if (explorer == NULL || explorer->manual_readings == NULL || explorer->manual_start_button == NULL ||
@@ -3948,6 +3998,9 @@ static bool update_manual_run_state(furnace_hmi_operator_screens_t *explorer)
         lv_obj_remove_flag(explorer->manual_start_button, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(explorer->manual_pause_button, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(explorer->manual_stop_button, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (!explorer->simulated_responses) {
+        follow_controller_buttons(explorer);
     }
     if (explorer->trajectory_legend_label != NULL) {
         lv_label_set_text(explorer->trajectory_legend_label, trajectory_legend_text(explorer));
@@ -4928,22 +4981,22 @@ static bool build_running(furnace_hmi_operator_screens_t *explorer)
     const furnace_hmi_ui_string_id_t primary_text = paused
         ? FURNACE_HMI_UI_STRING_UI_LAB_RESUME_PREVIEW
         : FURNACE_HMI_UI_STRING_UI_LAB_PAUSE_PREVIEW;
-    /* After a fault the controller has ended the run: no Pause, and Stop becomes
-     * Return Home. Without the link no command can be sent (web parity). */
+    /* A faulted run stays until the operator stops it (owner 2026-11-11): no
+     * Pause, only Stop. Without the link no command can be sent (web parity). */
     const bool stopped = run_was_stopped(explorer) && !run_fault;
-    const bool run_ended = run_fault || run_complete || stopped;
+    const bool run_ended = run_complete || stopped;
     /* After Stop: Start again (the same program) beside Return Home. */
     lv_obj_t *primary = stopped
         ? create_page_button(explorer, actions, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_AGAIN),
                              OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_START_AGAIN, 0)
-        : run_ended ? NULL : create_page_button(explorer, actions, ui_string(primary_text),
-                                                OPERATOR_TONE_PRIMARY, primary_action, 0);
+        : (run_ended || run_fault) ? NULL : create_page_button(explorer, actions, ui_string(primary_text),
+                                                               OPERATOR_TONE_PRIMARY, primary_action, 0);
     lv_obj_t *stop = create_page_button(explorer, actions,
                                         ui_string(run_ended ? FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME
                                                             : FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW),
                                         OPERATOR_TONE_DANGER,
                                         run_ended ? OPERATOR_ACTION_RETURN_HOME : OPERATOR_ACTION_STOP_PREVIEW, 0);
-    if ((primary == NULL && (!run_ended || stopped)) || stop == NULL) { return false; }
+    if ((primary == NULL && ((!run_ended && !run_fault) || stopped)) || stop == NULL) { return false; }
     if (stopped && !program_listed(explorer, explorer->running_program)) {
         lv_obj_add_state(primary, LV_STATE_DISABLED);
     }
@@ -4953,7 +5006,7 @@ static bool build_running(furnace_hmi_operator_screens_t *explorer)
         lv_obj_set_height(primary, OPERATOR_BUTTON_MIN_HEIGHT);
         if (link_lost) { lv_obj_add_state(primary, LV_STATE_DISABLED); }
     }
-    lv_obj_set_flex_grow(stop, run_ended && primary == NULL ? 22 : 10);
+    lv_obj_set_flex_grow(stop, primary == NULL ? 22 : 10);
     lv_obj_set_height(stop, OPERATOR_BUTTON_MIN_HEIGHT);
     if (link_lost) { lv_obj_add_state(stop, LV_STATE_DISABLED); }
 
@@ -8551,9 +8604,19 @@ static bool run_was_stopped(const furnace_hmi_operator_screens_t *explorer)
         state->program_id == explorer->stopped_program_id;
 }
 
-/* Hand an operator request to the host for the controller (web controllerRequest). */
+/*
+ * Hand an operator request to the host for the controller (web
+ * controllerRequest). Stop has its own slot. Without simulated answers the
+ * slot then awaits the controller's outcome (M21-5b).
+ */
 static void post_request(furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_request_kind_t kind)
 {
+    if (kind == FURNACE_HMI_OPERATOR_REQUEST_STOP) {
+        explorer->stop_requested = true;
+        explorer->stop_awaiting = !explorer->simulated_responses;
+        explorer->stop_submission = 0U;
+        return;
+    }
     memset(&explorer->request, 0, sizeof(explorer->request));
     explorer->request.kind = kind;
     if (kind == FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM) {
@@ -8561,6 +8624,212 @@ static void post_request(furnace_hmi_operator_screens_t *explorer, furnace_hmi_o
                           program_name_text(explorer, explorer->selected_program));
         explorer->request.program = *selected_program_entry(explorer);
         explorer->running_program = explorer->selected_program;
+    }
+    if (kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START || kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET) {
+        explorer->request.target_c = explorer->manual_target_c;
+        explorer->request.rate_tenths_c_per_minute = explorer->manual_rate_tenths_c_per_minute;
+    }
+    if (kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START) {
+        explorer->request.session_minutes = explorer->state->manual_max_minutes.value;
+    }
+    if (!explorer->simulated_responses) {
+        explorer->command_awaiting = true;
+        explorer->command_kind = kind;
+        explorer->command_submission = 0U;
+    }
+}
+
+/* A controller Manual session that executes (running, paused, awaiting a decision or faulted). */
+static bool controller_manual_executing(const furnace_hmi_dashboard_state_t *state)
+{
+    return state->mode == FURNACE_HMI_MACHINE_MODE_MANUAL &&
+           (state->run_state == FURNACE_HMI_RUN_STATE_RUNNING || state->run_state == FURNACE_HMI_RUN_STATE_PAUSED ||
+            state->run_state == FURNACE_HMI_RUN_STATE_FAULT);
+}
+
+/* Send the operator's newest Manual target and rate once nothing else is pending (owner 2026-11-11). */
+static void flush_manual_retarget(furnace_hmi_operator_screens_t *explorer)
+{
+    if (!explorer->manual_retarget_wanted || explorer->command_awaiting ||
+        explorer->request.kind != FURNACE_HMI_OPERATOR_REQUEST_NONE ||
+        !controller_manual_executing(explorer->state)) {
+        return;
+    }
+    explorer->manual_retarget_wanted = false;
+    post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET);
+}
+
+/* A Manual stepper changed target or rate: during a controller session it is a retarget. */
+static void manual_value_changed(furnace_hmi_operator_screens_t *explorer)
+{
+    if (!explorer->simulated_responses && explorer->manual_running) {
+        explorer->manual_retarget_wanted = true;
+        flush_manual_retarget(explorer);
+    }
+}
+
+/* The controller's Manual session is what Manual shows (no simulated answers). */
+static void follow_manual_session(furnace_hmi_operator_screens_t *explorer)
+{
+    if (explorer->simulated_responses) {
+        return;
+    }
+    const furnace_hmi_dashboard_state_t *state = explorer->state;
+    const bool executing = controller_manual_executing(state);
+    const bool left = explorer->manual_left && state->run_id == explorer->manual_left_run_id;
+    explorer->manual_running = executing;
+    explorer->manual_paused = executing && state->run_state == FURNACE_HMI_RUN_STATE_PAUSED;
+    explorer->manual_cooling = !executing && !left && state->mode == FURNACE_HMI_MACHINE_MODE_MANUAL &&
+                               state->run_state == FURNACE_HMI_RUN_STATE_COMPLETE;
+    explorer->manual_cooling_seconds = state->cooling_elapsed_seconds.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE
+                                           ? 0U : (uint32_t)state->cooling_elapsed_seconds.value;
+    const bool retargeting = explorer->manual_retarget_wanted ||
+        (explorer->command_awaiting && explorer->command_kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET);
+    if (executing && !retargeting) {
+        if (state->manual_target_c.validity != FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE) {
+            explorer->manual_target_c = state->manual_target_c.value;
+        }
+        if (state->manual_rate_tenths_c_per_minute.validity != FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE) {
+            explorer->manual_rate_tenths_c_per_minute = state->manual_rate_tenths_c_per_minute.value;
+        }
+    }
+}
+
+/* The operator leaves an ended Manual session (Exit or Start new); it may still cool. */
+static void leave_manual_session(furnace_hmi_operator_screens_t *explorer)
+{
+    explorer->manual_cooling = false;
+    if (!explorer->simulated_responses && explorer->state->mode == FURNACE_HMI_MACHINE_MODE_MANUAL) {
+        explorer->manual_left = true;
+        explorer->manual_left_run_id = explorer->state->run_id;
+    }
+}
+
+/* Ask for start readiness when a way to start opens (interface: Start readiness, rule 1). */
+static void prepare_start(furnace_hmi_operator_screens_t *explorer)
+{
+    if (!explorer->simulated_responses && !explorer->command_awaiting && !explorer->manual_running &&
+        explorer->request.kind == FURNACE_HMI_OPERATOR_REQUEST_NONE) {
+        post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE);
+    }
+}
+
+static const char *run_reason_text(uint8_t reason, char *buffer, size_t capacity)
+{
+    static const struct { uint8_t code; furnace_hmi_ui_string_id_t text; } known[] = {
+        { 3U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_BUSY },
+        { 9U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_START_CONDITIONS },
+        { 10U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_RUN_MISMATCH },
+        { 11U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_NOT_ACTIVE },
+        { 12U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_NOT_PAUSED },
+        { 13U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_RESUME_BLOCKED },
+        { 14U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_FAULT_LATCHED },
+        { 19U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_MANUAL_REQUEST },
+    };
+    for (size_t index = 0U; index < sizeof(known) / sizeof(known[0]); ++index) {
+        if (known[index].code == reason) {
+            return ui_string(known[index].text);
+        }
+    }
+    (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_REASON_RUN_CODE_FORMAT),
+                   (unsigned int)reason);
+    return buffer;
+}
+
+static const char *service_reason_text(uint8_t reason, char *buffer, size_t capacity)
+{
+    static const struct { uint8_t code; furnace_hmi_ui_string_id_t text; } known[] = {
+        { 8U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_NOT_CONFIGURED },
+        { 9U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_SESSION_NOT_FRESH },
+        { 10U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_STORE_NOT_READY },
+        { 11U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_STORE_FAILED },
+        { 12U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_CANCELLED_BY_STOP },
+    };
+    for (size_t index = 0U; index < sizeof(known) / sizeof(known[0]); ++index) {
+        if (known[index].code == reason) {
+            return ui_string(known[index].text);
+        }
+    }
+    (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_REASON_SERVICE_CODE_FORMAT),
+                   (unsigned int)reason);
+    return buffer;
+}
+
+/* Local refusal codes of the controller client (controller_command.h). */
+#define OPERATOR_NOT_SENT_BUSY 2U
+#define OPERATOR_NOT_SENT_SUPERSEDED 4U
+
+/* Show an outcome other than accepted; the controller's state stays what its status says. */
+static void show_command_problem(furnace_hmi_operator_screens_t *explorer, bool stop,
+                                 const furnace_hmi_command_feedback_t *feedback)
+{
+    char buffer[96];
+    const char *detail;
+    furnace_hmi_ui_string_id_t title = FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_REJECTED_TITLE;
+    switch (feedback->state) {
+    case FURNACE_HMI_FEEDBACK_REJECTED:
+        detail = run_reason_text(feedback->reason, buffer, sizeof(buffer));
+        break;
+    case FURNACE_HMI_FEEDBACK_REFUSED:
+        detail = service_reason_text(feedback->reason, buffer, sizeof(buffer));
+        break;
+    case FURNACE_HMI_FEEDBACK_UNRESOLVED:
+        title = FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE;
+        detail = ui_string(stop ? FURNACE_HMI_UI_STRING_UI_LAB_STOP_UNRESOLVED_DETAIL
+                                : FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_DETAIL);
+        break;
+    default:
+        title = FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_NOT_SENT_TITLE;
+        detail = ui_string(feedback->reason == OPERATOR_NOT_SENT_BUSY ? FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_BUSY_DETAIL
+                           : feedback->reason == OPERATOR_NOT_SENT_SUPERSEDED
+                               ? FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_SUPERSEDED_DETAIL
+                               : FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_NOT_SENT_DETAIL);
+        break;
+    }
+    (void)open_dialog(explorer, ui_string(title), detail, OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+}
+
+/* The ordinary command's outcome arrived (or it could not be handed over). */
+static void ordinary_command_done(furnace_hmi_operator_screens_t *explorer,
+                                  const furnace_hmi_command_feedback_t *feedback)
+{
+    const furnace_hmi_operator_request_kind_t kind = explorer->command_kind;
+    explorer->command_awaiting = false;
+    explorer->command_kind = FURNACE_HMI_OPERATOR_REQUEST_NONE;
+    if (feedback->state != FURNACE_HMI_FEEDBACK_ACCEPTED) {
+        if (kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET) {
+            /* Not applied: the controller's target and rate are shown again; nothing is resent. */
+            explorer->manual_retarget_wanted = false;
+        }
+        /* Readiness is asked for in the background; its outcome is not the operator's. */
+        if (kind != FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE) {
+            show_command_problem(explorer, false, feedback);
+        }
+    }
+    flush_manual_retarget(explorer);
+}
+
+static bool feedback_final(const furnace_hmi_command_feedback_t *feedback, uint32_t submission)
+{
+    return submission != 0U && feedback->submission == submission &&
+           feedback->state != FURNACE_HMI_FEEDBACK_NONE && feedback->state != FURNACE_HMI_FEEDBACK_PENDING;
+}
+
+/* Each slot's outcome, from the observation (no simulated answers). */
+static void follow_commands(furnace_hmi_operator_screens_t *explorer)
+{
+    if (explorer->simulated_responses) {
+        return;
+    }
+    const furnace_hmi_dashboard_state_t *state = explorer->state;
+    if (explorer->command_awaiting && feedback_final(&state->command_feedback, explorer->command_submission)) {
+        ordinary_command_done(explorer, &state->command_feedback);
+    }
+    if (explorer->stop_awaiting && feedback_final(&state->stop_feedback, explorer->stop_submission)) {
+        explorer->stop_awaiting = false;
+        if (state->stop_feedback.state != FURNACE_HMI_FEEDBACK_ACCEPTED) {
+            show_command_problem(explorer, true, &state->stop_feedback);
+        }
     }
 }
 
@@ -8778,6 +9047,23 @@ static bool action_needs_controller(operator_action_t action)
     }
 }
 
+/* Controller actions that are commands now (M21-5b): Manual, Pause, Resume and Stop. */
+static bool action_connected(operator_action_t action)
+{
+    switch (action) {
+    case OPERATOR_ACTION_MANUAL_START:
+    case OPERATOR_ACTION_MANUAL_STOP:
+    case OPERATOR_ACTION_MANUAL_PAUSE:
+    case OPERATOR_ACTION_MANUAL_NEW:
+    case OPERATOR_ACTION_PAUSE_PREVIEW:
+    case OPERATOR_ACTION_RESUME_PREVIEW:
+    case OPERATOR_ACTION_STOP_PREVIEW:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static void apply_action(
     furnace_hmi_operator_screens_t *explorer,
     operator_action_t action,
@@ -8789,7 +9075,8 @@ static void apply_action(
     }
     /* Renaming outside the editor changes the library; inside, only the draft. */
     const bool library_rename = action == OPERATOR_ACTION_SHOW_RENAME && !explorer->program_editor_active;
-    if (!explorer->simulated_responses && (action_needs_controller(action) || library_rename)) {
+    if (!explorer->simulated_responses && ((action_needs_controller(action) && !action_connected(action)) ||
+                                           library_rename)) {
         /* Requirement 7 of M21-2b: no controller command yet, and no simulated outcome either. */
         clear_modal(explorer);
         (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ACTION_NOT_CONNECTED_TITLE),
@@ -8866,12 +9153,27 @@ static void apply_action(
         (void)furnace_hmi_operator_screens_navigate(explorer, FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR);
         break;
     case OPERATOR_ACTION_MANUAL_START:
+        if (!explorer->simulated_responses) {
+            /* The session is the controller's once it reports it; nothing is assumed. */
+            if (manual_start_possible(explorer)) {
+                post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START);
+                (void)update_manual_run_state(explorer);
+            }
+            break;
+        }
         log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_MANUAL_STARTED, "");
         explorer->manual_running = true;
         explorer->manual_paused = false;
         (void)update_manual_run_state(explorer);
         break;
     case OPERATOR_ACTION_MANUAL_STOP:
+        if (!explorer->simulated_responses) {
+            if (explorer->manual_running && !explorer->stop_awaiting) {
+                post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_STOP);
+                (void)update_manual_run_state(explorer);
+            }
+            break;
+        }
         /* The controller stops heating and cools automatically; the session stays on screen. */
         log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_MANUAL_STOPPED, "");
         explorer->manual_running = false;
@@ -8881,15 +9183,25 @@ static void apply_action(
         (void)update_manual_run_state(explorer);
         break;
     case OPERATOR_ACTION_MANUAL_EXIT:
-        explorer->manual_cooling = false;
+        leave_manual_session(explorer);
         (void)furnace_hmi_operator_screens_navigate(explorer, FURNACE_HMI_OPERATOR_PAGE_HOME);
         break;
     case OPERATOR_ACTION_MANUAL_NEW:
         /* A new session on the Manual page with the same target and rate. */
-        explorer->manual_cooling = false;
+        leave_manual_session(explorer);
+        prepare_start(explorer);
         (void)rebuild_page(explorer);
         break;
     case OPERATOR_ACTION_MANUAL_PAUSE:
+        if (!explorer->simulated_responses) {
+            if (explorer->manual_running && !explorer->command_awaiting &&
+                explorer->state->run_state != FURNACE_HMI_RUN_STATE_FAULT) {
+                post_request(explorer, explorer->manual_paused ? FURNACE_HMI_OPERATOR_REQUEST_RESUME
+                                                               : FURNACE_HMI_OPERATOR_REQUEST_PAUSE);
+                (void)update_manual_run_state(explorer);
+            }
+            break;
+        }
         if (explorer->manual_running) {
             explorer->manual_paused = !explorer->manual_paused;
             (void)update_manual_run_state(explorer);
@@ -8911,24 +9223,28 @@ static void apply_action(
     case OPERATOR_ACTION_MANUAL_DECREMENT_TARGET:
         if (explorer->manual_target_c > 0) {
             --explorer->manual_target_c;
+            manual_value_changed(explorer);
             (void)update_manual_prediction(explorer);
         }
         break;
     case OPERATOR_ACTION_MANUAL_INCREMENT_TARGET:
         if (explorer->manual_target_c < OPERATOR_MAX_PROGRAM_TEMPERATURE_C) {
             ++explorer->manual_target_c;
+            manual_value_changed(explorer);
             (void)update_manual_prediction(explorer);
         }
         break;
     case OPERATOR_ACTION_MANUAL_DECREMENT_RATE:
         if (explorer->manual_rate_tenths_c_per_minute > 1) {
             --explorer->manual_rate_tenths_c_per_minute;
+            manual_value_changed(explorer);
             (void)update_manual_prediction(explorer);
         }
         break;
     case OPERATOR_ACTION_MANUAL_INCREMENT_RATE:
         if (explorer->manual_rate_tenths_c_per_minute < OPERATOR_MAX_PROGRAM_RATE_TENTHS) {
             ++explorer->manual_rate_tenths_c_per_minute;
+            manual_value_changed(explorer);
             (void)update_manual_prediction(explorer);
         }
         break;
@@ -9511,14 +9827,23 @@ static void apply_action(
         }
         break;
     case OPERATOR_ACTION_PAUSE_PREVIEW:
-        post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_PAUSE);
-        break;
     case OPERATOR_ACTION_RESUME_PREVIEW:
-        post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_RESUME);
+        if (!explorer->simulated_responses && explorer->command_awaiting) {
+            break;
+        }
+        post_request(explorer, action == OPERATOR_ACTION_PAUSE_PREVIEW ? FURNACE_HMI_OPERATOR_REQUEST_PAUSE
+                                                                       : FURNACE_HMI_OPERATOR_REQUEST_RESUME);
         break;
     case OPERATOR_ACTION_STOP_PREVIEW:
         /* A program run is cut where it stands and cools on Running (web stopProgramRun). */
         clear_modal(explorer);
+        if (!explorer->simulated_responses) {
+            /* The controller reports the stop (run_stopped); nothing is assumed. */
+            if (!explorer->stop_awaiting) {
+                post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_STOP);
+            }
+            break;
+        }
         if (explorer->state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && !run_was_stopped(explorer) &&
             (explorer->state->run_state == FURNACE_HMI_RUN_STATE_RUNNING ||
              explorer->state->run_state == FURNACE_HMI_RUN_STATE_PAUSED)) {
@@ -9802,7 +10127,7 @@ bool furnace_hmi_operator_screens_create(
                       (state->run_state == FURNACE_HMI_RUN_STATE_RUNNING || state->run_state == FURNACE_HMI_RUN_STATE_PAUSED)) ||
         (state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && state->run_state == FURNACE_HMI_RUN_STATE_FAULT) ||
         navigation_locked(state)
-        ? FURNACE_HMI_OPERATOR_PAGE_RUNNING : FURNACE_HMI_OPERATOR_PAGE_HOME;
+        ? held_page(explorer) : FURNACE_HMI_OPERATOR_PAGE_HOME;
     if (content->library_known) {
         memcpy(explorer->programs, content->programs, sizeof(explorer->programs));
         explorer->library_count = content->library_count;
@@ -9854,6 +10179,7 @@ bool furnace_hmi_operator_screens_create(
     explorer->manual_running = false;
     explorer->manual_paused = false;
     explorer->manual_light_on = false;
+    follow_manual_session(explorer);
     {
         const operator_stage_fixture_t initial = program_stage(explorer, 2U);
         explorer->draft_target_c = initial.target_c;
@@ -10057,6 +10383,9 @@ static bool update_observation(furnace_hmi_operator_screens_t *explorer, const f
     log_observation(explorer, &explorer->observation, state);
     explorer->observation = *state; normalize_observation_validity(&explorer->observation);
     explorer->state = &explorer->observation; state = explorer->state;
+    /* Outcomes first: a failed retarget returns to the controller's values. */
+    follow_commands(explorer);
+    follow_manual_session(explorer);
     if (new_run) { explorer->trajectory_domain_initialized = false; explorer->running_cooling_full = false; }
     if (!update_header(explorer)) { return false; }
     /* Manual is a locally composed host presentation. A new observation can
@@ -10065,10 +10394,10 @@ static bool update_observation(furnace_hmi_operator_screens_t *explorer, const f
     /* The controller's lifecycle holds Running on every observation (interface: Lifecycle). */
     const bool locked = navigation_locked(state);
     if ((structure_changed && explorer->page != FURNACE_HMI_OPERATOR_PAGE_MANUAL) ||
-        (locked && explorer->page != FURNACE_HMI_OPERATOR_PAGE_RUNNING)) {
+        (locked && explorer->page != held_page(explorer))) {
         if (locked) {
             clear_modal(explorer);
-            explorer->page = FURNACE_HMI_OPERATOR_PAGE_RUNNING;
+            explorer->page = held_page(explorer);
         } else if (state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && (state->run_state == FURNACE_HMI_RUN_STATE_RUNNING || state->run_state == FURNACE_HMI_RUN_STATE_PAUSED)) {
             explorer->page = FURNACE_HMI_OPERATOR_PAGE_RUNNING;
         } else if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_RUNNING && state->mode == FURNACE_HMI_MACHINE_MODE_IDLE) {
@@ -10132,7 +10461,7 @@ bool furnace_hmi_operator_screens_navigate(
     if (explorer == NULL || explorer->root == NULL || page >= FURNACE_HMI_OPERATOR_PAGE_COUNT) {
         return false;
     }
-    if (navigation_locked(explorer->state) && page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
+    if (navigation_locked(explorer->state) && page != held_page(explorer)) {
         return false;
     }
     if ((explorer->modal != NULL && page != explorer->page) ||
@@ -10147,6 +10476,9 @@ bool furnace_hmi_operator_screens_navigate(
         explorer->trajectory_domain_initialized = false;
         if (page == FURNACE_HMI_OPERATOR_PAGE_STAGE_EDITOR) {
             begin_stage_session(explorer, explorer->page);
+        }
+        if (page == FURNACE_HMI_OPERATOR_PAGE_MANUAL) {
+            prepare_start(explorer);
         }
     }
     explorer->page = page;
@@ -10197,12 +10529,50 @@ bool furnace_hmi_operator_screens_take_request(
     furnace_hmi_operator_request_t *request
 )
 {
-    if (explorer == NULL || request == NULL || explorer->request.kind == FURNACE_HMI_OPERATOR_REQUEST_NONE) {
+    if (explorer == NULL || request == NULL) {
         return false;
     }
-    *request = explorer->request;
-    memset(&explorer->request, 0, sizeof(explorer->request));
-    return true;
+    if (explorer->request.kind != FURNACE_HMI_OPERATOR_REQUEST_NONE) {
+        *request = explorer->request;
+        memset(&explorer->request, 0, sizeof(explorer->request));
+        return true;
+    }
+    if (explorer->stop_requested) {
+        explorer->stop_requested = false;
+        memset(request, 0, sizeof(*request));
+        request->kind = FURNACE_HMI_OPERATOR_REQUEST_STOP;
+        return true;
+    }
+    return false;
+}
+
+void furnace_hmi_operator_screens_request_submitted(
+    furnace_hmi_operator_screens_t *explorer,
+    furnace_hmi_operator_request_kind_t kind,
+    uint32_t submission
+)
+{
+    if (explorer == NULL || explorer->simulated_responses) {
+        return;
+    }
+    const bool stop = kind == FURNACE_HMI_OPERATOR_REQUEST_STOP;
+    if (submission != 0U) {
+        if (stop) { explorer->stop_submission = submission; }
+        else { explorer->command_submission = submission; }
+        return;
+    }
+    /* Not handed over: nothing was sent. */
+    const furnace_hmi_command_feedback_t busy = {
+        .submission = 0U, .state = FURNACE_HMI_FEEDBACK_NOT_SENT, .reason = OPERATOR_NOT_SENT_BUSY };
+    if (stop) {
+        explorer->stop_awaiting = false;
+        show_command_problem(explorer, true, &busy);
+    } else {
+        ordinary_command_done(explorer, &busy);
+    }
+    if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_MANUAL) {
+        (void)update_manual_run_state(explorer);
+    }
 }
 
 void furnace_hmi_operator_screens_destroy(furnace_hmi_operator_screens_t *explorer)

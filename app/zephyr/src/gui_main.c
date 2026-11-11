@@ -13,9 +13,9 @@
  * observation without waiting and maps it to the screens' status model. Every
  * value comes from the controller, the application links no simulator, and
  * the screens get no controller-owned content and no simulated answers: until
- * the controller provides them (M21-5, M21-7), library, log and clock are
- * shown as unavailable, and actions that would change controller state send
- * nothing.
+ * the controller provides them (M21-7), library, log and clock are shown as
+ * unavailable. Manual, Pause, Resume and Stop are commands to the controller
+ * (M21-5b); other actions that would change controller state send nothing.
  */
 
 #include <stdint.h>
@@ -48,6 +48,42 @@ static furnace_hmi_operator_screens_t screens;
 static furnace_hmi_operator_content_t no_content;
 static furnace_hmi_controller_observation_t observation;
 static furnace_hmi_dashboard_state_t status;
+
+/*
+ * The controller command for a screen request (M21-5b). Run commands name the
+ * run the controller reports now. False for requests that are not commands
+ * yet (program Start: M21-7).
+ */
+static bool command_for(const furnace_hmi_operator_request_t *request, furnace_hmi_command_t *command)
+{
+    *command = (furnace_hmi_command_t){.run_id = observation.run_id};
+    switch (request->kind) {
+    case FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE:
+        command->kind = FURNACE_HMI_COMMAND_START_PREPARE;
+        return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START:
+        command->kind = FURNACE_HMI_COMMAND_MANUAL_START;
+        command->session_minutes = (uint32_t)request->session_minutes;
+        break;
+    case FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET:
+        command->kind = FURNACE_HMI_COMMAND_MANUAL_RETARGET;
+        break;
+    case FURNACE_HMI_OPERATOR_REQUEST_PAUSE:
+        command->kind = FURNACE_HMI_COMMAND_PAUSE;
+        return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_RESUME:
+        command->kind = FURNACE_HMI_COMMAND_RESUME;
+        return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_STOP:
+        command->kind = FURNACE_HMI_COMMAND_STOP;
+        return true;
+    default:
+        return false;
+    }
+    command->target_decicelsius = request->target_c * 10;
+    command->rate_decicelsius_per_min = request->rate_tenths_c_per_minute;
+    return true;
+}
 
 int main(void)
 {
@@ -102,9 +138,13 @@ int main(void)
             furnace_hmi_controller_dashboard_state(&observation, &status);
             (void)furnace_hmi_operator_screens_update(&screens, &status);
         }
-        /* The screens raise no controller request without simulated answers; drain any. */
+        /* The operator's requests go to the link thread; their outcomes come back as feedback. */
         while (furnace_hmi_operator_screens_take_request(&screens, &request)) {
-            printk("hmi-screens: request %d not sent (not connected yet)\n", (int)request.kind);
+            furnace_hmi_command_t command;
+            const uint32_t submission =
+                command_for(&request, &command) ? furnace_hmi_controller_link_submit(&command) : 0U;
+
+            furnace_hmi_operator_screens_request_submitted(&screens, request.kind, submission);
         }
         sleep_ms = lv_timer_handler();
         if (sleep_ms == LV_NO_TIMER_READY || sleep_ms > GUI_MAX_SLEEP_MS) {

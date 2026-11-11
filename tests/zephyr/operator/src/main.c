@@ -34,4 +34,15 @@ ZTEST(furnace_hmi_operator, test_operator_screens_follow_the_controller_lifecycl
     zassert_equal(result, 0, "check %d: %s", result, failure);
 }
 
+ZTEST(furnace_hmi_operator, test_operator_screens_send_manual_commands)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_manual_command_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
 ZTEST_SUITE(furnace_hmi_operator, NULL, NULL, NULL, NULL, NULL);

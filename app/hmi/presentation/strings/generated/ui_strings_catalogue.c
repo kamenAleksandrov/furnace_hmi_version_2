@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 740 of 740 strings; missing entries are NULL and fall back to English. */
+/* en: 764 of 764 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -92,6 +92,30 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_EMPTY_LIBRARY] = "No programs. Choose New program.",
     [FURNACE_HMI_UI_STRING_UI_LAB_ACTION_NOT_CONNECTED_TITLE] = "Not connected yet",
     [FURNACE_HMI_UI_STRING_UI_LAB_ACTION_NOT_CONNECTED_DETAIL] = "This controller action is connected in a later integration step. Nothing was sent and nothing changed.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_REJECTED_TITLE] = "Not accepted",
+    [FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE] = "Not confirmed",
+    [FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_DETAIL] = "The controller did not confirm the command. The screen shows the controller's state; press again if it is still needed.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_STOP_UNRESOLVED_DETAIL] = "The controller did not confirm Stop. If the session is still shown running, press Stop again.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_NOT_SENT_TITLE] = "Not sent",
+    [FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_NOT_SENT_DETAIL] = "The link to the controller is not current. Nothing was sent.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_BUSY_DETAIL] = "Another command is still waiting for the controller. Nothing was sent.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_SUPERSEDED_DETAIL] = "Stop was pressed before it was sent. Nothing else was sent.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_BUSY] = "Another session is active.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_START_CONDITIONS] = "The start conditions are not met.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_RUN_MISMATCH] = "The session has changed.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_NOT_ACTIVE] = "No session is active.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_NOT_PAUSED] = "The session is not paused.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_RESUME_BLOCKED] = "A condition still blocks heating.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_FAULT_LATCHED] = "A fault is latched. Only Stop is possible.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_MANUAL_REQUEST] = "Target or rate is outside the controller's limits.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_NOT_CONFIGURED] = "The controller has no valid configuration.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_SESSION_NOT_FRESH] = "The controller has no session identity yet.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_STORE_NOT_READY] = "The controller is not ready to start yet. Press Start again.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_STORE_FAILED] = "The controller cannot record faults. Starting is not possible.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_CANCELLED_BY_STOP] = "Cancelled by Stop.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_RUN_CODE_FORMAT] = "The controller refused it (reason %u).",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_SERVICE_CODE_FORMAT] = "The controller's link service refused it (reason %u).",
+    [FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_NOT_READY_NOTE] = "Waiting for the controller to be ready to start.",
     [FURNACE_HMI_UI_STRING_UI_LAB_RUN_AWAITING_DECISION] = "Awaiting operator decision",
     [FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNAVAILABLE] = "Program library unavailable. The controller has not provided it; no programs are assumed.",
     [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_IDENTITY_FORMAT] = "%u / %u - %s",

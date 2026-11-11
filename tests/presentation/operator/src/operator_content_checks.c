@@ -145,7 +145,11 @@ int furnace_hmi_operator_content_check(lv_display_t *display, const char **failu
         return failed(failure, "Manual forecasts from an assumed temperature.", 70);
     }
 
-    /* Start on Manual: no command and no simulated outcome, only the notice. */
+    /*
+     * Start on Manual before the controller is ready to start: disabled, no
+     * Start request and no simulated session (M21-5b). Opening Manual asked
+     * only for readiness.
+     */
     {
         furnace_hmi_operator_request_t request;
 
@@ -153,31 +157,23 @@ int furnace_hmi_operator_content_check(lv_display_t *display, const char **failu
             furnace_hmi_operator_screens_destroy(&screens);
             return failed(failure, "Manual has no Start button.", 71);
         }
+        if (!lv_obj_has_state(screens.manual_start_button, LV_STATE_DISABLED)) {
+            furnace_hmi_operator_screens_destroy(&screens);
+            return failed(failure, "Start is offered before the controller is ready.", 72);
+        }
+        while (furnace_hmi_operator_screens_take_request(&screens, &request)) {
+            if (request.kind != FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE) {
+                furnace_hmi_operator_screens_destroy(&screens);
+                return failed(failure, "Opening Manual asked for more than readiness.", 73);
+            }
+        }
         lv_obj_send_event(screens.manual_start_button, LV_EVENT_CLICKED, NULL);
         for (int pass = 0; pass < 3; ++pass) {
             (void)lv_timer_handler();
         }
-        if (screens.modal == NULL ||
-            !tree_contains(screens.modal,
-                           furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ACTION_NOT_CONNECTED_TITLE))) {
-            furnace_hmi_operator_screens_destroy(&screens);
-            return failed(failure, "Start on Manual does not say that it is not connected.", 72);
-        }
         if (furnace_hmi_operator_screens_take_request(&screens, &request) || screens.manual_running) {
             furnace_hmi_operator_screens_destroy(&screens);
-            return failed(failure, "Start on Manual raised a request or a simulated session.", 73);
-        }
-        lv_obj_t *close = first_button(screens.modal);
-
-        if (close != NULL) {
-            lv_obj_send_event(close, LV_EVENT_CLICKED, NULL);
-            for (int pass = 0; pass < 3; ++pass) {
-                (void)lv_timer_handler();
-            }
-        }
-        if (screens.modal != NULL) {
-            furnace_hmi_operator_screens_destroy(&screens);
-            return failed(failure, "The notice could not be closed.", 74);
+            return failed(failure, "Start on Manual raised a request or a simulated session.", 74);
         }
     }
 
@@ -288,7 +284,7 @@ int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **fai
         return failed(failure, "Awaiting a decision is not named.", 107);
     }
 
-    /* A Manual session of the controller, held: Running. */
+    /* A Manual session of the controller, held: Manual, its own running screen (M21-5b). */
     controller_status(FURNACE_HMI_MACHINE_MODE_IDLE, FURNACE_HMI_RUN_STATE_IDLE, true);
     if (!furnace_hmi_operator_screens_update(&screens, &state) ||
         !furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_MANUAL)) {
@@ -297,11 +293,297 @@ int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **fai
     }
     controller_status(FURNACE_HMI_MACHINE_MODE_MANUAL, FURNACE_HMI_RUN_STATE_RUNNING, false);
     if (!furnace_hmi_operator_screens_update(&screens, &state) ||
-        screens.page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_MANUAL ||
+        furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_HOME) ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_MANUAL) {
         furnace_hmi_operator_screens_destroy(&screens);
-        return failed(failure, "A controller Manual session does not hold Running.", 109);
+        return failed(failure, "A controller Manual session does not hold Manual.", 109);
     }
 
     furnace_hmi_operator_screens_destroy(&screens);
     return 0;
+}
+
+/* ---- Manual against a controller (M21-5b) ---- */
+
+static void settle(void)
+{
+    for (int pass = 0; pass < 3; ++pass) {
+        (void)lv_timer_handler();
+    }
+}
+
+static void click(lv_obj_t *button)
+{
+    if (button != NULL) {
+        lv_obj_send_event(button, LV_EVENT_CLICKED, NULL);
+        settle();
+    }
+}
+
+static bool enabled(const lv_obj_t *button)
+{
+    return button != NULL && !lv_obj_has_flag(button, LV_OBJ_FLAG_HIDDEN) &&
+           !lv_obj_has_state(button, LV_STATE_DISABLED);
+}
+
+/* The controller's idle status, ready to start, with a Manual maximum of 48 h. */
+static void ready_status(void)
+{
+    const furnace_hmi_command_feedback_t command = state.command_feedback;
+    const furnace_hmi_command_feedback_t stop = state.stop_feedback;
+
+    controller_status(FURNACE_HMI_MACHINE_MODE_IDLE, FURNACE_HMI_RUN_STATE_IDLE, true);
+    state.program_id = 0U;
+    state.current_temperature_c = (furnace_hmi_i32_value_t){
+        .value = 25, .provenance = FURNACE_HMI_VALUE_PROVENANCE_MEASURED,
+        .validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT};
+    state.manual_max_minutes = (furnace_hmi_i32_value_t){
+        .value = 2880, .provenance = FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED,
+        .validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT};
+    state.start_ready = (furnace_hmi_bool_value_t){
+        .value = true, .provenance = FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED,
+        .validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT};
+    state.command_feedback = command;
+    state.stop_feedback = stop;
+}
+
+/* The controller's Manual session 5 at 120 C and 2.0 C/min. */
+static void manual_status(furnace_hmi_run_state_t run)
+{
+    ready_status();
+    state.mode = FURNACE_HMI_MACHINE_MODE_MANUAL;
+    state.run_state = run;
+    state.run_id = 5U;
+    state.run_phase = (run == FURNACE_HMI_RUN_STATE_COMPLETE) ? FURNACE_HMI_RUN_PHASE_COOLING
+                                                              : FURNACE_HMI_RUN_PHASE_CURING;
+    state.navigation_permitted.value = (run == FURNACE_HMI_RUN_STATE_COMPLETE);
+    state.manual_target_c = (furnace_hmi_i32_value_t){
+        .value = 120, .provenance = FURNACE_HMI_VALUE_PROVENANCE_COMMANDED,
+        .validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT};
+    state.manual_rate_tenths_c_per_minute = (furnace_hmi_i32_value_t){
+        .value = 20, .provenance = FURNACE_HMI_VALUE_PROVENANCE_COMMANDED,
+        .validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT};
+}
+
+static void answer(furnace_hmi_command_feedback_t *slot, uint32_t submission,
+                   furnace_hmi_feedback_state_t outcome, uint8_t reason)
+{
+    *slot = (furnace_hmi_command_feedback_t){.submission = submission, .state = outcome, .reason = reason};
+}
+
+/* The next request is kind; it is handed over as submission. */
+static bool next_request(furnace_hmi_operator_request_kind_t kind, uint32_t submission,
+                         furnace_hmi_operator_request_t *request)
+{
+    if (!furnace_hmi_operator_screens_take_request(&screens, request) || request->kind != kind) {
+        return false;
+    }
+    furnace_hmi_operator_screens_request_submitted(&screens, kind, submission);
+    return true;
+}
+
+static bool no_request(void)
+{
+    furnace_hmi_operator_request_t request;
+
+    return !furnace_hmi_operator_screens_take_request(&screens, &request);
+}
+
+/* A dialog shows title and detail; it is closed. */
+static bool dialog_shows(furnace_hmi_ui_string_id_t title, furnace_hmi_ui_string_id_t detail)
+{
+    lv_refr_now(NULL);
+    const bool shown = screens.modal != NULL && tree_contains(screens.modal, furnace_hmi_ui_string(title)) &&
+                       tree_contains(screens.modal, furnace_hmi_ui_string(detail));
+
+    click(first_button(screens.modal));
+    return shown && screens.modal == NULL;
+}
+
+static bool update(void)
+{
+    if (!furnace_hmi_operator_screens_update(&screens, &state)) {
+        return false;
+    }
+    settle();
+    return true;
+}
+
+static int manual_commands(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+
+    /* Opening Manual asks for readiness; Start waits for its answer. */
+    if (!furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_MANUAL) ||
+        !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE, 1U, &request) || !no_request()) {
+        return failed(failure, "Opening Manual does not ask for start readiness.", 201);
+    }
+    answer(&state.command_feedback, 1U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
+    if (!update() || enabled(screens.manual_start_button)) {
+        return failed(failure, "Start is offered while a command is pending.", 202);
+    }
+    answer(&state.command_feedback, 1U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    if (!update() || !enabled(screens.manual_start_button)) {
+        return failed(failure, "Start is not offered when the controller is ready.", 203);
+    }
+
+    /* Start asks for the controller's longest session; a refusal is shown with its reason. */
+    click(screens.manual_start_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START, 2U, &request) ||
+        request.target_c != 120 || request.rate_tenths_c_per_minute != 20 ||
+        request.session_minutes != 2880 || !no_request()) {
+        return failed(failure, "Start does not ask for target, rate and the longest session.", 204);
+    }
+    if (enabled(screens.manual_start_button) || screens.manual_running) {
+        return failed(failure, "Start is offered twice, or a session is assumed.", 205);
+    }
+    answer(&state.command_feedback, 2U, FURNACE_HMI_FEEDBACK_REJECTED, 9U);
+    if (!update() || !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_REJECTED_TITLE,
+                                   FURNACE_HMI_UI_STRING_UI_LAB_REASON_START_CONDITIONS) ||
+        !enabled(screens.manual_start_button) || !no_request()) {
+        return failed(failure, "A rejected Start is not shown, or is sent again.", 206);
+    }
+    click(screens.manual_start_button);
+    answer(&state.command_feedback, 3U, FURNACE_HMI_FEEDBACK_REFUSED, 10U);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START, 3U, &request) || !update() ||
+        !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_REJECTED_TITLE,
+                      FURNACE_HMI_UI_STRING_UI_LAB_REASON_STORE_NOT_READY) || !no_request()) {
+        return failed(failure, "A Start refused as not ready is not shown, or is sent again.", 207);
+    }
+
+    /* Accepted: the session follows the controller and holds Manual. */
+    click(screens.manual_start_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START, 4U, &request)) {
+        return failed(failure, "Start is not sent again when pressed again.", 208);
+    }
+    answer(&state.command_feedback, 4U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    manual_status(FURNACE_HMI_RUN_STATE_RUNNING);
+    if (!update() || screens.page != FURNACE_HMI_OPERATOR_PAGE_MANUAL || !screens.manual_running ||
+        !enabled(screens.manual_pause_button) || !enabled(screens.manual_stop_button) ||
+        furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_HOME)) {
+        return failed(failure, "The controller's Manual session is not shown and held.", 209);
+    }
+
+    /* Retarget: one request at a time; taps while it is pending are merged. */
+    lv_obj_t *increase = button_with_text(screens.manual_steppers,
+                                          furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_INCREASE));
+    click(increase);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET, 5U, &request) ||
+        request.target_c != 121 || request.rate_tenths_c_per_minute != 20) {
+        return failed(failure, "A target change is not sent as a retarget.", 210);
+    }
+    answer(&state.command_feedback, 5U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
+    (void)update();
+    click(increase);
+    click(increase);
+    if (!no_request() || screens.manual_target_c != 123) {
+        return failed(failure, "Taps while a retarget is pending are not merged.", 211);
+    }
+    state.manual_target_c.value = 121;
+    answer(&state.command_feedback, 5U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    if (!update() || !next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET, 6U, &request) ||
+        request.target_c != 123 || !no_request()) {
+        return failed(failure, "The merged target is not sent after the answer.", 212);
+    }
+    answer(&state.command_feedback, 6U, FURNACE_HMI_FEEDBACK_REJECTED, 19U);
+    if (!update() || !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_REJECTED_TITLE,
+                                   FURNACE_HMI_UI_STRING_UI_LAB_REASON_MANUAL_REQUEST) ||
+        screens.manual_target_c != 121 || !no_request()) {
+        return failed(failure, "A rejected retarget does not return to the controller's target.", 213);
+    }
+
+    /* Pause and Resume are requests; the state is the controller's. */
+    click(screens.manual_pause_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PAUSE, 7U, &request) || screens.manual_paused) {
+        return failed(failure, "Pause is not a request.", 214);
+    }
+    answer(&state.command_feedback, 7U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    manual_status(FURNACE_HMI_RUN_STATE_PAUSED);
+    if (!update() || !screens.manual_paused) {
+        return failed(failure, "The controller's pause is not shown.", 215);
+    }
+    click(screens.manual_pause_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_RESUME, 8U, &request)) {
+        return failed(failure, "Resume is not a request.", 216);
+    }
+    answer(&state.command_feedback, 8U, FURNACE_HMI_FEEDBACK_UNRESOLVED, 2U);
+    if (!update() || !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE,
+                                   FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_DETAIL)) {
+        return failed(failure, "An unresolved Resume is not shown.", 217);
+    }
+
+    /* Not handed over: shown, nothing assumed. */
+    click(screens.manual_pause_button);
+    if (!furnace_hmi_operator_screens_take_request(&screens, &request) ||
+        request.kind != FURNACE_HMI_OPERATOR_REQUEST_RESUME) {
+        return failed(failure, "Resume is not asked for again.", 218);
+    }
+    furnace_hmi_operator_screens_request_submitted(&screens, request.kind, 0U);
+    settle();
+    if (!dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_NOT_SENT_TITLE,
+                      FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_BUSY_DETAIL) ||
+        !enabled(screens.manual_pause_button)) {
+        return failed(failure, "A command the host could not hand over is not shown.", 219);
+    }
+
+    /* Stop has its own slot: sent while an ordinary command is pending. */
+    click(screens.manual_pause_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_RESUME, 9U, &request)) {
+        return failed(failure, "Resume is not sent.", 220);
+    }
+    answer(&state.command_feedback, 9U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
+    (void)update();
+    click(screens.manual_stop_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 10U, &request) || enabled(screens.manual_stop_button)) {
+        return failed(failure, "Stop waits for an ordinary command, or is offered twice.", 221);
+    }
+    answer(&state.stop_feedback, 10U, FURNACE_HMI_FEEDBACK_UNRESOLVED, 5U);
+    if (!update() || !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE,
+                                   FURNACE_HMI_UI_STRING_UI_LAB_STOP_UNRESOLVED_DETAIL) ||
+        !enabled(screens.manual_stop_button)) {
+        return failed(failure, "An unresolved Stop is not shown, or Stop is not offered again.", 222);
+    }
+
+    /* The session ended: it cools; Exit leaves it and Manual is offered anew. */
+    answer(&state.command_feedback, 9U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    click(screens.manual_stop_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 11U, &request)) {
+        return failed(failure, "Stop is not sent again when pressed again.", 223);
+    }
+    answer(&state.stop_feedback, 11U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    manual_status(FURNACE_HMI_RUN_STATE_COMPLETE);
+    if (!update() || !screens.manual_cooling || screens.manual_running ||
+        !enabled(screens.manual_exit_button)) {
+        return failed(failure, "The ended session is not shown cooling.", 224);
+    }
+    click(screens.manual_exit_button);
+    if (screens.page != FURNACE_HMI_OPERATOR_PAGE_HOME || !update() ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_HOME) {
+        return failed(failure, "Exit does not leave the ended session.", 225);
+    }
+    if (!furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_MANUAL) ||
+        screens.manual_cooling || !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE, 12U, &request)) {
+        return failed(failure, "Manual is not offered anew after the session.", 226);
+    }
+    answer(&state.command_feedback, 12U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    if (!update() || !enabled(screens.manual_start_button)) {
+        return failed(failure, "Start is not offered anew after the session.", 227);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_manual_command_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 200);
+    }
+    const int result = manual_commands(failure);
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
 }

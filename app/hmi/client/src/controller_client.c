@@ -722,6 +722,7 @@ static void on_capabilities(furnace_hmi_controller_client_t *c,
     o->status_interval_ms = caps->status_interval_ms;
     o->heartbeat_interval_ms = caps->heartbeat_interval_ms;
     o->link_silence_ms = caps->link_silence_ms;
+    o->manual_max_minutes = caps->manual_max_minutes;
     o->capabilities_valid = true;
     changed(c);
 }
@@ -751,6 +752,9 @@ static void copy_status(furnace_hmi_controller_observation_t *o, const struct fu
     o->run_elapsed_s = s->run_status.run_elapsed_s;
     o->cooling = s->run_status.cooling;
     o->cooling_s = s->run_status.cooling_s;
+    o->manual_target_decicelsius = s->run_status.manual_target;
+    o->manual_rate_decicelsius_per_min = s->run_status.manual_rate;
+    o->manual_remaining_s = s->run_status.manual_remaining_s;
     o->setpoint_valid = s->run_status.setpoint_valid;
     o->setpoint_decicelsius = s->run_status.setpoint;
     o->heating_requested = s->run_status.heating_requested;

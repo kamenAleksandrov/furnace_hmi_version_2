@@ -27,10 +27,20 @@ int furnace_hmi_operator_content_check(lv_display_t *display, const char **failu
 /**
  * The controller's lifecycle on the operator screens: a held (faulted) run
  * stays on Running, a run that still cools is not shown complete and may be
- * left, a decision is named, and a controller Manual session holds Running.
+ * left, a decision is named, and a controller Manual session holds Manual.
  * Same contract as furnace_hmi_operator_content_check.
  */
 int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **failure);
+
+/**
+ * Manual against a controller (Phase 21 M21-5b): opening Manual asks for start
+ * readiness, Start waits for it and asks for the controller's longest session,
+ * the session follows the controller's status, steppers retarget with taps
+ * merged while one is pending, Pause, Resume and Stop are requests, and every
+ * outcome other than accepted is shown. Same contract as
+ * furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_manual_command_check(lv_display_t *display, const char **failure);
 
 #ifdef __cplusplus
 }

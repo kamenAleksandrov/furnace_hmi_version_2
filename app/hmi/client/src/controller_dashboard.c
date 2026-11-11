@@ -27,6 +27,7 @@ enum {
 #define DOOR_OPEN 2U
 #define FAN_NOT_SPINNING 1U
 #define FAN_SPINNING 2U
+#define STORE_READY 3U
 
 static int32_t whole_degrees(int32_t decicelsius)
 {
@@ -111,6 +112,52 @@ static void map_run(const furnace_hmi_controller_observation_t *o, furnace_hmi_d
                                                   : FURNACE_HMI_RUN_PHASE_NONE;
 }
 
+/* Submission numbers count up from 1 and may wrap: a is newer than b. */
+static bool newer(uint32_t a, uint32_t b)
+{
+    return (int32_t)(a - b) > 0;
+}
+
+/* The newest of a slot's outcome and its local refusal. */
+static furnace_hmi_command_feedback_t feedback(const furnace_hmi_command_outcome_t *outcome,
+                                               const furnace_hmi_command_refusal_t *refusal)
+{
+    furnace_hmi_command_feedback_t f = {.submission = 0U, .state = FURNACE_HMI_FEEDBACK_NONE};
+
+    if (refusal->reason != FURNACE_HMI_COMMAND_LOCAL_NONE &&
+        (outcome->state == FURNACE_HMI_COMMAND_IDLE || newer(refusal->submission, outcome->submission))) {
+        f.submission = refusal->submission;
+        f.state = FURNACE_HMI_FEEDBACK_NOT_SENT;
+        f.reason = (uint8_t)refusal->reason;
+        return f;
+    }
+    f.submission = outcome->submission;
+    switch (outcome->state) {
+    case FURNACE_HMI_COMMAND_PENDING:
+        f.state = FURNACE_HMI_FEEDBACK_PENDING;
+        break;
+    case FURNACE_HMI_COMMAND_ACCEPTED:
+        f.state = FURNACE_HMI_FEEDBACK_ACCEPTED;
+        break;
+    case FURNACE_HMI_COMMAND_REJECTED:
+        f.state = FURNACE_HMI_FEEDBACK_REJECTED;
+        f.reason = outcome->reason;
+        break;
+    case FURNACE_HMI_COMMAND_REFUSED:
+        f.state = FURNACE_HMI_FEEDBACK_REFUSED;
+        f.reason = outcome->reason;
+        break;
+    case FURNACE_HMI_COMMAND_UNRESOLVED:
+        f.state = FURNACE_HMI_FEEDBACK_UNRESOLVED;
+        f.reason = (uint8_t)outcome->unresolved_cause;
+        break;
+    default:
+        f.submission = 0U;
+        break;
+    }
+    return f;
+}
+
 void furnace_hmi_controller_dashboard_state(const furnace_hmi_controller_observation_t *o,
                                             furnace_hmi_dashboard_state_t *s)
 {
@@ -119,6 +166,9 @@ void furnace_hmi_controller_dashboard_state(const furnace_hmi_controller_observa
     furnace_hmi_dashboard_state_initialize(s);
     s->availability = o->availability;
     s->controller_session_epoch = o->controller_session_changes;
+    /* An outcome matters most when the link is lost: always passed on. */
+    s->command_feedback = feedback(&o->command, &o->command_refusal);
+    s->stop_feedback = feedback(&o->stop, &o->stop_refusal);
     if (!o->status_valid || o->availability == FURNACE_HMI_STATE_AVAILABILITY_UNAVAILABLE) {
         return;
     }
@@ -131,7 +181,23 @@ void furnace_hmi_controller_dashboard_state(const furnace_hmi_controller_observa
     s->navigation_permitted = (furnace_hmi_bool_value_t){
         .value = o->navigation_permitted, .provenance = FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED,
         .validity = validity};
+    s->start_ready = (furnace_hmi_bool_value_t){
+        .value = o->store_readiness == STORE_READY, .provenance = FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED,
+        .validity = validity};
+    if (o->capabilities_valid) {
+        s->manual_max_minutes = i32_value((int32_t)o->manual_max_minutes,
+                                          FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED, validity);
+    }
+    if (s->mode == FURNACE_HMI_MACHINE_MODE_MANUAL) {
+        s->manual_target_c = i32_value(whole_degrees(o->manual_target_decicelsius),
+                                       FURNACE_HMI_VALUE_PROVENANCE_COMMANDED, validity);
+        s->manual_rate_tenths_c_per_minute = i32_value(o->manual_rate_decicelsius_per_min,
+                                                       FURNACE_HMI_VALUE_PROVENANCE_COMMANDED, validity);
+        s->manual_remaining_seconds = i32_value((int32_t)o->manual_remaining_s,
+                                                FURNACE_HMI_VALUE_PROVENANCE_MEASURED, validity);
+    }
     if (s->mode != FURNACE_HMI_MACHINE_MODE_IDLE) {
+        s->run_id = o->run_id;
         s->program_id = o->program_id;
         s->program_revision = o->program_revision;
         copy_name(s->program_name, sizeof(s->program_name), o->program_name);

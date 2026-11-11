@@ -144,6 +144,11 @@ typedef enum {
     FURNACE_HMI_OPERATOR_REQUEST_STOP,
     /* Close a stopped, cooling or completed run (Return Home). */
     FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN,
+    /* Phase 21 M21-5b, raised only without simulated answers: start readiness
+     * when Manual opens, a Manual Start and a live Manual retarget. */
+    FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE,
+    FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START,
+    FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET,
 } furnace_hmi_operator_request_kind_t;
 
 typedef struct {
@@ -151,6 +156,12 @@ typedef struct {
     /* START_PROGRAM only: the program as the operator confirmed it. */
     char program_name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
     furnace_hmi_operator_program_t program;
+    /* MANUAL_START and MANUAL_RETARGET: whole degrees and tenths of a degree
+     * per minute. MANUAL_START: the session length, the controller's longest
+     * (owner 2026-11-11: no length choice). The host adds the run. */
+    int32_t target_c;
+    int32_t rate_tenths_c_per_minute;
+    int32_t session_minutes;
 } furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
@@ -301,10 +312,26 @@ bool furnace_hmi_operator_screens_show_service_warning(
 /** Delete the lab tree and reset the supplied storage. */
 void furnace_hmi_operator_screens_destroy(furnace_hmi_operator_screens_t *explorer);
 
-/** Take the operator's pending controller request, if any; false when none. */
+/**
+ * Take the operator's pending controller request, if any; false when none.
+ * An ordinary request comes before a Stop taken in the same pass, so a host
+ * that hands both over at once lets the Stop drop the other (M21-5a mailbox).
+ */
 bool furnace_hmi_operator_screens_take_request(
     furnace_hmi_operator_screens_t *explorer,
     furnace_hmi_operator_request_t *request
+);
+
+/**
+ * Without simulated answers: the number the host gave a request it took, which
+ * the command feedback in later observations carries; 0 when it could not hand
+ * it over (nothing sent). The screens wait for that feedback before they offer
+ * the next command of the same slot.
+ */
+void furnace_hmi_operator_screens_request_submitted(
+    furnace_hmi_operator_screens_t *explorer,
+    furnace_hmi_operator_request_kind_t kind,
+    uint32_t submission
 );
 
 /* The opaque storage is intentionally fixed-size so the host laboratory does
@@ -525,6 +552,20 @@ struct furnace_hmi_operator_screens {
     bool run_stopped;
     uint32_t stopped_program_id;
     furnace_hmi_operator_request_t request;
+    /* Commands to a controller (no simulated answers, M21-5b). Stop has its own
+     * slot. Each slot awaits the feedback for the number its last request was
+     * handed over as; until then it offers no other command. */
+    bool stop_requested;
+    bool command_awaiting;
+    furnace_hmi_operator_request_kind_t command_kind;
+    uint32_t command_submission;
+    bool stop_awaiting;
+    uint32_t stop_submission;
+    /* A Manual target or rate the operator changed that is not sent yet. */
+    bool manual_retarget_wanted;
+    /* The ended Manual session the operator left (Exit or Start new). */
+    bool manual_left;
+    uint32_t manual_left_run_id;
     /* Service records confirmed this session, newest first, before the
      * controller's earlier records in Service history. */
     furnace_hmi_operator_service_record_t service_records[FURNACE_HMI_OPERATOR_SERVICE_RECORDS];

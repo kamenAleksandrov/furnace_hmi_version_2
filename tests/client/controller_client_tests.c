@@ -256,6 +256,7 @@ static void fill_capabilities(uint32_t request_id, uint8_t session)
     c->status_interval_ms = 200U;
     c->heartbeat_interval_ms = 500U;
     c->link_silence_ms = 3000U;
+    c->manual_max_minutes = 2880U;
 }
 
 static void send_capabilities(uint32_t request_id, uint8_t session)
@@ -287,6 +288,9 @@ static void send_status(uint32_t sequence, int32_t temperature, uint8_t validity
     s->run_status.setpoint = 1500;
     s->run_status.heating_requested = true;
     s->run_status.measurement_qualified_s = 90U;
+    s->run_status.manual_target = 1805;
+    s->run_status.manual_rate = 25;
+    s->run_status.manual_remaining_s = 3000U;
     s->fault_status.unacknowledged_count = 1U;
     s->fault_status.latched_class = 2U;
     s->fault_status.inhibit_ids = 0x8U;
@@ -417,6 +421,7 @@ static void handshake_to_current(void)
     EXPECT(o->status_interval_ms == 200U && o->heartbeat_interval_ms == 500U &&
                o->link_silence_ms == 3000U,
            "intervals from CAPABILITIES");
+    EXPECT(o->manual_max_minutes == 2880U, "Manual maximum from CAPABILITIES");
     EXPECT(o->status_valid && o->status_sequence == 10U, "status");
     EXPECT(o->temperature_decicelsius == 1234 &&
                o->temperature_validity == FURNACE_HMI_CONTROLLER_MEASURED_VALID &&
@@ -430,6 +435,9 @@ static void handshake_to_current(void)
            "run");
     EXPECT(o->setpoint_valid && o->setpoint_decicelsius == 1500 && o->heating_requested,
            "setpoint");
+    EXPECT(o->manual_target_decicelsius == 1805 && o->manual_rate_decicelsius_per_min == 25 &&
+               o->manual_remaining_s == 3000U,
+           "manual values");
     EXPECT(o->heating_inhibited && o->latched_class == 2U && o->inhibit_ids == 0x8U &&
                o->unacknowledged_faults == 1U,
            "fault status");
