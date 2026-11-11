@@ -33,6 +33,7 @@
 #include <lvgl.h>
 
 #include "controller_link.h"
+#include "operator_commands.h"
 
 /* The longest the GUI context sleeps between LVGL timer passes. */
 #define GUI_MAX_SLEEP_MS UINT32_C(10)
@@ -48,42 +49,6 @@ static furnace_hmi_operator_screens_t screens;
 static furnace_hmi_operator_content_t no_content;
 static furnace_hmi_controller_observation_t observation;
 static furnace_hmi_dashboard_state_t status;
-
-/*
- * The controller command for a screen request (M21-5b). Run commands name the
- * run the controller reports now. False for requests that are not commands
- * yet (program Start: M21-7).
- */
-static bool command_for(const furnace_hmi_operator_request_t *request, furnace_hmi_command_t *command)
-{
-    *command = (furnace_hmi_command_t){.run_id = observation.run_id};
-    switch (request->kind) {
-    case FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE:
-        command->kind = FURNACE_HMI_COMMAND_START_PREPARE;
-        return true;
-    case FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START:
-        command->kind = FURNACE_HMI_COMMAND_MANUAL_START;
-        command->session_minutes = (uint32_t)request->session_minutes;
-        break;
-    case FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET:
-        command->kind = FURNACE_HMI_COMMAND_MANUAL_RETARGET;
-        break;
-    case FURNACE_HMI_OPERATOR_REQUEST_PAUSE:
-        command->kind = FURNACE_HMI_COMMAND_PAUSE;
-        return true;
-    case FURNACE_HMI_OPERATOR_REQUEST_RESUME:
-        command->kind = FURNACE_HMI_COMMAND_RESUME;
-        return true;
-    case FURNACE_HMI_OPERATOR_REQUEST_STOP:
-        command->kind = FURNACE_HMI_COMMAND_STOP;
-        return true;
-    default:
-        return false;
-    }
-    command->target_decicelsius = request->target_c * 10;
-    command->rate_decicelsius_per_min = request->rate_tenths_c_per_minute;
-    return true;
-}
 
 int main(void)
 {
@@ -142,7 +107,9 @@ int main(void)
         while (furnace_hmi_operator_screens_take_request(&screens, &request)) {
             furnace_hmi_command_t command;
             const uint32_t submission =
-                command_for(&request, &command) ? furnace_hmi_controller_link_submit(&command) : 0U;
+                furnace_hmi_operator_command_for(&request, observation.run_id, &command)
+                    ? furnace_hmi_controller_link_submit(&command)
+                    : 0U;
 
             furnace_hmi_operator_screens_request_submitted(&screens, request.kind, submission);
         }

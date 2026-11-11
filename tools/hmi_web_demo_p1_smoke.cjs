@@ -491,12 +491,13 @@ const PRESENTATION_CHOICE = `(()=>{
     await evaluate('playScenario(\'overtemperature\')');
     await waitFor('demoRun && demoRun.phase === \'fault\'', 90);
     assert.strictEqual(await evaluate('(()=>{const d=document.getElementById(\'message\');return d.open&&d.classList.contains(\'alert-fault\')&&document.getElementById(\'message-title\').textContent})()'), 'Over-temperature');
-    assert.strictEqual(await evaluate('(()=>{const b=[...document.querySelectorAll(\'#content button\')].map(x=>x.textContent);return b.includes(\'Return Home\')&&!b.includes(\'Pause\')&&!b.includes(\'Stop\')&&document.querySelector(\'.run-title .run-fault\').textContent===\'Over-temperature\'&&demoMeasured(demoRun.program,demoRun.elapsed)>180})()'), true);
+    assert.strictEqual(await evaluate('(()=>{const b=[...document.querySelectorAll(\'#content button\')].map(x=>x.textContent);return b.includes(\'Stop\')&&!b.includes(\'Pause\')&&!b.includes(\'Return Home\')&&document.querySelector(\'.run-title .run-fault\').textContent===\'Over-temperature\'&&demoMeasured(demoRun.program,demoRun.elapsed)>180})()'), true);
     await evaluate('document.querySelector(\'#message-actions button\').click()');
     await sleep(100);
     assert.strictEqual(await evaluate('document.getElementById(\'message\').classList.contains(\'alert-dialog\')'), false);
     assert.match(await evaluate('notifications().map(n => n.title).join(\'|\')'), /Over-temperature/);
-    await evaluate('[...document.querySelectorAll(\'#content button\')].find(button => button.textContent === \'Return Home\').click()');
+    // A faulted run stays until the operator stops it (owner 2026-11-11, Phase 21 M21-5b).
+    await evaluate('[...document.querySelectorAll(\'#content button\')].find(button => button.textContent === \'Stop\').click()');
     assert.strictEqual(await evaluate('mainPage + \'|\' + (demoRun === null)'), 'home|true');
 
     await evaluate('playScenario(\'link-lost\')');

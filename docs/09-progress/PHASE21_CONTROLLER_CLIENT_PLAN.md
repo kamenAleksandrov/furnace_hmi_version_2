@@ -175,6 +175,30 @@ Three steps, each a commit series on one draft pull request, stacked on M21-2b:
 - **Codes:** the outcome keeps the controller's reason codes as received; their texts are the
   screens' (M21-5b).
 
+**M21-5b, the screens** (owner 2026-11-11: no session-length choice; retarget taps merged):
+- **Only without simulated answers** (the Zephyr application). The UI lab and the web demo keep
+  their own simulation; the faulted-run change applies to all three.
+- **Requests:** the screens raise START_PREPARE, MANUAL_START, MANUAL_RETARGET, PAUSE, RESUME and
+  STOP; the host hands each over and tells the screens its submission number
+  (`furnace_hmi_operator_screens_request_submitted`, 0 when it could not). An ordinary request is
+  taken before a Stop of the same pass, so the mailbox lets the Stop drop it.
+- **Feedback:** the model carries the newest outcome of each slot (`command_feedback`,
+  `stop_feedback`: pending, accepted, rejected, refused, unresolved, not sent, with the reason).
+  A slot offers no second command until the outcome for its submission arrives. Every outcome other
+  than accepted opens a dialog with the screens' text for the controller's reason.
+- **Manual:**
+  - opening Manual sends START_PREPARE; Start is enabled only when the controller reports READY and
+    its Manual maximum (CAPABILITIES `manual_max_minutes`) is known, and asks for that maximum;
+  - the session, its target and rate, pause and end follow STATUS (`session_kind` MANUAL,
+    `manual_target`, `manual_rate`); a controller Manual session holds the Manual page (the UX
+    baseline) instead of Running;
+  - a stepper change during a session is a retarget; taps while one is pending are merged and the
+    newest is sent after the answer; after a refusal or an unresolved outcome nothing is resent and
+    the controller's values are shown;
+  - a faulted session offers Stop only; Exit and Start new leave an ended session that still cools.
+- **Running:** Pause, Resume and Stop are requests; a faulted run keeps Stop and offers no Return
+  Home (owner 2026-11-11).
+
 **Threads (ADR-0005):** the UI thread never calls the client. It puts a command into a two-slot
 mailbox (ordinary, Stop) and gets a submission number; the link thread takes it at its next poll.
 The outcome, with that number, comes back in the observation.

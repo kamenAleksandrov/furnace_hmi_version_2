@@ -225,13 +225,15 @@ static void prepare(void)
     zassert_true(wait_until(store_ready), "store readiness %u", obs.store_readiness);
 }
 
+/* As the screens start it: the controller's longest session (owner 2026-11-11, M21-5b). */
 static uint32_t manual_start(void)
 {
+    zassert_true(obs.capabilities_valid && obs.manual_max_minutes > 0U, "no Manual maximum");
     const furnace_hmi_command_outcome_t o = run((furnace_hmi_command_t){
         .kind = FURNACE_HMI_COMMAND_MANUAL_START,
         .target_decicelsius = 600,
         .rate_decicelsius_per_min = 20,
-        .session_minutes = 60U,
+        .session_minutes = obs.manual_max_minutes,
     });
 
     zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "Manual Start: reason %u", o.reason);
