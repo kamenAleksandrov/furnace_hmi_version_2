@@ -979,9 +979,16 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
     }
     settle();
     /* Manual's Faults button lasts through many observations (review M2), with LVGL's timers run
-     * between them as the application's GUI loop does. */
+     * between them as the application's GUI loop does. No observation restarts animations: the
+     * steppers of a faulted session were enabled and disabled again on each one. */
+    (void)update();
+    const uint32_t animations = lv_anim_count_running();
     for (int pass = 0; pass < 70; ++pass) {
         (void)update();
+    }
+    if (lv_anim_count_running() > animations) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "Observations restart animations on a faulted session.", 346);
     }
     char faults_text[32];
     (void)snprintf(faults_text, sizeof(faults_text),

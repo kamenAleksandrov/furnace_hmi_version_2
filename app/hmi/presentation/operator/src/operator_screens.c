@@ -4001,8 +4001,10 @@ static void follow_controller_buttons(furnace_hmi_operator_screens_t *explorer)
     }
     set_button_enabled(explorer->manual_pause_button, current && !explorer->command_awaiting && !faulted && !stopping);
     set_button_enabled(explorer->manual_stop_button, current && !explorer->stop_awaiting);
-    if (explorer->manual_steppers != NULL && explorer->manual_running) {
-        set_subtree_disabled(explorer->manual_steppers, !current || faulted || stopping);
+    if (explorer->manual_steppers != NULL) {
+        set_subtree_disabled(explorer->manual_steppers,
+                             explorer->manual_cooling ||
+                                 (explorer->manual_running && (!current || faulted || stopping)));
     }
 }
 
@@ -4031,7 +4033,8 @@ static bool update_manual_run_state(furnace_hmi_operator_screens_t *explorer)
             else { lv_obj_add_flag(cooling_buttons[index], LV_OBJ_FLAG_HIDDEN); }
         }
     }
-    if (explorer->manual_steppers != NULL) {
+    /* Decided once per update: toggling them twice restarts their style transitions each time. */
+    if (explorer->manual_steppers != NULL && explorer->simulated_responses) {
         set_subtree_disabled(explorer->manual_steppers, cooling);
     }
     if (explorer->header_title != NULL) {
