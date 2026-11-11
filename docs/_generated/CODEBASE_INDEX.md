@@ -10,8 +10,8 @@ The index contains repository-relative paths only and deliberately omits generat
 | Item | Count |
 | --- | ---: |
 | Repository files | 369 |
-| Git-tracked files | 363 |
-| Git-untracked files | 6 |
+| Git-tracked files | 369 |
+| Git-untracked files | 0 |
 | Manually maintained files | 340 |
 | Generated files | 29 |
 | Modules | 40 |
@@ -532,11 +532,11 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/zephyr/controller_client/prj.conf` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/controller_client/src/main.c` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/controller_client/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
-| `tests/zephyr/controller_workflows/CMakeLists.txt` | test | `tests/zephyr` | manual | untracked |
-| `tests/zephyr/controller_workflows/boards/native_sim.overlay` | test | `tests/zephyr` | manual | untracked |
-| `tests/zephyr/controller_workflows/prj.conf` | test | `tests/zephyr` | manual | untracked |
-| `tests/zephyr/controller_workflows/src/main.c` | test | `tests/zephyr` | manual | untracked |
-| `tests/zephyr/controller_workflows/testcase.yaml` | test | `tests/zephyr` | manual | untracked |
+| `tests/zephyr/controller_workflows/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/controller_workflows/boards/native_sim.overlay` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/controller_workflows/prj.conf` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/controller_workflows/src/main.c` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/controller_workflows/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/prj.conf` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/src/main.c` | test | `tests/zephyr` | manual | tracked |
@@ -566,7 +566,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tools/codebase-index.schema.json` | tool | `tools` | manual | tracked |
 | `tools/codebase_index.py` | tool | `tools` | manual | tracked |
 | `tools/controller_link_demo.py` | tool | `tools` | manual | tracked |
-| `tools/controller_workflow_check.py` | tool | `tools` | manual | untracked |
+| `tools/controller_workflow_check.py` | tool | `tools` | manual | tracked |
 | `tools/hmi_web_demo_p1_smoke.cjs` | tool | `tools` | manual | tracked |
 | `tools/review_ui_lab.py` | tool | `tools` | manual | tracked |
 | `tools/run_desktop_ui.py` | tool | `tools` | manual | tracked |
