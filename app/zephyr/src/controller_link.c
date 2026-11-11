@@ -103,12 +103,20 @@ static void take_commands(void)
         command_slots[i].full = false;
     }
     k_spin_unlock(&command_lock, key);
-    /* Stop first: it never waits behind an ordinary command. */
-    for (size_t i = 2U; i-- > 0U;) {
-        if (taken[i].full) {
-            (void)furnace_hmi_controller_client_submit(&client, &taken[i].command,
-                                                       taken[i].submission);
+    if (taken[1].full) {
+        (void)furnace_hmi_controller_client_submit(&client, &taken[1].command,
+                                                   taken[1].submission);
+        /*
+         * The operator pressed Stop after this command, before it was sent: it is
+         * dropped, never sent after the Stop (review F2).
+         */
+        if (taken[0].full) {
+            furnace_hmi_controller_client_refuse(&client, &taken[0].command, taken[0].submission,
+                                                 FURNACE_HMI_COMMAND_LOCAL_SUPERSEDED_BY_STOP);
         }
+    } else if (taken[0].full) {
+        (void)furnace_hmi_controller_client_submit(&client, &taken[0].command,
+                                                   taken[0].submission);
     }
 }
 

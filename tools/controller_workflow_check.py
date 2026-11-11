@@ -22,6 +22,7 @@ import re
 import select
 import subprocess
 import sys
+import threading
 import time
 import tty
 
@@ -63,32 +64,41 @@ def main() -> int:
 
     controller = subprocess.Popen([args.controller], stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT)
+    controller_output: list[bytes] = []
+    output = ""
+    returncode = None
     try:
         ports = announced_ports(controller)
         if ports is None:
             print("controller_workflow_check: the controller announced no pseudo-terminals")
             return 1
+        # Keep reading the controller's console, so a full pipe never stalls it.
+        threading.Thread(target=lambda: controller_output.extend(iter(
+            lambda: os.read(controller.stdout.fileno(), 4096), b"")), daemon=True).start()
         for port in ports:
             make_raw(port)
         workflows = subprocess.run(
             [args.workflows, "--seed-random", f"--controller_link_port={ports[0]}",
              f"--scenario_port={ports[1]}"],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=TIMEOUT_S, check=False)
-    except subprocess.TimeoutExpired:
+        output = workflows.stdout.decode(errors="replace")
+        returncode = workflows.returncode
+    except subprocess.TimeoutExpired as timeout:
+        output = (timeout.stdout or b"").decode(errors="replace")
         print("controller_workflow_check: the workflows did not finish")
-        return 1
     finally:
         controller.kill()
         controller.wait()
-    output = workflows.stdout.decode(errors="replace")
     for line in output.splitlines():
         if line.startswith(("workflow:", " PASS", " FAIL", "    Assertion", "SUITE", "PROJECT")) \
                 or "Assertion failed" in line:
             print(line)
-    passed = "PROJECT EXECUTION SUCCESSFUL" in output
+    passed = returncode == 0 and "PROJECT EXECUTION SUCCESSFUL" in output
     if not passed:
         traces = [line for line in output.splitlines() if line.startswith("hmi-link:")]
         print("last link trace:", traces[-1] if traces else "none")
+        tail = b"".join(controller_output).decode(errors="replace").splitlines()[-5:]
+        print("controller output (last lines):", *tail, sep="\n  ")
     print(f"controller_workflow_check: {'PASS' if passed else 'FAIL'}")
     return 0 if passed else 1
 

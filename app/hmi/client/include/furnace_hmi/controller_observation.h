@@ -164,7 +164,9 @@ typedef struct {
     /* Operator commands (M21-5): the latest ordinary command, and the latest Stop. */
     furnace_hmi_command_outcome_t command;
     furnace_hmi_command_outcome_t stop;
+    /* The latest local refusal of each slot. */
     furnace_hmi_command_refusal_t command_refusal;
+    furnace_hmi_command_refusal_t stop_refusal;
 
     /* Link counters; saturating. */
     uint32_t frames_received;

@@ -70,6 +70,8 @@ typedef enum {
     FURNACE_HMI_COMMAND_UNRESOLVED_DUPLICATE,
     /** STOP_UNRESOLVED: heater-off and fan-on asserted, the Stop's own outcome unknown. */
     FURNACE_HMI_COMMAND_UNRESOLVED_STOP,
+    /** The HMI opened a new client session; a result goes only to the one that sent it. */
+    FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED,
     FURNACE_HMI_COMMAND_UNRESOLVED_COUNT,
 } furnace_hmi_command_unresolved_t;
 
@@ -83,6 +85,8 @@ typedef enum {
     FURNACE_HMI_COMMAND_LOCAL_BUSY,
     /** Not a command kind the client sends. */
     FURNACE_HMI_COMMAND_LOCAL_INVALID,
+    /** A Stop handed over before it was sent: the earlier command is dropped, never sent after it. */
+    FURNACE_HMI_COMMAND_LOCAL_SUPERSEDED_BY_STOP,
     FURNACE_HMI_COMMAND_LOCAL_COUNT,
 } furnace_hmi_command_local_t;
 

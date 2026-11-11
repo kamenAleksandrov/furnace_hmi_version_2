@@ -9,9 +9,10 @@
   is retried across a reconnect.
 - **The Zephyr link thread** takes commands from the GUI context through a two-slot mailbox
   (ordinary and Stop). The screens do not send them yet (M21-5b).
-- **Evidence:** 18 new client scenarios (5 mutation probes, all killed); four workflows against
-  the real controller (`tools/controller_workflow_check.py`): Manual, a sensor fault with
-  recovery, an interlock, a protective trip.
+- **Evidence:** 25 new client scenarios; 14 mutation probes, all killed; five workflows
+  against the real controller (`tools/controller_workflow_check.py`): Manual, Stop overtaking an
+  unsent Start, a sensor fault with recovery, an interlock, a protective trip. Two AI reviews in
+  the HMI roles: their High and Medium findings are fixed test-first.
 
 **Fact (2026-11-10, Phase 21 M21-2b):** the operator screens are one shared
 implementation, `app/hmi/presentation/operator`, used by the UI lab, the desktop

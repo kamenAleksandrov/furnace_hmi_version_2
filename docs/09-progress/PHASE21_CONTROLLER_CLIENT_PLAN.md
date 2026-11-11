@@ -149,16 +149,26 @@ Three steps, each a commit series on one draft pull request, stacked on M21-2b:
 - **Retries:** an unanswered command is sent again under the **same** `request_id`; the controller
   returns its recorded result and runs nothing twice.
   - An ordinary command is retried while the link stays current. Its outcome becomes
-    **unresolved** after the attempts run out, or when the link falls silent or the controller
-    session changes: the operator's intent ends there (Start readiness, rule 4). The HMI never
-    re-sends it by itself.
-  - Stop is retried across a reconnect to the same controller session, and is unresolved only when
-    the session changes (a controller restart, which ends every run) or its attempts run out.
+    **unresolved** after the attempts run out, or when the link is re-opened in any way: the HMI's
+    silence, a HELLO the HMI sends (for example after a NOT_CONNECTED), any HELLO_ACK, or a change
+    of controller or client session. The operator's intent ends there (Start readiness, rule 4),
+    and the HMI never re-sends it by itself.
+  - Stop is retried while connected and while synchronizing to the same controller session (its
+    HELLO_ACK has confirmed the session), also after NOT_CONNECTED or CLIENT_SESSION_MISMATCH.
+    It ends unresolved when the controller or client session changes, its attempts run out, the
+    controller reports STOP_UNRESOLVED, or the link is unusable for
+    `FURNACE_HMI_CLIENT_STOP_PATIENCE_MS`. Another refusal by the service makes it refused.
+  - **Order:** a Stop handed over before an earlier command was sent drops that command, which is
+    reported as superseded: nothing the operator pressed before Stop goes out after it.
+  - Results carry no client session, so a result completes a command only when its request ID
+    and kind both match.
+  - A result arriving after its command became unresolved is ignored; the state comes from
+    STATUS.
 - **Unresolved:** `DUPLICATE_REQUEST` on a retry, `STOP_UNRESOLVED`, a session change and lost
   answers are all reported as unresolved, never as accepted or rejected. The screens then show the
   state from `STATUS`.
 - **Not sent:** while the link is not current, a command is refused locally (`NOT_CURRENT`) and
-  nothing is sent.
+  nothing is sent. Each slot keeps its own latest refusal.
 - **Start readiness:** `START_PREPARE` is sent when the operator opens a way to start (Manual).
   Manual Start is enabled only when `store_readiness` is READY. A Start refused as `STORE_NOT_READY`
   is not re-sent; the operator presses Start again.
@@ -307,8 +317,8 @@ commands and operator workflows stay in M21-5 and later.
     (`command`, `stop`, `command_refusal`); `controller_command.h` holds the plain-data types.
   - **The link thread:** `furnace_hmi_controller_link_submit`, a two-slot mailbox; the link trace
     shows both outcomes.
-  - **Against the real controller** (firmware #53, `tools/controller_workflow_check.py`, all
-    reason codes checked against the interface):
+  - **Against the real controller** (firmware #53, `tools/controller_workflow_check.py`; every
+    rejection reason asserted against the interface, acceptances by state):
     - Manual: Start, retarget, length, Pause, Resume and Stop accepted; Resume after Stop
       rejected (NOT_PAUSED);
     - sensor fault (a not-finite reading): FAULTED, Pause rejected (FAULT_LATCHED), Stop,
@@ -316,14 +326,32 @@ commands and operator workflows stay in M21-5 and later.
     - interlock: PAUSED with INHIBIT, nothing latched; Resume blocked while active
       (RESUME_BLOCKED), accepted after; Continue rejected (NOT_AWAITING_DECISION);
     - protective trip: FAULTED, latched class 4; recovery refused as
-      PROTECTIVE_RESET_EXTERNAL during and after the trip.
+      PROTECTIVE_RESET_EXTERNAL during and after the trip;
+    - Start then Stop handed over together: the Start is dropped as superseded, the Stop sent,
+      nothing runs.
+  - **Reviews** (AI agents in the HMI roles: embedded and protocol reviewer; error auditor with
+    software critic). No path heats without an operator action. Fixed test-first, each with a
+    mutation probe that the tests kill:
+    - an ordinary command survived a reconnect the controller saw first (High);
+    - a Stop could overtake an earlier, unsent command in the mailbox (High);
+    - a Stop refused as not connected was lost; a Stop could wait forever while synchronizing;
+      one refusal record served both slots (Medium);
+    - a client-session change was labelled a controller restart; results were matched by
+      request ID alone (Low);
+    - test strength: retry loops in the workflows now retry only the expected rejection; the
+      scenario channel has a deadline; the runner drains the controller's output and also
+      checks the exit code.
+
+    Kept as decided: a late result after unresolved is ignored. Also kept: a command submitted
+    between a new client session and its HELLO_ACK is refused by the controller.
   - **Found:** a ztest build runs native_sim's clock freely unless
     `CONFIG_NATIVE_SIM_SLOWDOWN_TO_REAL_TIME` is set, and every link timeout then expires at once.
     The pseudo-terminals must be raw.
   - **Evidence:** `host-msvc-core-debug` 15 of 15, `host-msvc-desktop-debug` and `host-debug`
     (GCC) 18 of 18; Twister in WSL on both native_sim variants, 8 of 8 cases; Twister on
-    Windows, `qemu_x86`, 5 of 5; the M21-3 demonstration 10 of 10; the workflow check 4 of 4;
-    5 mutation probes of the client, all killed.
+    Windows, `qemu_x86`, 5 of 5; the M21-3 demonstration 10 of 10; the workflow check 5 of 5;
+    14 mutation probes (13 of the client, 1 of the mailbox through the workflow check), all
+    killed.
 
 - 2026-11-10, M21-2b (draft): **the operator screens are shared** (design above).
   - **Moved without change first:** all 279 lab captures (93 at 800x480, 800x640 and 1024x600)

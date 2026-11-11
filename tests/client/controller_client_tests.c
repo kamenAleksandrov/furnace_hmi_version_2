@@ -1183,6 +1183,12 @@ static void command_not_sent_unless_current(void)
                obs()->command_refusal.kind == FURNACE_HMI_COMMAND_MANUAL_START &&
                obs()->command_refusal.reason == FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT,
            "the refusal is reported");
+    synchronize(SESSION_A, 10U);
+    advance(3100U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
+    EXPECT(submit(FURNACE_HMI_COMMAND_PAUSE, 6U) == FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT,
+           "refused while silent");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_RUN_PAUSE) == 0U, "nothing sent while silent");
     end();
 }
 
@@ -1269,6 +1275,12 @@ static void invalid_kind_refused(void)
     EXPECT(submit(FURNACE_HMI_COMMAND_NONE, 1U) == FURNACE_HMI_COMMAND_LOCAL_INVALID, "NONE");
     EXPECT(submit(FURNACE_HMI_COMMAND_COUNT, 2U) == FURNACE_HMI_COMMAND_LOCAL_INVALID, "COUNT");
     EXPECT(fx.last_command_type == 0U, "nothing sent");
+    EXPECT(obs()->command_refusal.submission == 2U &&
+               obs()->command_refusal.reason == FURNACE_HMI_COMMAND_LOCAL_INVALID,
+           "reported as invalid");
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_IDLE &&
+               obs()->stop.state == FURNACE_HMI_COMMAND_IDLE,
+           "both slots unchanged");
     end();
 }
 
@@ -1352,8 +1364,9 @@ static void link_lost_ends_an_ordinary_command(void)
     size_t mark;
 
     begin_commands("link lost ends an ordinary command");
+    advance(2000U); /* no STATUS from here: silence comes long before the attempts run out */
     (void)submit(FURNACE_HMI_COMMAND_MANUAL_START, 1U);
-    advance(3100U); /* no STATUS: the link falls silent */
+    advance(1100U);
     EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
     EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
                obs()->command.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST,
@@ -1380,6 +1393,8 @@ static void stop_survives_a_reconnect(void)
     EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
     EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_PENDING, "the Stop stays pending");
     mark = fx.sent_count;
+    advance(2000U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_RUN_STOP) == 0U, "not sent while silent");
     status_sequence = 40U;
     synchronize(SESSION_A, status_sequence);
     keep_current(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS + 100U);
@@ -1514,9 +1529,146 @@ static void start_prepare(void)
     end();
 }
 
+/* Review F1: a reconnect the controller saw ends an ordinary command, even before HMI silence. */
+static void hello_ack_ends_an_ordinary_command(void)
+{
+    size_t mark;
+
+    begin_commands("hello ack ends an ordinary command");
+    (void)submit(FURNACE_HMI_COMMAND_MANUAL_START, 1U);
+    send_hello_ack(HELLO_OK, SESSION_A); /* same session: the controller had dropped the client */
+    advance(10U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->command.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST,
+           "unresolved at once");
+    mark = fx.sent_count;
+    status_sequence = 40U;
+    synchronize(SESSION_A, status_sequence);
+    keep_current(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS * 3U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_MANUAL_START) == 0U, "the Start is never sent again");
+    end();
+}
+
+/*
+ * Review F3: a Stop the service refused as not connected is kept and sent again
+ * after HELLO; review F1: the HELLO ends a pending ordinary command.
+ */
+static void stop_kept_through_not_connected(void)
+{
+    uint32_t id;
+    size_t mark;
+
+    begin_commands("stop kept through not connected");
+    (void)submit(FURNACE_HMI_COMMAND_RESUME, 2U);
+    (void)submit(FURNACE_HMI_COMMAND_STOP, 1U);
+    id = last_request_id();
+    mark = fx.sent_count;
+    send_rejected_command(id, FURNACE_WIRE_MSG_RUN_STOP, REJECT_NOT_CONNECTED);
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_PENDING, "the Stop stays pending");
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->command.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST,
+           "the Resume ends with the reconnect");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_HELLO) >= 1U, "HELLO sent");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    advance(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS + 100U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_RUN_STOP) >= 1U,
+           "sent again while synchronizing (review F4)");
+    EXPECT(last_request_id() == id, "under the same request_id");
+    send_run_result(true, id, RUN_COMMAND_STOP, 0U, 77U);
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_ACCEPTED, "its result");
+    end();
+}
+
+/* Review F4: a Stop that cannot be sent again is unresolved after its patience. */
+static void stop_patience_while_silent(void)
+{
+    begin_commands("stop patience while silent");
+    (void)submit(FURNACE_HMI_COMMAND_STOP, 1U);
+    advance(3100U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
+    advance(FURNACE_HMI_CLIENT_STOP_PATIENCE_MS - 2000U);
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_PENDING, "pending within its patience");
+    advance(2100U);
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->stop.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST,
+           "unresolved after it");
+    end();
+}
+
+/* Review F5: each slot has its own refusal. */
+static void refusals_per_slot(void)
+{
+    begin("refusals per slot");
+    fx.commands_allowed = true;
+    (void)submit(FURNACE_HMI_COMMAND_STOP, 1U);
+    (void)submit(FURNACE_HMI_COMMAND_PAUSE, 2U);
+    EXPECT(obs()->stop_refusal.submission == 1U &&
+               obs()->stop_refusal.reason == FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT,
+           "the Stop's refusal is kept");
+    EXPECT(obs()->command_refusal.submission == 2U, "the ordinary refusal apart");
+    end();
+}
+
+/* Review F2: a dropped command is reported, and the slot keeps its outcome. */
+static void refused_by_the_submitter(void)
+{
+    const furnace_hmi_command_t start = {.kind = FURNACE_HMI_COMMAND_MANUAL_START};
+    size_t mark;
+
+    begin_commands("refused by the submitter");
+    mark = fx.sent_count;
+    furnace_hmi_controller_client_refuse(&fx.client, &start, 4U,
+                                         FURNACE_HMI_COMMAND_LOCAL_SUPERSEDED_BY_STOP);
+    advance(10U);
+    EXPECT(obs()->command_refusal.submission == 4U &&
+               obs()->command_refusal.reason == FURNACE_HMI_COMMAND_LOCAL_SUPERSEDED_BY_STOP,
+           "reported as superseded");
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_IDLE, "the slot is unchanged");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_MANUAL_START) == 0U, "nothing sent");
+    end();
+}
+
+/* Review F6: a new client session is its own cause. */
+static void client_session_change_cause(void)
+{
+    begin_commands("client session change cause");
+    (void)submit(FURNACE_HMI_COMMAND_STOP, 1U);
+    send_hello_ack(2U /* INVALID_CLIENT_SESSION */, SESSION_A);
+    advance(10U);
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->stop.unresolved_cause ==
+                   FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED,
+           "client session changed, not a controller restart");
+    end();
+}
+
+/* Review F7: a result for another kind of command does not complete this one. */
+static void result_of_another_kind_ignored(void)
+{
+    begin_commands("result of another kind ignored");
+    (void)submit(FURNACE_HMI_COMMAND_PAUSE, 1U);
+    send_run_result(true, last_request_id(), RUN_COMMAND_STOP, 0U, 77U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_PENDING, "a STOP result is not a Pause's");
+    start_out(FURNACE_WIRE_MSG_FAULT_ACKNOWLEDGE_RESULT);
+    fx.out.u.fault_acknowledge_result.request_id = last_request_id();
+    send_out();
+    advance(10U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_PENDING, "nor an acknowledgement's");
+    send_run_result(true, last_request_id(), RUN_COMMAND_PAUSE, 0U, 77U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_ACCEPTED, "its own result");
+    end();
+}
+
 int controller_client_tests_run(void)
 {
     failures = 0;
+    hello_ack_ends_an_ordinary_command();
+    stop_kept_through_not_connected();
+    stop_patience_while_silent();
+    refusals_per_slot();
+    refused_by_the_submitter();
+    client_session_change_cause();
+    result_of_another_kind_ignored();
     command_not_sent_unless_current();
     manual_start_accepted();
     run_command_rejected();

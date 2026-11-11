@@ -37,6 +37,8 @@ extern "C" {
 #define FURNACE_HMI_CLIENT_COMMAND_RETRY_MS 1000U
 #define FURNACE_HMI_CLIENT_COMMAND_ATTEMPTS 3U
 #define FURNACE_HMI_CLIENT_STOP_ATTEMPTS 10U
+/* A Stop that could not be sent again for this long (the link not usable) is unresolved. */
+#define FURNACE_HMI_CLIENT_STOP_PATIENCE_MS 10000U
 
 typedef struct {
     furnace_hmi_byte_port_t port;
@@ -136,6 +138,17 @@ furnace_hmi_command_local_t furnace_hmi_controller_client_submit(
     furnace_hmi_controller_client_t *client,
     const furnace_hmi_command_t *command,
     uint32_t submission
+);
+
+/**
+ * Report a command as refused before sending, without sending it: for a
+ * submitter that drops it (a Stop handed over after it). Leaves the slot's outcome.
+ */
+void furnace_hmi_controller_client_refuse(
+    furnace_hmi_controller_client_t *client,
+    const furnace_hmi_command_t *command,
+    uint32_t submission,
+    furnace_hmi_command_local_t reason
 );
 
 /** The current observation; valid until the next poll. */

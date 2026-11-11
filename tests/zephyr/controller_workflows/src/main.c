@@ -44,7 +44,10 @@
 #define REJECT_FAULT_LATCHED 14U
 #define REJECT_NOT_AWAITING_DECISION 15U
 #define RECOVERY_PROTECTIVE_RESET_EXTERNAL 4U
+#define RECOVERY_CONDITION_ACTIVE 2U
+#define RECOVERY_DIAGNOSTICS_INVALID 6U
 #define RECOVERY_RECOVERED 7U
+#define REJECT_NOT_ACTIVE 11U
 
 #define WAIT_MS 20000U
 #define POLL_MS 20
@@ -96,6 +99,7 @@ static void scenario(const char *line)
 {
     char reply[16] = {0};
     size_t n = 0U;
+    const int64_t end = k_uptime_get() + WAIT_MS;
 
     zassert_true(scenario_fd >= 0, "no --scenario_port");
     zassert_equal(nsi_host_write(scenario_fd, line, strlen(line)), (long)strlen(line));
@@ -103,7 +107,10 @@ static void scenario(const char *line)
     while (n < sizeof(reply) - 1U) {
         char c;
 
+        /* Non-blocking: nothing yet is -1, and the clock runs on while waiting. */
         if (nsi_host_read(scenario_fd, &c, 1U) != 1L) {
+            zassert_true(k_uptime_get() < end, "no answer to scenario '%s'", line);
+            k_msleep(POLL_MS);
             continue;
         }
         if (c == '\n') {
@@ -130,11 +137,12 @@ static furnace_hmi_command_outcome_t run(furnace_hmi_command_t command)
     }
     while (k_uptime_get() < end) {
         const furnace_hmi_command_outcome_t *o;
+        const furnace_hmi_command_refusal_t *r;
 
         refresh();
         o = stop ? &obs.stop : &obs.command;
-        zassert_false(obs.command_refusal.submission == submission, "refused before sending: %u",
-                      obs.command_refusal.reason);
+        r = stop ? &obs.stop_refusal : &obs.command_refusal;
+        zassert_false(r->submission == submission, "refused before sending: %u", r->reason);
         if (o->submission == submission && o->state != FURNACE_HMI_COMMAND_PENDING) {
             printk("workflow: command %u -> state %u reason %u run %u attempts %u\n",
                    command.kind, o->state, o->reason, o->run_id, o->attempts);
@@ -144,6 +152,13 @@ static furnace_hmi_command_outcome_t run(furnace_hmi_command_t command)
     }
     zassert_unreachable("no outcome for command %u", command.kind);
     return (furnace_hmi_command_outcome_t){0};
+}
+
+static uint32_t awaited_stop;
+
+static bool stop_answered(void)
+{
+    return obs.stop.submission == awaited_stop && obs.stop.state != FURNACE_HMI_COMMAND_PENDING;
 }
 
 static bool current_and_qualified(void)
@@ -274,6 +289,12 @@ static void recover_all(void)
             o = run((furnace_hmi_command_t){.kind = FURNACE_HMI_COMMAND_FAULT_RECOVERY,
                                             .fault_id = f.fault_id,
                                             .source = f.source});
+            /* Only "not yet" is tried again: the condition, or a measurement not qualified. */
+            zassert_true(o.state == FURNACE_HMI_COMMAND_ACCEPTED ||
+                             (o.state == FURNACE_HMI_COMMAND_REJECTED &&
+                              (o.reason == RECOVERY_CONDITION_ACTIVE ||
+                               o.reason == RECOVERY_DIAGNOSTICS_INVALID)),
+                         "recovery of %u: state %u reply %u", f.fault_id, o.state, o.reason);
         } while (o.state != FURNACE_HMI_COMMAND_ACCEPTED && ++tries < 15);
         zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "recovery of %u: found %u reply %u",
                       f.fault_id, o.fault_found, o.reason);
@@ -285,7 +306,7 @@ static void recover_all(void)
 static void *setup(void)
 {
     if (scenario_port != NULL) {
-        scenario_fd = nsi_host_open(scenario_port, 2 /* O_RDWR */);
+        scenario_fd = nsi_host_open(scenario_port, 2 /* O_RDWR */ | 04000 /* O_NONBLOCK */);
     }
     zassert_equal(furnace_hmi_controller_link_start(), 0);
     return NULL;
@@ -320,6 +341,41 @@ ZTEST(controller_workflows, test_a_manual_session)
     o = run((furnace_hmi_command_t){.kind = FURNACE_HMI_COMMAND_RESUME, .run_id = r});
     zassert_true(o.state == FURNACE_HMI_COMMAND_REJECTED && o.reason == REJECT_NOT_PAUSED,
                  "Resume after Stop: state %u reason %u", o.state, o.reason);
+}
+
+/*
+ * Start, then Stop before the link thread took either (the test thread runs
+ * above it): the Start is dropped and reported, the Stop sent; nothing runs
+ * (review F2: a Stop is never overtaken by an earlier command).
+ */
+ZTEST(controller_workflows, test_ab_stop_supersedes_an_unsent_start)
+{
+    const furnace_hmi_command_t start = {
+        .kind = FURNACE_HMI_COMMAND_MANUAL_START,
+        .target_decicelsius = 600,
+        .rate_decicelsius_per_min = 20,
+        .session_minutes = 60U,
+    };
+    const furnace_hmi_command_t stop_command = {.kind = FURNACE_HMI_COMMAND_STOP};
+    uint32_t start_submission;
+    uint32_t stop_submission;
+
+    prepare();
+    start_submission = furnace_hmi_controller_link_submit(&start);
+    stop_submission = furnace_hmi_controller_link_submit(&stop_command);
+    zassert_true(start_submission != 0U && stop_submission != 0U);
+    awaited_stop = stop_submission;
+    zassert_true(wait_until(stop_answered), "no Stop outcome");
+    zassert_true(obs.stop.state == FURNACE_HMI_COMMAND_REJECTED &&
+                     obs.stop.reason == REJECT_NOT_ACTIVE,
+                 "Stop with nothing running: state %u reason %u", obs.stop.state, obs.stop.reason);
+    zassert_true(obs.command_refusal.submission == start_submission &&
+                     obs.command_refusal.reason == FURNACE_HMI_COMMAND_LOCAL_SUPERSEDED_BY_STOP,
+                 "the Start was not dropped: refusal %u", obs.command_refusal.reason);
+    k_msleep(1000);
+    refresh();
+    zassert_false(obs.execution_active, "something runs");
+    zassert_false(obs.command.submission == start_submission, "the Start was sent");
 }
 
 /*
@@ -399,6 +455,9 @@ ZTEST(controller_workflows, test_c_interlock)
         if (o.state == FURNACE_HMI_COMMAND_ACCEPTED) {
             break;
         }
+        /* Only a blocked Resume is tried again, as a new operator action. */
+        zassert_true(o.state == FURNACE_HMI_COMMAND_REJECTED && o.reason == REJECT_RESUME_BLOCKED,
+                     "Resume after the interlock: state %u reason %u", o.state, o.reason);
     }
     zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "Resume after the interlock: %u",
                   o.reason);
