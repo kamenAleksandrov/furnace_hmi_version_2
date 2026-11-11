@@ -1,5 +1,45 @@
 # Project status
 
+**Fact (2026-11-11, Phase 21 M21-5c):** faults and the quality decision are on the screens.
+- **Faults dialog** (owner 2026-11-11): from a red "Faults (n)" button on Running and Manual and a
+  banner on Home; Acknowledge and Recover are requests with the controller's answer; a protective
+  trip is reset at the protection device.
+- **Decision panel** (owner 2026-11-11): cannot be closed; the fault, the controller's time left,
+  Continue and Stop.
+- **Parity:** the UI lab and the web demo simulate the same entries and a decision scenario.
+- **Evidence:** host presets, Twister, the workflow check against the real controller (6 of 6, with
+  a quality decision from furnace firmware PR #55), the M21-3 demonstration and the web smoke test
+  pass; 26 mutation probes, all killed but one equivalent. Two AI reviews in the HMI roles: the High
+  finding (the decision panel could leave the operator without Stop after a brief link loss) and the
+  Medium ones are fixed test-first.
+
+**Fact (2026-11-11, Phase 21 M21-5b):** the operator screens send commands to the controller.
+- **On Zephyr:** opening Manual asks for start readiness; Start waits for READY and asks for the
+  controller's longest session (owner 2026-11-11: no length choice, REQ-FUN-005 amended); the
+  Manual page follows and holds the controller's Manual session; retarget taps are merged while
+  one is pending; Pause, Resume and Stop are requests. Every outcome other than accepted is shown.
+- **Faulted run:** Stop and no Return Home, in the screens, the UI lab and the web demo (owner
+  2026-11-11).
+- **Evidence:** host presets, Twister, the workflow check against the real controller (5 of 5) and
+  the M21-3 demonstration pass; 33 mutation probes, all killed but one equivalent. Two AI reviews in
+  the HMI roles: the High and Medium findings, including a Pause tap that could be sent as Resume
+  and a retarget that could go out after Stop, are fixed test-first.
+- **Furnace firmware:** the two decisions are recorded as CFL-10 and CFL-11 (furnace PR #54, draft).
+
+**Fact (2026-11-11, Phase 21 M21-5a):** the controller client sends operator commands.
+- **Commands:** START_PREPARE, Manual Start, retarget and length, Pause, Resume, Continue,
+  Stop, fault acknowledgement and recovery. Owner decisions 2026-11-11: Program Start moves to
+  M21-7 (no program list before 20d), and a faulted run follows the controller everywhere.
+- **Outcomes** come only from the controller's results. Unanswered commands are retried under
+  the same request ID. An ordinary command ends unresolved when the link falls silent; a Stop
+  is retried across a reconnect.
+- **The Zephyr link thread** takes commands from the GUI context through a two-slot mailbox
+  (ordinary and Stop). The screens do not send them yet (M21-5b).
+- **Evidence:** 25 new client scenarios; 14 mutation probes, all killed; five workflows
+  against the real controller (`tools/controller_workflow_check.py`): Manual, Stop overtaking an
+  unsent Start, a sensor fault with recovery, an interlock, a protective trip. Two AI reviews in
+  the HMI roles: their High and Medium findings are fixed test-first.
+
 **Fact (2026-11-10, Phase 21 M21-2b):** the operator screens are one shared
 implementation, `app/hmi/presentation/operator`, used by the UI lab, the desktop
 program's checks and the Zephyr application.

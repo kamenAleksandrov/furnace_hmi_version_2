@@ -1,0 +1,15 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/*
+ * SIMULATION ONLY. The controller link, as in the HMI application: a host
+ * serial device given with --controller_link_port=<path> by
+ * tools/controller_workflow_check.py. No production link is implied (ADR-0006).
+ */
+/ {
+	controller_link: controller_link {
+		compatible = "zephyr,native-tty-uart";
+		status = "okay";
+		serial-port = "/tmp/furnace-hmi-controller-link";
+		current-speed = <115200>;
+	};
+};

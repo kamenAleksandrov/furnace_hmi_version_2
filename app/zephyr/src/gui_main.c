@@ -13,9 +13,9 @@
  * observation without waiting and maps it to the screens' status model. Every
  * value comes from the controller, the application links no simulator, and
  * the screens get no controller-owned content and no simulated answers: until
- * the controller provides them (M21-5, M21-7), library, log and clock are
- * shown as unavailable, and actions that would change controller state send
- * nothing.
+ * the controller provides them (M21-7), library, log and clock are shown as
+ * unavailable. Manual, Pause, Resume and Stop are commands to the controller
+ * (M21-5b); other actions that would change controller state send nothing.
  */
 
 #include <stdint.h>
@@ -33,6 +33,7 @@
 #include <lvgl.h>
 
 #include "controller_link.h"
+#include "operator_commands.h"
 
 /* The longest the GUI context sleeps between LVGL timer passes. */
 #define GUI_MAX_SLEEP_MS UINT32_C(10)
@@ -102,9 +103,15 @@ int main(void)
             furnace_hmi_controller_dashboard_state(&observation, &status);
             (void)furnace_hmi_operator_screens_update(&screens, &status);
         }
-        /* The screens raise no controller request without simulated answers; drain any. */
+        /* The operator's requests go to the link thread; their outcomes come back as feedback. */
         while (furnace_hmi_operator_screens_take_request(&screens, &request)) {
-            printk("hmi-screens: request %d not sent (not connected yet)\n", (int)request.kind);
+            furnace_hmi_command_t command;
+            const uint32_t submission =
+                furnace_hmi_operator_command_for(&request, &command)
+                    ? furnace_hmi_controller_link_submit(&command)
+                    : 0U;
+
+            furnace_hmi_operator_screens_request_submitted(&screens, request.kind, submission);
         }
         sleep_ms = lv_timer_handler();
         if (sleep_ms == LV_NO_TIMER_READY || sleep_ms > GUI_MAX_SLEEP_MS) {

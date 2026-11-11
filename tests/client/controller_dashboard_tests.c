@@ -266,6 +266,249 @@ static void long_name(void)
     EXPECT(length % 2U == 0U, "no half character");
 }
 
+/* A Manual session: the controller's target, rate and time left, and the run it is. */
+static void manual_session(void)
+{
+    current("manual session values");
+    o.session_kind = SESSION_MANUAL;
+    o.run_state = RUN_RUNNING;
+    o.execution_active = true;
+    o.run_id = 7U;
+    o.manual_target_decicelsius = 1805;
+    o.manual_rate_decicelsius_per_min = 25;
+    o.manual_remaining_s = 3000U;
+    map();
+    EXPECT(s.mode == FURNACE_HMI_MACHINE_MODE_MANUAL && s.run_id == 7U, "manual run 7");
+    EXPECT(s.manual_target_c.value == 181 &&
+               s.manual_target_c.provenance == FURNACE_HMI_VALUE_PROVENANCE_COMMANDED &&
+               s.manual_target_c.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT,
+           "target, whole degrees");
+    EXPECT(s.manual_rate_tenths_c_per_minute.value == 25 &&
+               s.manual_rate_tenths_c_per_minute.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT,
+           "rate in tenths");
+    EXPECT(s.manual_remaining_seconds.value == 3000 &&
+               s.manual_remaining_seconds.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT,
+           "time left");
+
+    current("program run: no manual values");
+    o.session_kind = SESSION_PROGRAM;
+    o.run_state = RUN_RUNNING;
+    o.manual_target_decicelsius = 1805;
+    map();
+    EXPECT(s.manual_target_c.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE &&
+               s.manual_rate_tenths_c_per_minute.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE &&
+               s.manual_remaining_seconds.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE,
+           "unavailable");
+}
+
+/* Start readiness and the Manual maximum: what a Manual Start needs (owner 2026-11-11). */
+static void start_inputs(void)
+{
+    current("start inputs");
+    o.capabilities_valid = true;
+    o.manual_max_minutes = 2880U;
+    o.store_readiness = 3U; /* READY */
+    map();
+    EXPECT(s.manual_max_minutes.value == 2880 &&
+               s.manual_max_minutes.provenance == FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED &&
+               s.manual_max_minutes.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT,
+           "manual maximum");
+    EXPECT(s.start_ready.value && s.start_ready.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT, "ready");
+
+    o.store_readiness = 2U; /* PREPARING */
+    map();
+    EXPECT(!s.start_ready.value && s.start_ready.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT, "not ready");
+
+    o.capabilities_valid = false;
+    map();
+    EXPECT(s.manual_max_minutes.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE,
+           "no maximum without capabilities");
+
+    o.store_readiness = 3U;
+    o.availability = FURNACE_HMI_STATE_AVAILABILITY_STALE;
+    map();
+    EXPECT(s.start_ready.validity == FURNACE_HMI_VALUE_VALIDITY_STALE, "stale readiness is stale");
+}
+
+/* The outcome of the operator's commands, the newest of result and local refusal. */
+static void command_feedback(void)
+{
+    current("command feedback");
+    map();
+    EXPECT(s.command_feedback.state == FURNACE_HMI_FEEDBACK_NONE &&
+               s.stop_feedback.state == FURNACE_HMI_FEEDBACK_NONE,
+           "none");
+
+    o.command = (furnace_hmi_command_outcome_t){
+        .submission = 4U, .kind = FURNACE_HMI_COMMAND_MANUAL_START, .state = FURNACE_HMI_COMMAND_PENDING};
+    map();
+    EXPECT(s.command_feedback.submission == 4U && s.command_feedback.state == FURNACE_HMI_FEEDBACK_PENDING,
+           "pending");
+    o.command.state = FURNACE_HMI_COMMAND_REJECTED;
+    o.command.reason = 19U;
+    map();
+    EXPECT(s.command_feedback.state == FURNACE_HMI_FEEDBACK_REJECTED && s.command_feedback.reason == 19U,
+           "rejected with the controller's reason");
+    o.command.state = FURNACE_HMI_COMMAND_REFUSED;
+    o.command.reason = 10U;
+    map();
+    EXPECT(s.command_feedback.state == FURNACE_HMI_FEEDBACK_REFUSED && s.command_feedback.reason == 10U,
+           "refused by the service");
+    o.command.state = FURNACE_HMI_COMMAND_UNRESOLVED;
+    o.command.unresolved_cause = FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST;
+    map();
+    EXPECT(s.command_feedback.state == FURNACE_HMI_FEEDBACK_UNRESOLVED &&
+               s.command_feedback.reason == FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST,
+           "unresolved with its cause");
+    o.command.state = FURNACE_HMI_COMMAND_ACCEPTED;
+    map();
+    EXPECT(s.command_feedback.state == FURNACE_HMI_FEEDBACK_ACCEPTED, "accepted");
+
+    o.command_refusal = (furnace_hmi_command_refusal_t){
+        .submission = 5U, .kind = FURNACE_HMI_COMMAND_PAUSE, .reason = FURNACE_HMI_COMMAND_LOCAL_BUSY};
+    map();
+    EXPECT(s.command_feedback.submission == 5U && s.command_feedback.state == FURNACE_HMI_FEEDBACK_NOT_SENT &&
+               s.command_feedback.reason == FURNACE_HMI_NOT_SENT_BUSY,
+           "a newer local refusal: not sent");
+    o.command_refusal.reason = FURNACE_HMI_COMMAND_LOCAL_SUPERSEDED_BY_STOP;
+    map();
+    EXPECT(s.command_feedback.reason == FURNACE_HMI_NOT_SENT_SUPERSEDED_BY_STOP, "superseded by Stop");
+    o.command_refusal.reason = FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT;
+    map();
+    EXPECT(s.command_feedback.reason == FURNACE_HMI_NOT_SENT_LINK, "link not current");
+    o.command_refusal.submission = 3U;
+    map();
+    EXPECT(s.command_feedback.submission == 4U && s.command_feedback.state == FURNACE_HMI_FEEDBACK_ACCEPTED,
+           "an older refusal does not hide the outcome");
+
+    o.stop = (furnace_hmi_command_outcome_t){
+        .submission = 6U, .kind = FURNACE_HMI_COMMAND_STOP, .state = FURNACE_HMI_COMMAND_UNRESOLVED,
+        .unresolved_cause = FURNACE_HMI_COMMAND_UNRESOLVED_STOP};
+    map();
+    EXPECT(s.stop_feedback.submission == 6U && s.stop_feedback.state == FURNACE_HMI_FEEDBACK_UNRESOLVED &&
+               s.stop_feedback.reason == FURNACE_HMI_COMMAND_UNRESOLVED_STOP,
+           "stop slot apart");
+    EXPECT(s.command_feedback.submission == 4U, "ordinary slot unchanged");
+
+    current("feedback while the link is lost");
+    o.availability = FURNACE_HMI_STATE_AVAILABILITY_UNAVAILABLE;
+    o.status_valid = false;
+    o.command = (furnace_hmi_command_outcome_t){
+        .submission = 8U, .kind = FURNACE_HMI_COMMAND_PAUSE, .state = FURNACE_HMI_COMMAND_UNRESOLVED,
+        .unresolved_cause = FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST};
+    map();
+    EXPECT(s.command_feedback.submission == 8U && s.command_feedback.state == FURNACE_HMI_FEEDBACK_UNRESOLVED,
+           "still reported");
+}
+
+/* The controller's fault entries as the screens show them (ADR-0018). */
+static void fault_entries(void)
+{
+    static const uint8_t recoveries[] = {1U, 2U, 3U, 5U, 6U, 4U, 99U};
+    static const furnace_hmi_fault_recovery_t mapped[] = {
+        FURNACE_HMI_FAULT_RECOVERY_NOT_REQUIRED, FURNACE_HMI_FAULT_RECOVERY_AWAIT_CLEAR,
+        FURNACE_HMI_FAULT_RECOVERY_RESUME, FURNACE_HMI_FAULT_RECOVERY_PROTECTIVE_EXTERNAL,
+        FURNACE_HMI_FAULT_RECOVERY_OPERATOR, FURNACE_HMI_FAULT_RECOVERY_UNKNOWN,
+        FURNACE_HMI_FAULT_RECOVERY_UNKNOWN,
+    };
+
+    current("fault entries");
+    map();
+    EXPECT(!s.faults_known && s.fault_count == 0U, "unknown without a list");
+    o.faults_valid = true;
+    o.fault_count = (uint8_t)sizeof(recoveries);
+    for (uint8_t i = 0U; i < o.fault_count; i++) {
+        o.faults[i] = (furnace_hmi_controller_fault_t){
+            .fault_id = (uint8_t)(i + 1U), .source = 2U, .fault_class = 3U,
+            .condition_active = (i == 0U), .latched = (i == 1U), .acknowledged = (i == 2U),
+            .recovery = recoveries[i], .continuable = (i == 3U)};
+    }
+    map();
+    EXPECT(s.faults_known && s.fault_count == o.fault_count && s.fault_total == o.fault_count,
+           "every entry");
+    for (uint8_t i = 0U; i < s.fault_count; i++) {
+        EXPECT(s.faults[i].fault_id == i + 1U && s.faults[i].source == 2U &&
+                   s.faults[i].recovery == mapped[i],
+               "identity and recovery as received");
+    }
+    EXPECT(s.faults[0].active && !s.faults[1].active && s.faults[1].latched &&
+               s.faults[2].acknowledged && s.faults[3].continuable && !s.faults[0].continuable,
+           "flags");
+
+    o.fault_count = FURNACE_HMI_CONTROLLER_MAX_FAULTS;
+    map();
+    EXPECT(s.fault_count == FURNACE_HMI_DASHBOARD_MAX_FAULTS &&
+               s.fault_total == FURNACE_HMI_CONTROLLER_MAX_FAULTS,
+           "bounded, with the total kept");
+
+    o.faults_outdated = true;
+    map();
+    EXPECT(s.faults_known && s.faults_outdated, "an outdated list is still shown until the new one");
+    o.faults_valid = false;
+    map();
+    EXPECT(!s.faults_known && s.fault_count == 0U, "no list, no entries");
+}
+
+/* The decision: its time left and the fault it is about (ADR-0019). */
+static void decision(void)
+{
+    current("awaiting a decision");
+    o.session_kind = SESSION_MANUAL;
+    o.run_state = RUN_AWAITING_DECISION;
+    o.execution_active = true;
+    o.decision_remaining_s = 95U;
+    o.continuable_ids = (1U << 10) | (1U << 11);
+    map();
+    EXPECT(s.awaiting_decision && s.decision_remaining_seconds.value == 95 &&
+               s.decision_remaining_seconds.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT,
+           "time left");
+    EXPECT(s.decision_fault_id == 10U, "the lowest continuable fault");
+
+    o.run_state = RUN_RUNNING;
+    map();
+    EXPECT(!s.awaiting_decision && s.decision_fault_id == 0U &&
+               s.decision_remaining_seconds.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE,
+           "no decision while running");
+}
+
+/* HMI-FAULT-CATEGORY: the screens' alert kinds from the controller's inhibiting faults. */
+static void fault_kinds(void)
+{
+    static const struct {
+        uint8_t id;
+        furnace_hmi_fault_kind_t kind;
+    } cases[] = {
+        {16U, FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE}, {1U, FURNACE_HMI_FAULT_KIND_SENSOR},
+        {2U, FURNACE_HMI_FAULT_KIND_SENSOR},           {3U, FURNACE_HMI_FAULT_KIND_SENSOR},
+        {11U, FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED}, {8U, FURNACE_HMI_FAULT_KIND_NONE},
+        {10U, FURNACE_HMI_FAULT_KIND_NONE},             {18U, FURNACE_HMI_FAULT_KIND_NONE},
+        {7U, FURNACE_HMI_FAULT_KIND_NONE},              {6U, FURNACE_HMI_FAULT_KIND_NONE},
+    };
+
+    current("fault kinds");
+    o.session_kind = SESSION_PROGRAM;
+    o.run_state = RUN_FAULTED;
+    for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        o.inhibit_ids = 1U << cases[i].id;
+        map();
+        EXPECT(s.fault_kind == cases[i].kind && s.fault_id == cases[i].id, "kind and fault");
+    }
+    o.inhibit_ids = (1U << 16) | (1U << 3);
+    map();
+    EXPECT(s.fault_kind == FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE && s.fault_id == 16U,
+           "over-temperature before a sensor fault");
+    o.inhibit_ids = (1U << 7) | (1U << 6) | (1U << 2);
+    map();
+    EXPECT(s.fault_id == 7U, "the protective trip leads");
+    o.inhibit_ids = (1U << 11) | (1U << 6);
+    map();
+    EXPECT(s.fault_id == 6U, "otherwise the lowest fault ID");
+    o.run_state = RUN_RUNNING;
+    o.inhibit_ids = 1U << 16;
+    map();
+    EXPECT(s.fault_kind == FURNACE_HMI_FAULT_KIND_NONE && s.fault_id == 0U, "no kind while running");
+}
+
 int controller_dashboard_tests_run(void)
 {
     failures = 0;
@@ -280,5 +523,11 @@ int controller_dashboard_tests_run(void)
     unknown_codes();
     execution_keeps_running();
     long_name();
+    manual_session();
+    start_inputs();
+    command_feedback();
+    fault_entries();
+    decision();
+    fault_kinds();
     return failures;
 }

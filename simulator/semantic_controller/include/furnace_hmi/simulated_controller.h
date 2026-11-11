@@ -26,6 +26,8 @@ typedef enum {
     FURNACE_HMI_SIM_SCENARIO_HEATING_SLOW,
     FURNACE_HMI_SIM_SCENARIO_SENSOR_FAULT,
     FURNACE_HMI_SIM_SCENARIO_POWER_LOSS,
+    /* A quality fault awaits the operator's decision (Phase 21 M21-5c). */
+    FURNACE_HMI_SIM_SCENARIO_DECISION,
     FURNACE_HMI_SIM_SCENARIO_COUNT,
 } furnace_hmi_sim_scenario_t;
 
@@ -58,6 +60,9 @@ typedef struct {
     uint32_t run_seconds;
     uint32_t cooling_seconds;
     uint32_t next_program_id;
+    /* Latched fault entries outlive the run that raised them (M21-5c). */
+    uint8_t kept_fault_count;
+    furnace_hmi_fault_entry_t kept_faults[FURNACE_HMI_DASHBOARD_MAX_FAULTS];
 } furnace_hmi_simulator_t;
 
 const char *furnace_hmi_sim_scenario_name(furnace_hmi_sim_scenario_t scenario);
@@ -104,6 +109,16 @@ bool furnace_hmi_simulator_stop(furnace_hmi_simulator_t *simulator);
 
 /** Close a run (stopped, cooling, completed or faulted) and return to idle. */
 bool furnace_hmi_simulator_close_run(furnace_hmi_simulator_t *simulator);
+
+/*
+ * The fault commands and the decision, as the controller would answer them
+ * (simulation only, M21-5c). Acknowledge marks the entry seen; Recover removes
+ * an acknowledged latched entry once no run is active; Continue releases the
+ * decision and the run goes on. False when nothing changed.
+ */
+bool furnace_hmi_simulator_fault_acknowledge(furnace_hmi_simulator_t *simulator, uint8_t fault_id, uint8_t source);
+bool furnace_hmi_simulator_fault_recover(furnace_hmi_simulator_t *simulator, uint8_t fault_id, uint8_t source);
+bool furnace_hmi_simulator_continue(furnace_hmi_simulator_t *simulator);
 
 const furnace_hmi_dashboard_state_t *furnace_hmi_simulator_state(
     const furnace_hmi_simulator_t *simulator
