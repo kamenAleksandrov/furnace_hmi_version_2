@@ -150,6 +150,35 @@ typedef struct {
     uint8_t reason;
 } furnace_hmi_command_feedback_t;
 
+/** How a fault entry may end, as the controller reports it (ADR-0018). */
+typedef enum {
+    FURNACE_HMI_FAULT_RECOVERY_UNKNOWN = 0,
+    /** A warning: nothing to recover. */
+    FURNACE_HMI_FAULT_RECOVERY_NOT_REQUIRED,
+    /** Recoverable, its condition still active. */
+    FURNACE_HMI_FAULT_RECOVERY_AWAIT_CLEAR,
+    /** Recoverable and cleared: Resume after revalidation. */
+    FURNACE_HMI_FAULT_RECOVERY_RESUME,
+    /** A latched fault the operator may ask the controller to recover. */
+    FURNACE_HMI_FAULT_RECOVERY_OPERATOR,
+    /** A protective trip: reset outside software. */
+    FURNACE_HMI_FAULT_RECOVERY_PROTECTIVE_EXTERNAL,
+    FURNACE_HMI_FAULT_RECOVERY_COUNT,
+} furnace_hmi_fault_recovery_t;
+
+#define FURNACE_HMI_DASHBOARD_MAX_FAULTS 12U
+
+/** One controller fault entry; fault_id and source name it in commands. */
+typedef struct {
+    uint8_t fault_id;
+    uint8_t source;
+    bool active;
+    bool latched;
+    bool acknowledged;
+    bool continuable;
+    furnace_hmi_fault_recovery_t recovery;
+} furnace_hmi_fault_entry_t;
+
 typedef struct {
     uint32_t elapsed_seconds;
     int32_t planned_temperature_c;
@@ -230,6 +259,20 @@ typedef struct {
     /** The operator's latest ordinary command and latest Stop. */
     furnace_hmi_command_feedback_t command_feedback;
     furnace_hmi_command_feedback_t stop_feedback;
+
+    /**
+     * The controller's fault entries (M21-5c). Unknown until the controller's
+     * list arrives; at most FURNACE_HMI_DASHBOARD_MAX_FAULTS of fault_total.
+     */
+    bool faults_known;
+    uint8_t fault_count;
+    uint8_t fault_total;
+    furnace_hmi_fault_entry_t faults[FURNACE_HMI_DASHBOARD_MAX_FAULTS];
+    /** The controller fault behind fault_kind (0 none). */
+    uint8_t fault_id;
+    /** Awaiting a decision: the time left, and the fault it is about (0 unknown). */
+    furnace_hmi_i32_value_t decision_remaining_seconds;
+    uint8_t decision_fault_id;
 
     size_t graph_sample_count;
     furnace_hmi_graph_sample_t graph_samples[FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS];

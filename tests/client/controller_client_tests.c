@@ -291,6 +291,9 @@ static void send_status(uint32_t sequence, int32_t temperature, uint8_t validity
     s->run_status.manual_target = 1805;
     s->run_status.manual_rate = 25;
     s->run_status.manual_remaining_s = 3000U;
+    s->run_status.decision_remaining_s = 95U;
+    s->fault_status.resume_allowed = true;
+    s->fault_status.continuable_ids = 0x400U;
     s->fault_status.unacknowledged_count = 1U;
     s->fault_status.latched_class = 2U;
     s->fault_status.inhibit_ids = 0x8U;
@@ -325,6 +328,10 @@ static void send_fault_list(uint32_t request_id, uint32_t status_sequence, uint8
         l->entries[i].latched = true;
         l->entries[i].acknowledged = false;
         l->entries[i].occurrences = 1U;
+        l->entries[i].recovery = 6U; /* OPERATOR_REQUEST */
+        l->entries[i].category = 1U; /* QUALITY */
+        l->entries[i].continuable = true;
+        l->entries[i].continued = (i == 0U);
     }
     send_out();
 }
@@ -447,6 +454,11 @@ static void handshake_to_current(void)
     EXPECT(o->faults_valid && o->fault_count == 1U && o->faults[0].fault_id == 1U &&
                o->faults[0].latched && o->faults[0].condition_active,
            "fault list");
+    EXPECT(o->faults[0].recovery == 6U && o->faults[0].category == 1U && o->faults[0].continuable &&
+               o->faults[0].continued,
+           "fault entry: recovery, category, continuation");
+    EXPECT(o->decision_remaining_s == 95U && o->resume_allowed && o->continuable_ids == 0x400U,
+           "decision and resume fields");
     EXPECT(o->run_event_sequence == 5U && o->fault_event_sequence == 3U, "event sequences");
     EXPECT(sent_since(0U, FURNACE_WIRE_MSG_SNAPSHOT_REQUEST) == 0U,
            "no request: the controller sent the snapshot");

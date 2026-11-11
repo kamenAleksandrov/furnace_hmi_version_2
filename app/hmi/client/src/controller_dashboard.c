@@ -28,6 +28,17 @@ enum {
 #define FAN_NOT_SPINNING 1U
 #define FAN_SPINNING 2U
 #define STORE_READY 3U
+/* Fault IDs and recovery codes (controller interface: Fault management). */
+#define FAULT_ID_LIMIT 32U
+#define FAULT_MEASUREMENT_INVALID 1U
+#define FAULT_MEASUREMENT_STALE 2U
+#define FAULT_SENSOR_CHANNEL 3U
+#define FAULT_HOLDBACK 8U
+#define FAULT_CUMULATIVE_HOLDBACK 9U
+#define FAULT_LAG 10U
+#define FAULT_TARGET_WAIT 11U
+#define FAULT_OVER_TEMPERATURE 16U
+#define FAULT_HOLD_UNDERSHOOT 18U
 
 static int32_t whole_degrees(int32_t decicelsius)
 {
@@ -112,6 +123,79 @@ static void map_run(const furnace_hmi_controller_observation_t *o, furnace_hmi_d
                                                   : FURNACE_HMI_RUN_PHASE_NONE;
 }
 
+/* The lowest fault ID in a set (bit per ID); 0 when empty. */
+static uint8_t lowest_fault(uint32_t ids)
+{
+    for (uint8_t id = 1U; id < FAULT_ID_LIMIT; id++) {
+        if ((ids & (1U << id)) != 0U) {
+            return id;
+        }
+    }
+    return 0U;
+}
+
+/*
+ * The screens' alert kind of a controller fault (HMI-FAULT-CATEGORY). Only
+ * faults that clearly match a kind map; every other one has none, and the
+ * Faults dialog names it from its ID.
+ */
+static furnace_hmi_fault_kind_t fault_kind_of(uint8_t id)
+{
+    switch (id) {
+    case FAULT_OVER_TEMPERATURE:
+        return FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE;
+    case FAULT_MEASUREMENT_INVALID:
+    case FAULT_MEASUREMENT_STALE:
+    case FAULT_SENSOR_CHANNEL:
+        return FURNACE_HMI_FAULT_KIND_SENSOR;
+    case FAULT_HOLDBACK:
+    case FAULT_CUMULATIVE_HOLDBACK:
+    case FAULT_LAG:
+    case FAULT_TARGET_WAIT:
+    case FAULT_HOLD_UNDERSHOOT:
+        return FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED;
+    default:
+        return FURNACE_HMI_FAULT_KIND_NONE;
+    }
+}
+
+static furnace_hmi_fault_recovery_t recovery_of(uint8_t code)
+{
+    switch (code) {
+    case 1U:
+        return FURNACE_HMI_FAULT_RECOVERY_NOT_REQUIRED;
+    case 2U:
+        return FURNACE_HMI_FAULT_RECOVERY_AWAIT_CLEAR;
+    case 3U:
+        return FURNACE_HMI_FAULT_RECOVERY_RESUME;
+    case 5U:
+        return FURNACE_HMI_FAULT_RECOVERY_PROTECTIVE_EXTERNAL;
+    case 6U:
+        return FURNACE_HMI_FAULT_RECOVERY_OPERATOR;
+    default:
+        return FURNACE_HMI_FAULT_RECOVERY_UNKNOWN; /* 4 is no longer produced */
+    }
+}
+
+static void map_faults(const furnace_hmi_controller_observation_t *o, furnace_hmi_dashboard_state_t *s)
+{
+    if (!o->faults_valid) {
+        return;
+    }
+    s->faults_known = true;
+    s->fault_total = o->fault_count;
+    s->fault_count = (o->fault_count < FURNACE_HMI_DASHBOARD_MAX_FAULTS) ? o->fault_count
+                                                                       : FURNACE_HMI_DASHBOARD_MAX_FAULTS;
+    for (uint8_t i = 0U; i < s->fault_count; i++) {
+        const furnace_hmi_controller_fault_t *f = &o->faults[i];
+
+        s->faults[i] = (furnace_hmi_fault_entry_t){
+            .fault_id = f->fault_id, .source = f->source, .active = f->condition_active,
+            .latched = f->latched, .acknowledged = f->acknowledged, .continuable = f->continuable,
+            .recovery = recovery_of(f->recovery)};
+    }
+}
+
 /* Submission numbers count up from 1 and may wrap: a is newer than b. */
 static bool newer(uint32_t a, uint32_t b)
 {
@@ -182,6 +266,16 @@ void furnace_hmi_controller_dashboard_state(const furnace_hmi_controller_observa
     s->state_revision = o->status_sequence;
 
     map_run(o, s);
+    map_faults(o, s);
+    if (s->run_state == FURNACE_HMI_RUN_STATE_FAULT) {
+        s->fault_id = lowest_fault(o->inhibit_ids);
+        s->fault_kind = fault_kind_of(s->fault_id);
+    }
+    if (s->awaiting_decision) {
+        s->decision_remaining_seconds = i32_value((int32_t)o->decision_remaining_s,
+                                                  FURNACE_HMI_VALUE_PROVENANCE_MEASURED, validity);
+        s->decision_fault_id = lowest_fault(o->continuable_ids);
+    }
     s->navigation_permitted = (furnace_hmi_bool_value_t){
         .value = o->navigation_permitted, .provenance = FURNACE_HMI_VALUE_PROVENANCE_CONFIGURED,
         .validity = validity};

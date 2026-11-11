@@ -401,6 +401,106 @@ static void command_feedback(void)
            "still reported");
 }
 
+/* The controller's fault entries as the screens show them (ADR-0018). */
+static void fault_entries(void)
+{
+    static const uint8_t recoveries[] = {1U, 2U, 3U, 5U, 6U, 4U, 99U};
+    static const furnace_hmi_fault_recovery_t mapped[] = {
+        FURNACE_HMI_FAULT_RECOVERY_NOT_REQUIRED, FURNACE_HMI_FAULT_RECOVERY_AWAIT_CLEAR,
+        FURNACE_HMI_FAULT_RECOVERY_RESUME, FURNACE_HMI_FAULT_RECOVERY_PROTECTIVE_EXTERNAL,
+        FURNACE_HMI_FAULT_RECOVERY_OPERATOR, FURNACE_HMI_FAULT_RECOVERY_UNKNOWN,
+        FURNACE_HMI_FAULT_RECOVERY_UNKNOWN,
+    };
+
+    current("fault entries");
+    map();
+    EXPECT(!s.faults_known && s.fault_count == 0U, "unknown without a list");
+    o.faults_valid = true;
+    o.fault_count = (uint8_t)sizeof(recoveries);
+    for (uint8_t i = 0U; i < o.fault_count; i++) {
+        o.faults[i] = (furnace_hmi_controller_fault_t){
+            .fault_id = (uint8_t)(i + 1U), .source = 2U, .fault_class = 3U,
+            .condition_active = (i == 0U), .latched = (i == 1U), .acknowledged = (i == 2U),
+            .recovery = recoveries[i], .continuable = (i == 3U)};
+    }
+    map();
+    EXPECT(s.faults_known && s.fault_count == o.fault_count && s.fault_total == o.fault_count,
+           "every entry");
+    for (uint8_t i = 0U; i < s.fault_count; i++) {
+        EXPECT(s.faults[i].fault_id == i + 1U && s.faults[i].source == 2U &&
+                   s.faults[i].recovery == mapped[i],
+               "identity and recovery as received");
+    }
+    EXPECT(s.faults[0].active && !s.faults[1].active && s.faults[1].latched &&
+               s.faults[2].acknowledged && s.faults[3].continuable && !s.faults[0].continuable,
+           "flags");
+
+    o.fault_count = FURNACE_HMI_CONTROLLER_MAX_FAULTS;
+    map();
+    EXPECT(s.fault_count == FURNACE_HMI_DASHBOARD_MAX_FAULTS &&
+               s.fault_total == FURNACE_HMI_CONTROLLER_MAX_FAULTS,
+           "bounded, with the total kept");
+
+    o.faults_outdated = true;
+    map();
+    EXPECT(s.faults_known, "an outdated list is still shown until the new one");
+    o.faults_valid = false;
+    map();
+    EXPECT(!s.faults_known && s.fault_count == 0U, "no list, no entries");
+}
+
+/* The decision: its time left and the fault it is about (ADR-0019). */
+static void decision(void)
+{
+    current("awaiting a decision");
+    o.session_kind = SESSION_MANUAL;
+    o.run_state = RUN_AWAITING_DECISION;
+    o.execution_active = true;
+    o.decision_remaining_s = 95U;
+    o.continuable_ids = (1U << 10) | (1U << 11);
+    map();
+    EXPECT(s.awaiting_decision && s.decision_remaining_seconds.value == 95 &&
+               s.decision_remaining_seconds.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT,
+           "time left");
+    EXPECT(s.decision_fault_id == 10U, "the lowest continuable fault");
+
+    o.run_state = RUN_RUNNING;
+    map();
+    EXPECT(!s.awaiting_decision && s.decision_fault_id == 0U &&
+               s.decision_remaining_seconds.validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE,
+           "no decision while running");
+}
+
+/* HMI-FAULT-CATEGORY: the screens' alert kinds from the controller's inhibiting faults. */
+static void fault_kinds(void)
+{
+    static const struct {
+        uint8_t id;
+        furnace_hmi_fault_kind_t kind;
+    } cases[] = {
+        {16U, FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE}, {1U, FURNACE_HMI_FAULT_KIND_SENSOR},
+        {2U, FURNACE_HMI_FAULT_KIND_SENSOR},           {3U, FURNACE_HMI_FAULT_KIND_SENSOR},
+        {11U, FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED}, {8U, FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED},
+        {7U, FURNACE_HMI_FAULT_KIND_NONE},              {6U, FURNACE_HMI_FAULT_KIND_NONE},
+    };
+
+    current("fault kinds");
+    o.session_kind = SESSION_PROGRAM;
+    o.run_state = RUN_FAULTED;
+    for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        o.inhibit_ids = 1U << cases[i].id;
+        map();
+        EXPECT(s.fault_kind == cases[i].kind && s.fault_id == cases[i].id, "kind and fault");
+    }
+    o.inhibit_ids = (1U << 16) | (1U << 3);
+    map();
+    EXPECT(s.fault_kind == FURNACE_HMI_FAULT_KIND_SENSOR && s.fault_id == 3U, "the lowest fault ID");
+    o.run_state = RUN_RUNNING;
+    o.inhibit_ids = 1U << 16;
+    map();
+    EXPECT(s.fault_kind == FURNACE_HMI_FAULT_KIND_NONE && s.fault_id == 0U, "no kind while running");
+}
+
 int controller_dashboard_tests_run(void)
 {
     failures = 0;
@@ -418,5 +518,8 @@ int controller_dashboard_tests_run(void)
     manual_session();
     start_inputs();
     command_feedback();
+    fault_entries();
+    decision();
+    fault_kinds();
     return failures;
 }

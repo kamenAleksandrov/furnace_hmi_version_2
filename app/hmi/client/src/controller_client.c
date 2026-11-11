@@ -761,6 +761,9 @@ static void copy_status(furnace_hmi_controller_observation_t *o, const struct fu
     o->heating_inhibited = s->fault_status.heating_inhibited;
     o->latched_class = s->fault_status.latched_class;
     o->inhibit_ids = s->fault_status.inhibit_ids;
+    o->continuable_ids = s->fault_status.continuable_ids;
+    o->resume_allowed = s->fault_status.resume_allowed;
+    o->decision_remaining_s = s->run_status.decision_remaining_s;
     o->unacknowledged_faults = s->fault_status.unacknowledged_count;
     o->session_fresh = s->controller.session_fresh;
     o->store_readiness = s->controller.store_readiness;
@@ -842,6 +845,10 @@ static void on_fault_list(furnace_hmi_controller_client_t *c,
         f->condition_active = e->condition_active;
         f->latched = e->latched;
         f->acknowledged = e->acknowledged;
+        f->recovery = e->recovery;
+        f->category = e->category;
+        f->continuable = e->continuable;
+        f->continued = e->continued;
     }
 }
 

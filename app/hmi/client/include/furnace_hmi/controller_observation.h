@@ -64,6 +64,13 @@ typedef struct {
     bool condition_active;
     bool latched;
     bool acknowledged;
+    /** Recovery eligibility (controller interface: Fault management), as received. */
+    uint8_t recovery;
+    /** QUALITY 1, EQUIPMENT 2, SAFETY 3, OPERATIONAL 4; 0 none. */
+    uint8_t category;
+    /** The policy permits a Continue; this occurrence was continued. */
+    bool continuable;
+    bool continued;
 } furnace_hmi_controller_fault_t;
 
 /**
@@ -134,12 +141,17 @@ typedef struct {
     int32_t manual_target_decicelsius;
     int32_t manual_rate_decicelsius_per_min;
     uint32_t manual_remaining_s;
+    /** AWAITING_DECISION: the time left to decide. */
+    uint32_t decision_remaining_s;
     bool setpoint_valid;
     int32_t setpoint_decicelsius;
     bool heating_requested;
     bool heating_inhibited;
     uint8_t latched_class;
     uint32_t inhibit_ids;
+    /** Inhibiting quality faults a Continue may release (bit per fault ID). */
+    uint32_t continuable_ids;
+    bool resume_allowed;
     uint8_t unacknowledged_faults;
     bool session_fresh;
     uint8_t store_readiness;

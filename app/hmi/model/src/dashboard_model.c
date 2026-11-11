@@ -59,6 +59,7 @@ void furnace_hmi_dashboard_state_initialize(furnace_hmi_dashboard_state_t *state
     state->manual_remaining_seconds.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
     state->manual_max_minutes.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
     state->start_ready.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
+    state->decision_remaining_seconds.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
 }
 
 bool furnace_hmi_dashboard_state_is_well_formed(
@@ -97,6 +98,8 @@ bool furnace_hmi_dashboard_state_is_well_formed(
         !valid_bool_value(&state->start_ready) ||
         state->command_feedback.state >= FURNACE_HMI_FEEDBACK_COUNT ||
         state->stop_feedback.state >= FURNACE_HMI_FEEDBACK_COUNT ||
+        state->fault_count > FURNACE_HMI_DASHBOARD_MAX_FAULTS ||
+        !valid_i32_value(&state->decision_remaining_seconds) ||
         !has_terminator(state->program_name, sizeof(state->program_name)) ||
         !has_terminator(state->stage_name, sizeof(state->stage_name))) {
         return false;
