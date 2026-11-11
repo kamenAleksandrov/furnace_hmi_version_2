@@ -388,6 +388,41 @@ commands and operator workflows stay in M21-5 and later.
     14 mutation probes (13 of the client, 1 of the mailbox through the workflow check), all
     killed.
 
+- 2026-11-11, M21-5b (draft): **the screens** (M21-5b design above). Owner decisions 2026-11-11:
+  no Manual length choice (REQ-FUN-005 amended); retarget taps merged.
+  - **Screens:** Manual Start, retarget, Pause, Resume and Stop are requests on Zephyr; a
+    controller Manual session holds the Manual page; every outcome other than accepted is shown.
+  - **Model and adapter:** the run ID, the Manual values, start readiness, the Manual maximum and
+    the feedback of both slots, with the HMI's own not-sent reasons.
+  - **Zephyr:** `app/zephyr/src/operator_commands.c` maps a request to a command; `gui_main.c`
+    hands it to the mailbox and reports its submission number.
+  - **Faulted run:** Stop and no Return Home in the screens, the UI lab and the web demo; the UX
+    baseline is amended.
+  - **Reviews** (AI agents in the HMI roles). Fixed test-first, each with a mutation probe that
+    the tests kill:
+    - a Manual Pause tap could be sent as Resume when the controller paused the session before
+      the tap was handled (High);
+    - a merged retarget could go out after Stop; a Manual Stop tap could be lost behind another
+      tap (Medium-High);
+    - a merged tap outlived its session; a faulted session offered the steppers; Pause and Resume
+      were offered while awaiting a decision (Medium);
+    - requests now name the run shown; the left-session mark ends when the controller leaves
+      Manual; the not-sent reasons are the model's (Low);
+    - the UI lab's smoke test still expected Return Home on a faulted run, and the web demo showed
+      Return Home on a run stopped and then faulted.
+
+    Kept: the Running page ignores a Pause or Resume tap while a command is pending instead of
+    disabling the button (program runs cannot start before M21-7); a request the host cannot map
+    is reported as "busy" (unreachable).
+  - **Evidence:** `host-msvc-core-debug` 15 of 15; `host-msvc-desktop-debug` and `host-debug` (GCC)
+    18 of 18; the three UI lab presets 17 of 17 each; Twister in WSL on both native_sim variants,
+    12 of 12 executed cases; Twister on Windows, `qemu_x86`, 4 configurations built (none run on
+    Windows); the workflow check 5 of 5, with Manual started at the controller's maximum; the
+    M21-3 demonstration 10 of 10; the web demo smoke test; 33 mutation probes (19 of the first
+    implementation, 14 of the review fixes), all killed but one equivalent mutant (the flush's own
+    Stop check, which the earlier Stop checks make unreachable). UI lab captures against M21-5a:
+    only the four faulted-run captures change.
+
 - 2026-11-10, M21-2b (draft): **the operator screens are shared** (design above).
   - **Moved without change first:** all 279 lab captures (93 at 800x480, 800x640 and 1024x600)
     were byte-identical after the move and after the content seam.

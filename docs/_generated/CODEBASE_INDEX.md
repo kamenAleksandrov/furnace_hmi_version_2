@@ -9,10 +9,10 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 369 |
-| Git-tracked files | 369 |
+| Repository files | 371 |
+| Git-tracked files | 371 |
 | Git-untracked files | 0 |
-| Manually maintained files | 340 |
+| Manually maintained files | 342 |
 | Generated files | 29 |
 | Modules | 40 |
 | Build targets | 120 |
@@ -50,7 +50,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/presentation` | 99 | build, configuration, documentation, header, other, source |
 | `app/hmi/protocol` | 9 | build, configuration, documentation, header, source |
 | `app/hmi/transport` | 4 | build, header, source |
-| `app/zephyr` | 10 | board, build, configuration, header, source |
+| `app/zephyr` | 12 | board, build, configuration, header, source |
 | `docs` | 3 | documentation |
 | `docs/.obsidian` | 4 | documentation |
 | `docs/00-project` | 5 | documentation |
@@ -382,6 +382,8 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/zephyr/src/controller_link.h` | header | `app/zephyr` | manual | tracked |
 | `app/zephyr/src/gui_main.c` | source | `app/zephyr` | manual | tracked |
 | `app/zephyr/src/main.c` | source | `app/zephyr` | manual | tracked |
+| `app/zephyr/src/operator_commands.c` | source | `app/zephyr` | manual | tracked |
+| `app/zephyr/src/operator_commands.h` | header | `app/zephyr` | manual | tracked |
 | `docs/.obsidian/app.json` | documentation | `docs/.obsidian` | manual | tracked |
 | `docs/.obsidian/appearance.json` | documentation | `docs/.obsidian` | manual | tracked |
 | `docs/.obsidian/core-plugins.json` | documentation | `docs/.obsidian` | manual | tracked |

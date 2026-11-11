@@ -1,5 +1,18 @@
 # Project status
 
+**Fact (2026-11-11, Phase 21 M21-5b):** the operator screens send commands to the controller.
+- **On Zephyr:** opening Manual asks for start readiness; Start waits for READY and asks for the
+  controller's longest session (owner 2026-11-11: no length choice, REQ-FUN-005 amended); the
+  Manual page follows and holds the controller's Manual session; retarget taps are merged while
+  one is pending; Pause, Resume and Stop are requests. Every outcome other than accepted is shown.
+- **Faulted run:** Stop and no Return Home, in the screens, the UI lab and the web demo (owner
+  2026-11-11).
+- **Evidence:** host presets, Twister, the workflow check against the real controller (5 of 5) and
+  the M21-3 demonstration pass; 33 mutation probes, all killed but one equivalent. Two AI reviews in
+  the HMI roles: the High and Medium findings, including a Pause tap that could be sent as Resume
+  and a retarget that could go out after Stop, are fixed test-first.
+- **Furnace firmware:** the two decisions are recorded as CFL-10 and CFL-11 (furnace PR #54, draft).
+
 **Fact (2026-11-11, Phase 21 M21-5a):** the controller client sends operator commands.
 - **Commands:** START_PREPARE, Manual Start, retarget and length, Pause, Resume, Continue,
   Stop, fault acknowledgement and recovery. Owner decisions 2026-11-11: Program Start moves to
