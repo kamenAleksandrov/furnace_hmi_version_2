@@ -47,6 +47,10 @@ typedef struct {
     uint16_t sent[SENT_CAPACITY];
     size_t sent_count;
     bool forbidden_sent;
+    /* Command scenarios (M21-5) allow commands; the newest one the client sent. */
+    bool commands_allowed;
+    uint16_t last_command_type;
+    struct furnace_wire_message last_command;
 } fixture_t;
 
 static fixture_t fx;
@@ -91,16 +95,6 @@ static void drain_client(void)
             if (furnace_wire_rx_feed(&fx.rx, bytes[i], &frame) != FURNACE_WIRE_RX_FRAME) {
                 continue;
             }
-            switch (frame.msg_type) {
-            case FURNACE_WIRE_MSG_HELLO:
-            case FURNACE_WIRE_MSG_HEARTBEAT:
-            case FURNACE_WIRE_MSG_SNAPSHOT_REQUEST:
-            case FURNACE_WIRE_MSG_CAPABILITIES_REQUEST:
-                break;
-            default:
-                fx.forbidden_sent = true;
-                break;
-            }
             if (fx.sent_count < SENT_CAPACITY) {
                 fx.sent[fx.sent_count++] = frame.msg_type;
             }
@@ -108,6 +102,20 @@ static void drain_client(void)
                                             &fx.in) != FURNACE_WIRE_OK) {
                 fx.forbidden_sent = true;
                 continue;
+            }
+            switch (frame.msg_type) {
+            case FURNACE_WIRE_MSG_HELLO:
+            case FURNACE_WIRE_MSG_HEARTBEAT:
+            case FURNACE_WIRE_MSG_SNAPSHOT_REQUEST:
+            case FURNACE_WIRE_MSG_CAPABILITIES_REQUEST:
+                break;
+            default:
+                if (!fx.commands_allowed) {
+                    fx.forbidden_sent = true;
+                }
+                fx.last_command_type = frame.msg_type;
+                fx.last_command = fx.in;
+                break;
             }
             if (frame.msg_type == FURNACE_WIRE_MSG_HELLO) {
                 fx.last_hello = fx.in.u.hello;
@@ -1039,9 +1047,494 @@ static void older_periodic_status_recovers(void)
     end();
 }
 
+/* ---- commands (M21-5) ------------------------------------------------------------------- */
+
+#define RUN_COMMAND_PAUSE 1U
+#define RUN_COMMAND_STOP 3U
+#define RUN_COMMAND_MANUAL_START 6U
+#define REJECT_QUEUE_FULL 5U
+#define REJECT_STOP_UNRESOLVED 13U
+#define RECOVERY_CONDITION_ACTIVE 2U
+#define RECOVERY_RECOVERED 7U
+
+static uint32_t status_sequence;
+
+/* Synchronize with session A, commands allowed. */
+static void begin_commands(const char *name)
+{
+    begin(name);
+    fx.commands_allowed = true;
+    status_sequence = 10U;
+    synchronize(SESSION_A, status_sequence);
+}
+
+/* Advance ms with the controller's periodic STATUS, so the link stays current. */
+static void keep_current(uint32_t ms)
+{
+    do {
+        const uint32_t step = (ms > 200U) ? 200U : ms;
+
+        status_sequence++;
+        send_status(status_sequence, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+        advance(step);
+        ms -= step;
+    } while (ms > 0U);
+}
+
+/* The envelope of the newest command the client sent. */
+static const struct furnace_wire_envelope *last_envelope(void)
+{
+    const struct furnace_wire_message *m = &fx.last_command;
+
+    switch (fx.last_command_type) {
+    case FURNACE_WIRE_MSG_START_PREPARE:
+        return &m->u.start_prepare.envelope;
+    case FURNACE_WIRE_MSG_MANUAL_START:
+        return &m->u.manual_start.envelope;
+    case FURNACE_WIRE_MSG_MANUAL_RETARGET:
+        return &m->u.manual_retarget.envelope;
+    case FURNACE_WIRE_MSG_MANUAL_SET_LENGTH:
+        return &m->u.manual_set_length.envelope;
+    case FURNACE_WIRE_MSG_RUN_PAUSE:
+        return &m->u.run_pause.envelope;
+    case FURNACE_WIRE_MSG_RESUME_REQUEST:
+        return &m->u.resume_request.envelope;
+    case FURNACE_WIRE_MSG_RUN_CONTINUE:
+        return &m->u.run_continue.envelope;
+    case FURNACE_WIRE_MSG_RUN_STOP:
+        return &m->u.run_stop.envelope;
+    case FURNACE_WIRE_MSG_FAULT_ACKNOWLEDGE:
+        return &m->u.fault_acknowledge.envelope;
+    case FURNACE_WIRE_MSG_FAULT_RECOVERY_REQUEST:
+        return &m->u.fault_recovery_request.envelope;
+    default:
+        return NULL;
+    }
+}
+
+static uint32_t last_request_id(void)
+{
+    const struct furnace_wire_envelope *e = last_envelope();
+
+    return (e != NULL) ? e->request_id : 0U;
+}
+
+static furnace_hmi_command_local_t submit(furnace_hmi_command_kind_t kind, uint32_t submission)
+{
+    const furnace_hmi_command_t command = {
+        .kind = kind,
+        .run_id = 77U,
+        .target_decicelsius = 600,
+        .rate_decicelsius_per_min = 20,
+        .session_minutes = 60U,
+        .fault_id = 3U,
+        .source = 1U,
+    };
+    const furnace_hmi_command_local_t refusal =
+        furnace_hmi_controller_client_submit(&fx.client, &command, submission);
+
+    advance(10U);
+    return refusal;
+}
+
+static void send_run_result(bool accepted, uint32_t request_id, uint8_t command, uint8_t reason,
+                            uint32_t run_id)
+{
+    start_out(accepted ? FURNACE_WIRE_MSG_RUN_COMMAND_ACCEPTED
+                       : FURNACE_WIRE_MSG_RUN_COMMAND_REJECTED);
+    if (accepted) {
+        fx.out.u.run_command_accepted.request_id = request_id;
+        fx.out.u.run_command_accepted.command = command;
+        fx.out.u.run_command_accepted.reason = reason;
+        fx.out.u.run_command_accepted.run_id = run_id;
+    } else {
+        fx.out.u.run_command_rejected.request_id = request_id;
+        fx.out.u.run_command_rejected.command = command;
+        fx.out.u.run_command_rejected.reason = reason;
+        fx.out.u.run_command_rejected.blocking_conditions = 0x24U;
+        fx.out.u.run_command_rejected.run_id = run_id;
+    }
+    send_out();
+    advance(10U);
+}
+
+static void send_rejected_command(uint32_t request_id, uint16_t msg_type, uint8_t reason)
+{
+    start_out(FURNACE_WIRE_MSG_COMMAND_REJECTED);
+    fx.out.u.command_rejected.request_id = request_id;
+    fx.out.u.command_rejected.msg_type = msg_type;
+    fx.out.u.command_rejected.reason = reason;
+    send_out();
+    advance(10U);
+}
+
+static void command_not_sent_unless_current(void)
+{
+    size_t mark;
+
+    begin("command not sent unless current");
+    fx.commands_allowed = true;
+    mark = fx.sent_count;
+    EXPECT(submit(FURNACE_HMI_COMMAND_MANUAL_START, 5U) == FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT,
+           "refused while connecting");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_MANUAL_START) == 0U, "nothing sent");
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_IDLE, "the slot is unchanged");
+    EXPECT(obs()->command_refusal.submission == 5U &&
+               obs()->command_refusal.kind == FURNACE_HMI_COMMAND_MANUAL_START &&
+               obs()->command_refusal.reason == FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT,
+           "the refusal is reported");
+    end();
+}
+
+static void manual_start_accepted(void)
+{
+    const struct furnace_wire_manual_start *m = &fx.last_command.u.manual_start;
+    const furnace_hmi_command_outcome_t *c;
+    uint32_t id;
+
+    begin_commands("manual start accepted");
+    EXPECT(submit(FURNACE_HMI_COMMAND_MANUAL_START, 7U) == FURNACE_HMI_COMMAND_LOCAL_NONE, "sent");
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_MANUAL_START, "MANUAL_START on the wire");
+    EXPECT(m->target == 600 && m->rate == 20 && m->session_minutes == 60U, "its fields");
+    EXPECT(m->envelope.session_id[0] == SESSION_A && m->envelope.session_id[15] == SESSION_A &&
+               m->envelope.client_session_id == FIRST_CLIENT_ID,
+           "the envelope names both sessions");
+    id = m->envelope.request_id;
+    c = &obs()->command;
+    EXPECT(c->state == FURNACE_HMI_COMMAND_PENDING && c->submission == 7U &&
+               c->kind == FURNACE_HMI_COMMAND_MANUAL_START && c->request_id == id &&
+               c->attempts == 1U,
+           "pending, never accepted on sending");
+    send_run_result(true, id, RUN_COMMAND_MANUAL_START, 0U, 91U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->run_id == 91U, "accepted with its run");
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_IDLE, "the Stop slot is untouched");
+    end();
+}
+
+static void run_command_rejected(void)
+{
+    const furnace_hmi_command_outcome_t *c = &obs()->command;
+
+    begin_commands("run command rejected");
+    (void)submit(FURNACE_HMI_COMMAND_PAUSE, 1U);
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_RUN_PAUSE &&
+               fx.last_command.u.run_pause.run_id == 77U,
+           "RUN_PAUSE names the run");
+    send_run_result(false, last_request_id(), RUN_COMMAND_PAUSE, 9U, 77U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && c->reason == 9U &&
+               c->blocking_conditions == 0x24U && c->run_id == 77U,
+           "rejected with the controller's reason and conditions");
+    end();
+}
+
+static void result_of_another_request_ignored(void)
+{
+    begin_commands("result of another request ignored");
+    (void)submit(FURNACE_HMI_COMMAND_RESUME, 1U);
+    send_run_result(true, last_request_id() + 5U, 2U, 0U, 77U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_PENDING, "still pending");
+    end();
+}
+
+static void busy_slot_refused_without_losing_the_pending(void)
+{
+    uint32_t id;
+
+    begin_commands("busy slot refused");
+    (void)submit(FURNACE_HMI_COMMAND_MANUAL_START, 1U);
+    id = last_request_id();
+    EXPECT(submit(FURNACE_HMI_COMMAND_PAUSE, 2U) == FURNACE_HMI_COMMAND_LOCAL_BUSY,
+           "a second ordinary command is refused");
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_MANUAL_START, "nothing else sent");
+    EXPECT(obs()->command.submission == 1U && obs()->command.state == FURNACE_HMI_COMMAND_PENDING,
+           "the pending command keeps its outcome");
+    EXPECT(obs()->command_refusal.submission == 2U &&
+               obs()->command_refusal.reason == FURNACE_HMI_COMMAND_LOCAL_BUSY,
+           "the refusal is reported apart");
+    EXPECT(submit(FURNACE_HMI_COMMAND_STOP, 3U) == FURNACE_HMI_COMMAND_LOCAL_NONE,
+           "Stop is never blocked by an ordinary command");
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_RUN_STOP, "RUN_STOP sent");
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_PENDING && obs()->stop.submission == 3U,
+           "Stop pending in its slot");
+    EXPECT(submit(FURNACE_HMI_COMMAND_STOP, 4U) == FURNACE_HMI_COMMAND_LOCAL_BUSY,
+           "a second Stop while one is pending");
+    send_run_result(true, id, RUN_COMMAND_MANUAL_START, 0U, 91U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_ACCEPTED, "the first still completes");
+    end();
+}
+
+static void invalid_kind_refused(void)
+{
+    begin_commands("invalid kind refused");
+    EXPECT(submit(FURNACE_HMI_COMMAND_NONE, 1U) == FURNACE_HMI_COMMAND_LOCAL_INVALID, "NONE");
+    EXPECT(submit(FURNACE_HMI_COMMAND_COUNT, 2U) == FURNACE_HMI_COMMAND_LOCAL_INVALID, "COUNT");
+    EXPECT(fx.last_command_type == 0U, "nothing sent");
+    end();
+}
+
+static void retried_under_the_same_request_id(void)
+{
+    uint32_t id;
+    size_t mark;
+
+    begin_commands("retried under the same request id");
+    mark = fx.sent_count;
+    (void)submit(FURNACE_HMI_COMMAND_RESUME, 1U);
+    id = last_request_id();
+    keep_current(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS - 100U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_RESUME_REQUEST) == 1U, "not again too early");
+    keep_current(200U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_RESUME_REQUEST) == 2U, "sent again");
+    EXPECT(last_request_id() == id, "under the same request_id");
+    EXPECT(obs()->command.attempts == 2U, "two attempts");
+    send_run_result(true, id, 2U, 0U, 77U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_ACCEPTED, "the retry's answer");
+    end();
+}
+
+static void no_answer_is_unresolved(void)
+{
+    size_t mark;
+
+    begin_commands("no answer is unresolved");
+    mark = fx.sent_count;
+    (void)submit(FURNACE_HMI_COMMAND_MANUAL_RETARGET, 1U);
+    EXPECT(fx.last_command.u.manual_retarget.run_id == 77U &&
+               fx.last_command.u.manual_retarget.target == 600 &&
+               fx.last_command.u.manual_retarget.rate == 20,
+           "MANUAL_RETARGET fields");
+    keep_current(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS * (FURNACE_HMI_CLIENT_COMMAND_ATTEMPTS + 1U));
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_MANUAL_RETARGET) == FURNACE_HMI_CLIENT_COMMAND_ATTEMPTS,
+           "every attempt and no more");
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->command.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_NO_ANSWER,
+           "unresolved, never assumed");
+    EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "the link itself is fine");
+    end();
+}
+
+static void duplicate_on_retry_is_unresolved(void)
+{
+    uint32_t id;
+
+    begin_commands("duplicate on retry is unresolved");
+    (void)submit(FURNACE_HMI_COMMAND_MANUAL_SET_LENGTH, 1U);
+    EXPECT(fx.last_command.u.manual_set_length.run_id == 77U &&
+               fx.last_command.u.manual_set_length.session_minutes == 60U,
+           "MANUAL_SET_LENGTH fields");
+    id = last_request_id();
+    keep_current(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS + 100U);
+    send_rejected_command(id, FURNACE_WIRE_MSG_MANUAL_SET_LENGTH, REJECT_DUPLICATE_REQUEST);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->command.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_DUPLICATE,
+           "the outcome is unresolved");
+    end();
+}
+
+static void service_refusal(void)
+{
+    begin_commands("service refusal");
+    (void)submit(FURNACE_HMI_COMMAND_CONTINUE, 1U);
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_RUN_CONTINUE &&
+               fx.last_command.u.run_continue.run_id == 77U,
+           "RUN_CONTINUE names the run");
+    send_rejected_command(last_request_id(), FURNACE_WIRE_MSG_RUN_CONTINUE, REJECT_QUEUE_FULL);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_REFUSED &&
+               obs()->command.reason == REJECT_QUEUE_FULL,
+           "refused by the service, with its reason");
+    keep_current(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS * 2U);
+    EXPECT(sent_since(0U, FURNACE_WIRE_MSG_RUN_CONTINUE) == 1U, "never sent again by itself");
+    end();
+}
+
+static void link_lost_ends_an_ordinary_command(void)
+{
+    size_t mark;
+
+    begin_commands("link lost ends an ordinary command");
+    (void)submit(FURNACE_HMI_COMMAND_MANUAL_START, 1U);
+    advance(3100U); /* no STATUS: the link falls silent */
+    EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->command.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST,
+           "unresolved: the operator's intent ends with the link");
+    mark = fx.sent_count;
+    status_sequence = 40U;
+    synchronize(SESSION_A, status_sequence);
+    keep_current(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS * 2U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_MANUAL_START) == 0U,
+           "a Start is never sent again after a reconnect");
+    end();
+}
+
+static void stop_survives_a_reconnect(void)
+{
+    uint32_t id;
+    size_t mark;
+
+    begin_commands("stop survives a reconnect");
+    (void)submit(FURNACE_HMI_COMMAND_STOP, 1U);
+    EXPECT(fx.last_command.u.run_stop.run_id == 77U, "RUN_STOP names the run");
+    id = last_request_id();
+    advance(3100U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_PENDING, "the Stop stays pending");
+    mark = fx.sent_count;
+    status_sequence = 40U;
+    synchronize(SESSION_A, status_sequence);
+    keep_current(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS + 100U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_RUN_STOP) >= 1U, "sent again after the reconnect");
+    EXPECT(last_request_id() == id, "under the same request_id");
+    send_run_result(true, id, RUN_COMMAND_STOP, 0U, 77U);
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_ACCEPTED, "its result");
+    end();
+}
+
+static void session_change_unresolves_both(void)
+{
+    begin_commands("session change unresolves both");
+    (void)submit(FURNACE_HMI_COMMAND_PAUSE, 1U);
+    (void)submit(FURNACE_HMI_COMMAND_STOP, 2U);
+    synchronize(SESSION_B, 3U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->command.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED,
+           "ordinary unresolved");
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->stop.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED,
+           "Stop unresolved: the restart ended the run");
+    end();
+}
+
+static void stop_unresolved_by_the_controller(void)
+{
+    begin_commands("stop unresolved by the controller");
+    (void)submit(FURNACE_HMI_COMMAND_STOP, 1U);
+    send_rejected_command(last_request_id(), FURNACE_WIRE_MSG_RUN_STOP, REJECT_STOP_UNRESOLVED);
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->stop.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_STOP,
+           "STOP_UNRESOLVED is unresolved, not refused");
+    end();
+}
+
+static void stop_gives_up_after_its_attempts(void)
+{
+    size_t mark;
+
+    begin_commands("stop gives up after its attempts");
+    mark = fx.sent_count;
+    (void)submit(FURNACE_HMI_COMMAND_STOP, 1U);
+    keep_current(FURNACE_HMI_CLIENT_COMMAND_RETRY_MS * (FURNACE_HMI_CLIENT_STOP_ATTEMPTS + 1U));
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_RUN_STOP) == FURNACE_HMI_CLIENT_STOP_ATTEMPTS,
+           "every Stop attempt");
+    EXPECT(obs()->stop.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->stop.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_NO_ANSWER,
+           "then unresolved");
+    end();
+}
+
+static void fault_acknowledgement(void)
+{
+    const furnace_hmi_command_outcome_t *c = &obs()->command;
+
+    begin_commands("fault acknowledgement");
+    (void)submit(FURNACE_HMI_COMMAND_FAULT_ACKNOWLEDGE, 1U);
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_FAULT_ACKNOWLEDGE &&
+               fx.last_command.u.fault_acknowledge.fault_id == 3U &&
+               fx.last_command.u.fault_acknowledge.source == 1U,
+           "FAULT_ACKNOWLEDGE names the entry");
+    start_out(FURNACE_WIRE_MSG_FAULT_ACKNOWLEDGE_RESULT);
+    fx.out.u.fault_acknowledge_result.request_id = last_request_id();
+    fx.out.u.fault_acknowledge_result.fault_id = 3U;
+    fx.out.u.fault_acknowledge_result.source = 1U;
+    fx.out.u.fault_acknowledge_result.result = 1U; /* NOT_FOUND */
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && c->reason == 1U, "NOT_FOUND rejected");
+
+    (void)submit(FURNACE_HMI_COMMAND_FAULT_ACKNOWLEDGE, 2U);
+    start_out(FURNACE_WIRE_MSG_FAULT_ACKNOWLEDGE_RESULT);
+    fx.out.u.fault_acknowledge_result.request_id = last_request_id();
+    fx.out.u.fault_acknowledge_result.fault_id = 3U;
+    fx.out.u.fault_acknowledge_result.source = 1U;
+    fx.out.u.fault_acknowledge_result.result = 0U; /* DONE */
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->submission == 2U, "DONE accepted");
+    end();
+}
+
+static void fault_recovery(void)
+{
+    const furnace_hmi_command_outcome_t *c = &obs()->command;
+
+    begin_commands("fault recovery");
+    (void)submit(FURNACE_HMI_COMMAND_FAULT_RECOVERY, 1U);
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_FAULT_RECOVERY_REQUEST &&
+               fx.last_command.u.fault_recovery_request.fault_id == 3U,
+           "FAULT_RECOVERY_REQUEST names the entry");
+    start_out(FURNACE_WIRE_MSG_FAULT_RECOVERY_RESULT);
+    fx.out.u.fault_recovery_result.request_id = last_request_id();
+    fx.out.u.fault_recovery_result.fault_id = 3U;
+    fx.out.u.fault_recovery_result.source = 1U;
+    fx.out.u.fault_recovery_result.found = true;
+    fx.out.u.fault_recovery_result.reply = RECOVERY_CONDITION_ACTIVE;
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && c->fault_found &&
+               c->reason == RECOVERY_CONDITION_ACTIVE,
+           "a refused recovery keeps its reply");
+
+    (void)submit(FURNACE_HMI_COMMAND_FAULT_RECOVERY, 2U);
+    start_out(FURNACE_WIRE_MSG_FAULT_RECOVERY_RESULT);
+    fx.out.u.fault_recovery_result.request_id = last_request_id();
+    fx.out.u.fault_recovery_result.fault_id = 3U;
+    fx.out.u.fault_recovery_result.source = 1U;
+    fx.out.u.fault_recovery_result.found = true;
+    fx.out.u.fault_recovery_result.reply = RECOVERY_RECOVERED;
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->reason == RECOVERY_RECOVERED,
+           "RECOVERED accepted");
+    end();
+}
+
+static void start_prepare(void)
+{
+    begin_commands("start prepare");
+    (void)submit(FURNACE_HMI_COMMAND_START_PREPARE, 1U);
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_START_PREPARE, "START_PREPARE sent");
+    start_out(FURNACE_WIRE_MSG_START_PREPARE_RESULT);
+    fx.out.u.start_prepare_result.request_id = last_request_id();
+    fx.out.u.start_prepare_result.store_readiness = 3U;
+    send_out();
+    advance(10U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_ACCEPTED &&
+               obs()->command.store_readiness == 3U,
+           "accepted with the readiness");
+    end();
+}
+
 int controller_client_tests_run(void)
 {
     failures = 0;
+    command_not_sent_unless_current();
+    manual_start_accepted();
+    run_command_rejected();
+    result_of_another_request_ignored();
+    busy_slot_refused_without_losing_the_pending();
+    invalid_kind_refused();
+    retried_under_the_same_request_id();
+    no_answer_is_unresolved();
+    duplicate_on_retry_is_unresolved();
+    service_refusal();
+    link_lost_ends_an_ordinary_command();
+    stop_survives_a_reconnect();
+    session_change_unresolves_both();
+    stop_unresolved_by_the_controller();
+    stop_gives_up_after_its_attempts();
+    fault_acknowledgement();
+    fault_recovery();
+    start_prepare();
     periodic_status_within_snapshot();
     lost_end_while_connected();
     lost_fault_page();

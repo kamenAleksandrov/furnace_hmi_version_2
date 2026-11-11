@@ -114,6 +114,67 @@ agree with the controller's lifecycle; no state-changing command yet.
     the decision itself is M21-5.
   - A finished run that still cools is shown as cooling, never as complete.
 
+### M21-5 design
+
+Owner decisions 2026-11-11:
+- **Program Start moves to M21-7.** Protocol 0.16 cannot list programs (the library is 20d, M21-6),
+  so the HMI cannot name one without inventing it. M21-5 covers:
+  - Manual: Start, retarget, length, Stop;
+  - Pause, Resume, Stop and Continue;
+  - fault acknowledgement and recovery.
+
+  All of them can be exercised on a Manual session. Program Start stays gated on Zephyr.
+- **A faulted run follows the controller everywhere:**
+  - it stays on Running until the operator stops it;
+  - the UI lab and the web demo drop Return Home on a faulted run;
+  - the UX baseline is amended;
+  - HMI-FAULT-RETURN-HOME is resolved and recorded as a CFL entry in the furnace requirements
+    register.
+
+Three steps, each a commit series on one draft pull request, stacked on M21-2b:
+
+1. **M21-5a, commands in the client.** The portable client sends operator commands and reports
+   their outcomes; the Zephyr link thread takes them from the UI thread. No screen changes.
+2. **M21-5b, the screens.** Manual and Running send real commands and show the outcome. The
+   faulted-run change lands in the lab, the web demo and Zephyr.
+3. **M21-5c, faults.** Acknowledgement, recovery and the Continue/Stop decision (AWAITING_DECISION);
+   fault IDs mapped to the screens' alerts (HMI-FAULT-CATEGORY).
+
+**Command rules** (controller interface: "Session, link and delivery", "Start readiness"):
+- **Outcomes:** a command is **accepted** or **rejected** only by the controller's result after it
+  was applied (API-03). Sent is never shown as done.
+- **Slots:** one ordinary command at a time, plus Stop in its own slot, so a pending command never
+  delays a Stop. A second ordinary command while one is pending is refused locally (`BUSY`); the
+  screen shows the pending one.
+- **Retries:** an unanswered command is sent again under the **same** `request_id`; the controller
+  returns its recorded result and runs nothing twice.
+  - An ordinary command is retried while the link stays current. Its outcome becomes
+    **unresolved** after the attempts run out, or when the link falls silent or the controller
+    session changes: the operator's intent ends there (Start readiness, rule 4). The HMI never
+    re-sends it by itself.
+  - Stop is retried across a reconnect to the same controller session, and is unresolved only when
+    the session changes (a controller restart, which ends every run) or its attempts run out.
+- **Unresolved:** `DUPLICATE_REQUEST` on a retry, `STOP_UNRESOLVED`, a session change and lost
+  answers are all reported as unresolved, never as accepted or rejected. The screens then show the
+  state from `STATUS`.
+- **Not sent:** while the link is not current, a command is refused locally (`NOT_CURRENT`) and
+  nothing is sent.
+- **Start readiness:** `START_PREPARE` is sent when the operator opens a way to start (Manual).
+  Manual Start is enabled only when `store_readiness` is READY. A Start refused as `STORE_NOT_READY`
+  is not re-sent; the operator presses Start again.
+- **Codes:** the outcome keeps the controller's reason codes as received; their texts are the
+  screens' (M21-5b).
+
+**Threads (ADR-0005):** the UI thread never calls the client. It puts a command into a two-slot
+mailbox (ordinary, Stop) and gets a submission number; the link thread takes it at its next poll.
+The outcome, with that number, comes back in the observation.
+
+**Verification:**
+- client scenarios against the scripted controller (host and Zephyr);
+- a headless end-to-end program against the real controller (`tests/sim/link_pty` of the furnace
+  firmware). It runs each workflow and injects the controller's faults through its scenario channel
+  (firmware #53): a sensor fault, an interlock and a protective trip during a Manual run.
+
 ### M21-3 design
 
 Owner decision 2026-11-10: M21-3 comes first and connects the Zephyr HMI to the actual controller

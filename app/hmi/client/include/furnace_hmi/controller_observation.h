@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <furnace_hmi/controller_command.h>
 #include <furnace_hmi/dashboard_model.h>
 #include <furnace_hmi/hmi_state_availability.h>
 
@@ -159,6 +160,11 @@ typedef struct {
     furnace_hmi_request_state_t snapshot_request;
     uint32_t snapshot_request_id;
     uint8_t snapshot_reject_reason;
+
+    /* Operator commands (M21-5): the latest ordinary command, and the latest Stop. */
+    furnace_hmi_command_outcome_t command;
+    furnace_hmi_command_outcome_t stop;
+    furnace_hmi_command_refusal_t command_refusal;
 
     /* Link counters; saturating. */
     uint32_t frames_received;

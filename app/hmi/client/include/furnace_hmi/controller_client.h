@@ -9,6 +9,7 @@
 #include <furnace/wire.h>
 #include <furnace/wire_messages.h>
 #include <furnace_hmi/byte_port.h>
+#include <furnace_hmi/controller_command.h>
 #include <furnace_hmi/controller_observation.h>
 
 #ifdef __cplusplus
@@ -29,6 +30,13 @@ extern "C" {
 #define FURNACE_HMI_CLIENT_MAX_STATUS_INTERVAL_MS 60000U
 #define FURNACE_HMI_CLIENT_MAX_HEARTBEAT_INTERVAL_MS 60000U
 #define FURNACE_HMI_CLIENT_MAX_LINK_SILENCE_MS 600000U
+/*
+ * An unanswered command is sent again under the same request_id after this
+ * long, up to the attempts below; provisional HMI values (plan, M21-5 design).
+ */
+#define FURNACE_HMI_CLIENT_COMMAND_RETRY_MS 1000U
+#define FURNACE_HMI_CLIENT_COMMAND_ATTEMPTS 3U
+#define FURNACE_HMI_CLIENT_STOP_ATTEMPTS 10U
 
 typedef struct {
     furnace_hmi_byte_port_t port;
@@ -41,12 +49,18 @@ typedef struct {
     void *id_context;
 } furnace_hmi_controller_client_config_t;
 
+/* A command being delivered: what is resent under the same request_id. */
+typedef struct {
+    furnace_hmi_command_t command;
+    uint32_t last_sent_ms;
+} furnace_hmi_controller_client_delivery_t;
+
 /**
  * The HMI's client of the controller link (WI-H06): session, synchronization,
- * freshness and the snapshot request. Portable and single-threaded: one
- * execution context calls poll; nothing blocks. It sends only HELLO, HEARTBEAT,
- * SNAPSHOT_REQUEST and CAPABILITIES_REQUEST: no command that changes the
- * controller. A caller-owned, statically allocated object.
+ * freshness and the snapshot request; since M21-5 the operator's commands,
+ * which it sends only when submitted. Portable and single-threaded: one
+ * execution context calls poll and submit; nothing blocks. A caller-owned,
+ * statically allocated object.
  */
 typedef struct {
     furnace_hmi_controller_client_config_t config;
@@ -91,6 +105,10 @@ typedef struct {
     /** The newest FAULT_EVENT since the snapshot was asked for. */
     uint32_t newest_fault_event_seen;
     bool event_sequences_known;
+
+    /* The commands being delivered, one per slot (observation.command and .stop). */
+    furnace_hmi_controller_client_delivery_t command_delivery;
+    furnace_hmi_controller_client_delivery_t stop_delivery;
 } furnace_hmi_controller_client_t;
 
 /** Start a client: a new client session, no controller known, HELLO due at once. */
@@ -106,6 +124,19 @@ void furnace_hmi_controller_client_init(
  * wrap.
  */
 void furnace_hmi_controller_client_poll(furnace_hmi_controller_client_t *client, uint32_t now_ms);
+
+/**
+ * Send an operator command now, in its slot (Stop or ordinary), and report it
+ * as that slot's outcome with the caller's submission number. Refused before
+ * sending, as observation.command_refusal, when the link is not current, the
+ * slot's previous command is pending, or the kind is not a command; the slot is
+ * then unchanged. Returns FURNACE_HMI_COMMAND_LOCAL_NONE when sent.
+ */
+furnace_hmi_command_local_t furnace_hmi_controller_client_submit(
+    furnace_hmi_controller_client_t *client,
+    const furnace_hmi_command_t *command,
+    uint32_t submission
+);
 
 /** The current observation; valid until the next poll. */
 const furnace_hmi_controller_observation_t *furnace_hmi_controller_client_observation(
