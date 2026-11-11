@@ -210,10 +210,10 @@ const PRESENTATION_CHOICE = `(()=>{
     await waitFor('!document.getElementById("demo-intro")');
     // One development note, in the page footer below the HMI; the bar pill says Work in progress.
     assert.strictEqual(await evaluate('(()=>{const w=document.querySelectorAll(".dev-watermark");return w.length===1&&!!w[0].closest(".demo-foot")&&/Software in development/.test(w[0].textContent)&&document.querySelector(".live-pill").textContent==="Work in progress"})()'), true);
-    // Demo page: website bar, one control panel with its sections, six scenarios (no Door opened).
+    // Demo page: website bar, one control panel with its sections, seven scenarios (no Door opened).
     assert.deepStrictEqual(await evaluate('[...document.querySelectorAll(\'.site-actions a\')].map(a => a.href)'), ['https://telamorph.com/industrial.html', 'https://telamorph.com/contact.html?type=industrial']);
     assert.strictEqual(await evaluate('[...document.querySelectorAll(\'.panel-heading\')].map(h => h.textContent).join(\'|\')'), 'Screen|Playback|Scenarios|On-screen keyboards|Program library');
-    assert.strictEqual(await evaluate('document.querySelectorAll(\'.scenario-item\').length'), 6);
+    assert.strictEqual(await evaluate('document.querySelectorAll(\'.scenario-item\').length'), 7);
     assert.strictEqual(await evaluate('!document.querySelector("[data-scenario=door-open]")'), true);
     assert.strictEqual(await evaluate('document.querySelector(\'#demo-speed [aria-pressed="true"]\').dataset.value'), '300');
     assert.strictEqual(await evaluate('document.getElementById(\'next-stage\').disabled && !document.getElementById(\'start-example\').hidden'), true);
@@ -499,6 +499,24 @@ const PRESENTATION_CHOICE = `(()=>{
     // A faulted run stays until the operator stops it (owner 2026-11-11, Phase 21 M21-5b).
     await evaluate('[...document.querySelectorAll(\'#content button\')].find(button => button.textContent === \'Stop\').click()');
     assert.strictEqual(await evaluate('mainPage + \'|\' + (demoRun === null)'), 'home|true');
+    // The fault is the controller's entry: the Faults dialog acknowledges it, and Home keeps it latched
+    // after the run until it is recovered (Phase 21 M21-5c).
+    assert.strictEqual(await evaluate('mainPage+"|"+demoFaults.length+"|"+demoFaults[0].id+"|"+demoFaults[0].active'), 'home|1|16|false');
+    await evaluate('document.querySelector(".fault-banner").click()');
+    assert.strictEqual(await evaluate('document.getElementById("message").open&&document.getElementById("message-title").textContent'), 'Controller faults');
+    await evaluate('[...document.querySelectorAll("#message-actions button, .fault-row button")].find(b=>b.textContent==="Acknowledge").click()');
+    assert.strictEqual(await evaluate('demoFaults[0].acknowledged'), true);
+    await evaluate('[...document.querySelectorAll(".fault-row button")].find(b=>b.textContent==="Recover").click()');
+    assert.strictEqual(await evaluate('demoFaults.length+"|"+!!document.querySelector(".fault-banner")'), '0|false');
+    await evaluate('document.getElementById("message").close()');
+    // A quality decision: a panel that cannot be dismissed, with the time left; Continue ends it.
+    await evaluate('playScenario(\'decision\')');
+    await waitFor('demoDecision !== null', 90);
+    assert.strictEqual(await evaluate('document.getElementById("message").open&&document.getElementById("message-title").textContent'), 'Decision needed: Temperature lagging behind');
+    assert.match(await evaluate('document.querySelector(".decision-time").textContent'), /^Time left: [0-9]+:[0-9]{2}$/);
+    assert.strictEqual(await evaluate('(()=>{const b=[...document.querySelectorAll("#content button")].map(x=>x.textContent);return !b.includes("Pause")&&!b.includes("Resume")})()'), true);
+    await evaluate('[...document.querySelectorAll("#message-actions button")].find(b=>b.textContent==="Continue").click()');
+    assert.strictEqual(await evaluate('demoDecision===null&&!document.getElementById("message").open'), true);
 
     await evaluate('playScenario(\'link-lost\')');
     await waitFor('demoLinkLost', 90);
