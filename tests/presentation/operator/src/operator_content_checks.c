@@ -547,9 +547,11 @@ static int manual_commands(const char **failure)
     answer(&state.command_feedback, 30U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
     (void)update();
     click(increase);
+    /* A Stop tap behind a tap not yet handled is never lost. */
+    lv_obj_send_event(increase, LV_EVENT_CLICKED, NULL);
     click(screens.manual_stop_button);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 31U, &request) || request.run_id != 5U) {
-        return failed(failure, "Stop does not name the session.", 242);
+        return failed(failure, "Stop is lost behind another tap, or does not name the session.", 242);
     }
     if (enabled(increase) || enabled(screens.manual_pause_button)) {
         return failed(failure, "Steppers or Pause are offered while Stop is pending.", 243);
@@ -557,6 +559,11 @@ static int manual_commands(const char **failure)
     answer(&state.command_feedback, 30U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     if (!update() || !no_request()) {
         return failed(failure, "A tap from before Stop is sent after it.", 244);
+    }
+    /* Even a Pause event that reaches the screens sends nothing while Stop is pending. */
+    click(screens.manual_pause_button);
+    if (!no_request()) {
+        return failed(failure, "An ordinary command goes out while Stop is pending.", 253);
     }
     answer(&state.stop_feedback, 31U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     state.manual_target_c.value = 121;
