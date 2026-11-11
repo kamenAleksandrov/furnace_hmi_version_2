@@ -1,5 +1,18 @@
 # Project status
 
+**Fact (2026-11-11, Phase 21 M21-5a):** the controller client sends operator commands.
+- **Commands:** START_PREPARE, Manual Start, retarget and length, Pause, Resume, Continue,
+  Stop, fault acknowledgement and recovery. Owner decisions 2026-11-11: Program Start moves to
+  M21-7 (no program list before 20d), and a faulted run follows the controller everywhere.
+- **Outcomes** come only from the controller's results. Unanswered commands are retried under
+  the same request ID. An ordinary command ends unresolved when the link falls silent; a Stop
+  is retried across a reconnect.
+- **The Zephyr link thread** takes commands from the GUI context through a two-slot mailbox
+  (ordinary and Stop). The screens do not send them yet (M21-5b).
+- **Evidence:** 18 new client scenarios (5 mutation probes, all killed); four workflows against
+  the real controller (`tools/controller_workflow_check.py`): Manual, a sensor fault with
+  recovery, an interlock, a protective trip.
+
 **Fact (2026-11-10, Phase 21 M21-2b):** the operator screens are one shared
 implementation, `app/hmi/presentation/operator`, used by the UI lab, the desktop
 program's checks and the Zephyr application.

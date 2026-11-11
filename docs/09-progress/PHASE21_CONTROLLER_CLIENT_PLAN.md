@@ -302,6 +302,29 @@ commands and operator workflows stay in M21-5 and later.
 
 ## Progress
 
+- 2026-11-11, M21-5a (draft): **commands in the client** (M21-5 design above).
+  - **The client:** `furnace_hmi_controller_client_submit` and the outcomes in the observation
+    (`command`, `stop`, `command_refusal`); `controller_command.h` holds the plain-data types.
+  - **The link thread:** `furnace_hmi_controller_link_submit`, a two-slot mailbox; the link trace
+    shows both outcomes.
+  - **Against the real controller** (firmware #53, `tools/controller_workflow_check.py`, all
+    reason codes checked against the interface):
+    - Manual: Start, retarget, length, Pause, Resume and Stop accepted; Resume after Stop
+      rejected (NOT_PAUSED);
+    - sensor fault (a not-finite reading): FAULTED, Pause rejected (FAULT_LATCHED), Stop,
+      acknowledgement and recovery of every latched entry;
+    - interlock: PAUSED with INHIBIT, nothing latched; Resume blocked while active
+      (RESUME_BLOCKED), accepted after; Continue rejected (NOT_AWAITING_DECISION);
+    - protective trip: FAULTED, latched class 4; recovery refused as
+      PROTECTIVE_RESET_EXTERNAL during and after the trip.
+  - **Found:** a ztest build runs native_sim's clock freely unless
+    `CONFIG_NATIVE_SIM_SLOWDOWN_TO_REAL_TIME` is set, and every link timeout then expires at once.
+    The pseudo-terminals must be raw.
+  - **Evidence:** `host-msvc-core-debug` 15 of 15, `host-msvc-desktop-debug` and `host-debug`
+    (GCC) 18 of 18; Twister in WSL on both native_sim variants, 8 of 8 cases; Twister on
+    Windows, `qemu_x86`, 5 of 5; the M21-3 demonstration 10 of 10; the workflow check 4 of 4;
+    5 mutation probes of the client, all killed.
+
 - 2026-11-10, M21-2b (draft): **the operator screens are shared** (design above).
   - **Moved without change first:** all 279 lab captures (93 at 800x480, 800x640 and 1024x600)
     were byte-identical after the move and after the content seam.

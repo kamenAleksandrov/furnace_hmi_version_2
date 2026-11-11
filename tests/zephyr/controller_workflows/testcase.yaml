@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
+tests:
+  # Built here; tools/controller_workflow_check.py runs it against the controller.
+  furnace_hmi.client.controller_workflows:
+    build_only: true
+    integration_platforms:
+      - native_sim
+    platform_allow:
+      - native_sim
+    tags:
+      - protocol

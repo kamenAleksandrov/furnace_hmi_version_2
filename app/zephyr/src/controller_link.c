@@ -35,6 +35,16 @@ static K_MUTEX_DEFINE(mailbox_lock);
 static furnace_hmi_controller_observation_t mailbox;
 static uint32_t mailbox_sequence;
 
+/* Commands from the GUI context to the link thread: one slot each for ordinary and Stop. */
+struct command_slot {
+    bool full;
+    furnace_hmi_command_t command;
+    uint32_t submission;
+};
+static struct k_spinlock command_lock;
+static struct command_slot command_slots[2];
+static uint32_t last_submission;
+
 K_THREAD_STACK_DEFINE(link_stack, LINK_STACK_SIZE);
 static struct k_thread link_thread;
 
@@ -82,6 +92,26 @@ static void publish(const furnace_hmi_controller_observation_t *observation)
     (void)k_mutex_unlock(&mailbox_lock);
 }
 
+/* Submit what the GUI context handed over; the client reports each outcome. */
+static void take_commands(void)
+{
+    struct command_slot taken[2];
+    k_spinlock_key_t key = k_spin_lock(&command_lock);
+
+    for (size_t i = 0U; i < 2U; i++) {
+        taken[i] = command_slots[i];
+        command_slots[i].full = false;
+    }
+    k_spin_unlock(&command_lock, key);
+    /* Stop first: it never waits behind an ordinary command. */
+    for (size_t i = 2U; i-- > 0U;) {
+        if (taken[i].full) {
+            (void)furnace_hmi_controller_client_submit(&client, &taken[i].command,
+                                                       taken[i].submission);
+        }
+    }
+}
+
 /* One line, key=value, for people and for tools/controller_link_demo.py. */
 static void trace(const furnace_hmi_controller_observation_t *o)
 {
@@ -89,7 +119,8 @@ static void trace(const furnace_hmi_controller_observation_t *o)
            "changes=%u fw=%u boot=%u proto=%u.%u hello=%u status=%u temp=%d validity=%u "
            "age=%u measurement=%u qualified=%u run_state=%u run=%u inhibited=%u latched=%u "
            "unack=%u faults=%u outdated=%u fresh=%u ready=%u requests=%u request_state=%u "
-           "gaps=%u regressions=%u incomplete=%u caps_rejected=%u dropped=%u\n",
+           "gaps=%u regressions=%u incomplete=%u caps_rejected=%u dropped=%u "
+           "command=%u/%u/%u/%u stop=%u/%u/%u\n",
            link_names[o->link], availability_names[o->availability],
            (unsigned int)o->client_session_id, o->session_id[0], o->session_id[1],
            o->session_id[2], o->session_id[3], (unsigned int)o->controller_session_changes,
@@ -103,7 +134,9 @@ static void trace(const furnace_hmi_controller_observation_t *o)
            o->session_fresh ? 1U : 0U, o->store_readiness, (unsigned int)o->snapshots_requested,
            o->snapshot_request, (unsigned int)o->event_gaps,
            (unsigned int)o->status_regressions, (unsigned int)o->snapshots_incomplete,
-           (unsigned int)o->capabilities_rejected, (unsigned int)o->frames_dropped);
+           (unsigned int)o->capabilities_rejected, (unsigned int)o->frames_dropped,
+           o->command.kind, o->command.state, o->command.reason, o->command.unresolved_cause,
+           o->stop.state, o->stop.reason, o->stop.unresolved_cause);
 }
 
 static void link_main(void *p1, void *p2, void *p3)
@@ -132,6 +165,7 @@ static void link_main(void *p1, void *p2, void *p3)
         const furnace_hmi_controller_observation_t *o;
 
         furnace_hmi_controller_client_poll(&client, now);
+        take_commands();
         o = furnace_hmi_controller_client_observation(&client);
         if (furnace_hmi_controller_client_generation(&client) != published_generation ||
             (uint32_t)(now - last_publish) >= PUBLISH_INTERVAL_MS) {
@@ -175,4 +209,21 @@ bool furnace_hmi_controller_link_take(furnace_hmi_controller_observation_t *out,
     }
     (void)k_mutex_unlock(&mailbox_lock);
     return taken;
+}
+
+uint32_t furnace_hmi_controller_link_submit(const furnace_hmi_command_t *command)
+{
+    struct command_slot *slot = &command_slots[furnace_hmi_command_is_stop(command->kind) ? 1 : 0];
+    uint32_t submission = 0U;
+    k_spinlock_key_t key = k_spin_lock(&command_lock);
+
+    if (!slot->full) {
+        last_submission = (last_submission == UINT32_MAX) ? 1U : last_submission + 1U;
+        submission = last_submission;
+        slot->full = true;
+        slot->command = *command;
+        slot->submission = submission;
+    }
+    k_spin_unlock(&command_lock, key);
+    return submission;
 }
