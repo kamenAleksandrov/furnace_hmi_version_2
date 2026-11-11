@@ -978,11 +978,11 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
         return failed(failure, "The operator screens could not be created.", 300);
     }
     settle();
-    /* Manual's Faults button lasts through many observations (review M2). */
+    /* Manual's Faults button lasts through many observations (review M2), with LVGL's timers run
+     * between them as the application's GUI loop does. */
     for (int pass = 0; pass < 70; ++pass) {
-        (void)furnace_hmi_operator_screens_update(&screens, &state);
+        (void)update();
     }
-    settle();
     char faults_text[32];
     (void)snprintf(faults_text, sizeof(faults_text),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT), 2U);
