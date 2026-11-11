@@ -149,6 +149,10 @@ typedef enum {
     FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE,
     FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START,
     FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET,
+    /* M21-5c: a fault entry's acknowledgement and recovery, and the decision's Continue. */
+    FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE,
+    FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY,
+    FURNACE_HMI_OPERATOR_REQUEST_CONTINUE,
 } furnace_hmi_operator_request_kind_t;
 
 typedef struct {
@@ -164,6 +168,9 @@ typedef struct {
     int32_t session_minutes;
     /* Without simulated answers: the controller's run shown when the operator acted. */
     uint32_t run_id;
+    /* FAULT_ACKNOWLEDGE and FAULT_RECOVERY: the controller's entry. */
+    uint8_t fault_id;
+    uint8_t source;
 } furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
@@ -569,6 +576,16 @@ struct furnace_hmi_operator_screens {
     /* The ended Manual session the operator left (Exit or Start new). */
     bool manual_left;
     uint32_t manual_left_run_id;
+    /* M21-5c: the Faults dialog or the decision panel is the open modal; a
+     * command's answer shown in it; what it showed when built; the entry a
+     * fault command names; the decision countdown label. */
+    bool faults_open;
+    bool decision_open;
+    char modal_note[112];
+    uint32_t faults_signature;
+    uint8_t fault_target_id;
+    uint8_t fault_target_source;
+    lv_obj_t *decision_time_label;
     /* Service records confirmed this session, newest first, before the
      * controller's earlier records in Service history. */
     furnace_hmi_operator_service_record_t service_records[FURNACE_HMI_OPERATOR_SERVICE_RECORDS];

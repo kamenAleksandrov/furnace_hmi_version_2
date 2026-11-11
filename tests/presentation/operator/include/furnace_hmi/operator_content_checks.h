@@ -42,6 +42,15 @@ int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **fai
  */
 int furnace_hmi_operator_manual_command_check(lv_display_t *display, const char **failure);
 
+/**
+ * Faults and the decision against a controller (Phase 21 M21-5c): the Faults
+ * dialog from Manual and from Home, Acknowledge and Recover as requests with
+ * the controller's answer in the dialog, no Recover for a protective trip, and
+ * the decision panel with its countdown, Continue and Stop. Same contract as
+ * furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure);
+
 #ifdef __cplusplus
 }
 #endif

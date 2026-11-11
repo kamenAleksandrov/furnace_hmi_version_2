@@ -31,6 +31,19 @@ bool furnace_hmi_operator_command_for(const furnace_hmi_operator_request_t *requ
     case FURNACE_HMI_OPERATOR_REQUEST_STOP:
         command->kind = FURNACE_HMI_COMMAND_STOP;
         return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_CONTINUE:
+        command->kind = FURNACE_HMI_COMMAND_CONTINUE;
+        return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE:
+        command->kind = FURNACE_HMI_COMMAND_FAULT_ACKNOWLEDGE;
+        command->fault_id = request->fault_id;
+        command->source = request->source;
+        return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY:
+        command->kind = FURNACE_HMI_COMMAND_FAULT_RECOVERY;
+        command->fault_id = request->fault_id;
+        command->source = request->source;
+        return true;
     default:
         return false;
     }

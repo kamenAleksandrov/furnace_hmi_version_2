@@ -38,6 +38,7 @@
 #define FAULT_MEASUREMENT_INVALID 1U
 #define FAULT_INHIBIT 6U
 #define FAULT_PROTECTIVE_TRIP 7U
+#define FAULT_LAG 10U
 #define CLASS_PROTECTIVE_TRIP 4U
 #define REJECT_NOT_PAUSED 12U
 #define REJECT_RESUME_BLOCKED 13U
@@ -464,6 +465,44 @@ ZTEST(controller_workflows, test_c_interlock)
     zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "Resume after the interlock: %u",
                   o.reason);
     zassert_true(wait_until(manual_running), "not running after Resume");
+    stop(r);
+    acknowledge_all();
+    recover_all();
+}
+
+static bool awaiting_decision(void)
+{
+    return obs.run_state == RUN_AWAITING_DECISION && obs.decision_remaining_s > 0U;
+}
+
+static bool continued(void)
+{
+    return obs.run_state == RUN_RUNNING;
+}
+
+/*
+ * A quality decision (M21-5c): the reading 30 °C below a Manual ramp raises LAG,
+ * which the simulated controller's fixture policy makes continuable (firmware
+ * scenario `offset`, HMI-DECISION-TRIGGER). The controller awaits a decision with
+ * a countdown; Continue is accepted and the session runs again.
+ */
+ZTEST(controller_workflows, test_cc_quality_decision)
+{
+    furnace_hmi_command_outcome_t o;
+    uint32_t r;
+
+    prepare();
+    r = manual_start();
+    scenario("offset -300");
+    zassert_true(wait_until(awaiting_decision), "state %u continuable %x", obs.run_state,
+                 obs.continuable_ids);
+    zassert_true((obs.continuable_ids & (1U << FAULT_LAG)) != 0U, "LAG not continuable: %x",
+                 obs.continuable_ids);
+    o = run_command(FURNACE_HMI_COMMAND_CONTINUE, r);
+    zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "Continue: state %u reason %u", o.state,
+                  o.reason);
+    zassert_true(wait_until(continued), "not running after Continue: state %u", obs.run_state);
+    scenario("offset 0");
     stop(r);
     acknowledge_all();
     recover_all();

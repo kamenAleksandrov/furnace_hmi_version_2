@@ -51,12 +51,25 @@ ZTEST(furnace_hmi_operator, test_operator_requests_as_commands)
         {FURNACE_HMI_OPERATOR_REQUEST_RESUME, FURNACE_HMI_COMMAND_RESUME},
         {FURNACE_HMI_OPERATOR_REQUEST_STOP, FURNACE_HMI_COMMAND_STOP},
         {FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE, FURNACE_HMI_COMMAND_START_PREPARE},
+        {FURNACE_HMI_OPERATOR_REQUEST_CONTINUE, FURNACE_HMI_COMMAND_CONTINUE},
     };
     for (size_t i = 0U; i < ARRAY_SIZE(runs); i++) {
         request.kind = runs[i].request;
         zassert_true(furnace_hmi_operator_command_for(&request, &command));
         zassert_true(command.kind == runs[i].command && command.run_id == 5U, "request %u", (unsigned int)i);
     }
+
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY;
+    request.fault_id = 3U;
+    request.source = 1U;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_FAULT_RECOVERY && command.fault_id == 3U &&
+                     command.source == 1U,
+                 "recovery of entry 3/1");
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_FAULT_ACKNOWLEDGE && command.fault_id == 3U,
+                 "acknowledgement of entry 3/1");
 
     request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM;
     zassert_false(furnace_hmi_operator_command_for(&request, &command), "program Start is M21-7");
@@ -93,6 +106,17 @@ ZTEST(furnace_hmi_operator, test_operator_screens_send_manual_commands)
 
     zassert_not_null(display, "LVGL has no display");
     const int result = furnace_hmi_operator_manual_command_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+ZTEST(furnace_hmi_operator, test_operator_screens_faults_and_decision)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_fault_check(display, &failure);
 
     zassert_equal(result, 0, "check %d: %s", result, failure);
 }

@@ -721,3 +721,200 @@ int furnace_hmi_operator_manual_command_check(lv_display_t *display, const char 
     furnace_hmi_operator_screens_destroy(&screens);
     return result;
 }
+
+/* ---- Faults and the decision against a controller (M21-5c) ---- */
+
+static bool shows(lv_obj_t *root, furnace_hmi_ui_string_id_t id)
+{
+    lv_refr_now(NULL);
+    return root != NULL && tree_contains(root, furnace_hmi_ui_string(id));
+}
+
+static lv_obj_t *modal_button(furnace_hmi_ui_string_id_t id)
+{
+    return button_with_text(screens.modal, furnace_hmi_ui_string(id));
+}
+
+static void fault_entry(uint8_t index, uint8_t id, bool active, bool latched, bool acknowledged,
+                        furnace_hmi_fault_recovery_t recovery)
+{
+    state.faults[index] = (furnace_hmi_fault_entry_t){
+        .fault_id = id, .source = 0U, .active = active, .latched = latched,
+        .acknowledged = acknowledged, .recovery = recovery};
+}
+
+/* A faulted Manual session 7 with a sensor fault and a protective trip. */
+static void faulted_status(void)
+{
+    manual_status(FURNACE_HMI_RUN_STATE_FAULT);
+    state.run_id = 7U;
+    state.faults_known = true;
+    state.fault_count = 2U;
+    state.fault_total = 2U;
+    fault_entry(0U, 1U, true, true, false, FURNACE_HMI_FAULT_RECOVERY_OPERATOR);
+    fault_entry(1U, 7U, false, true, true, FURNACE_HMI_FAULT_RECOVERY_PROTECTIVE_EXTERNAL);
+}
+
+static int fault_commands(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+    char text[48];
+
+    /* The Faults button opens the controller's entries; a protective trip has no Recover. */
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT), 2U);
+    lv_refr_now(NULL);
+    click(button_with_text(screens.root, text));
+    if (screens.modal == NULL || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_TITLE) ||
+        !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1) ||
+        !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_7) ||
+        !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RESET_EXTERNAL)) {
+        return failed(failure, "The Faults dialog does not show the controller's entries.", 301);
+    }
+    if (modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER) != NULL) {
+        return failed(failure, "Recover is offered before acknowledgement or for a trip.", 302);
+    }
+
+    /* Acknowledge is a request; the entry changes only when the controller says so. */
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE, 40U, &request) ||
+        request.fault_id != 1U || request.source != 0U || screens.modal == NULL) {
+        return failed(failure, "Acknowledge is not a request for the entry.", 303);
+    }
+    answer(&state.command_feedback, 40U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    state.faults[0].acknowledged = true;
+    if (!update() || modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER) == NULL ||
+        modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE) != NULL) {
+        return failed(failure, "An acknowledged latched fault does not offer Recover.", 304);
+    }
+
+    /* Recover: the controller's reply is shown in the dialog, nothing is assumed. */
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY, 41U, &request) || request.fault_id != 1U) {
+        return failed(failure, "Recover is not a request for the entry.", 305);
+    }
+    answer(&state.command_feedback, 41U, FURNACE_HMI_FEEDBACK_REJECTED, 2U);
+    if (!update() || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_2) ||
+        !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_TITLE)) {
+        return failed(failure, "A refused recovery is not shown in the Faults dialog.", 306);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY, 42U, &request)) {
+        return failed(failure, "Recover is not offered again.", 307);
+    }
+    answer(&state.command_feedback, 42U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    state.fault_count = 1U;
+    state.fault_total = 1U;
+    state.faults[0] = state.faults[1];
+    if (!update() || shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1) ||
+        !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_7)) {
+        return failed(failure, "The Faults dialog does not follow the controller's list.", 308);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
+    if (screens.modal != NULL) {
+        return failed(failure, "The Faults dialog cannot be closed.", 309);
+    }
+    return 0;
+}
+
+static int decision_commands(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+    char title[96];
+
+    /* The decision panel opens by itself, names the fault and cannot be closed. */
+    manual_status(FURNACE_HMI_RUN_STATE_PAUSED);
+    state.run_id = 7U;
+    state.awaiting_decision = true;
+    state.decision_fault_id = 10U;
+    state.decision_remaining_seconds = (furnace_hmi_i32_value_t){
+        .value = 95, .provenance = FURNACE_HMI_VALUE_PROVENANCE_MEASURED,
+        .validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT};
+    (void)snprintf(title, sizeof(title), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE_FORMAT),
+                   furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_10));
+    if (!update() || screens.modal == NULL || !tree_contains(screens.modal, title) ||
+        !tree_contains(screens.modal, "1:35") || modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) != NULL ||
+        modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE) == NULL ||
+        modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) == NULL) {
+        return failed(failure, "The decision panel does not show the decision with Continue and Stop.", 320);
+    }
+    /* The countdown follows the controller without rebuilding the panel. */
+    lv_obj_t *panel = screens.modal;
+    state.decision_remaining_seconds.value = 94;
+    if (!update() || screens.modal != panel || !tree_contains(screens.modal, "1:34")) {
+        return failed(failure, "The decision countdown does not follow the controller.", 321);
+    }
+    /* Continue is a request for the run; a rejection is shown in the panel. */
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CONTINUE, 50U, &request) || request.run_id != 7U) {
+        return failed(failure, "Continue is not a request for the run.", 322);
+    }
+    answer(&state.command_feedback, 50U, FURNACE_HMI_FEEDBACK_REJECTED, 16U);
+    if (!update() || screens.modal == NULL || !tree_contains(screens.modal, title) ||
+        !tree_contains(screens.modal, "16")) {
+        return failed(failure, "A rejected Continue is not shown in the decision panel.", 323);
+    }
+    /* Stop from the panel uses the Stop slot. */
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 51U, &request) || request.run_id != 7U) {
+        return failed(failure, "Stop from the decision panel is not a Stop request.", 324);
+    }
+    /* The panel closes when the controller leaves the decision. */
+    answer(&state.stop_feedback, 51U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    state.awaiting_decision = false;
+    state.run_state = FURNACE_HMI_RUN_STATE_COMPLETE;
+    state.run_phase = FURNACE_HMI_RUN_PHASE_COOLING;
+    state.navigation_permitted.value = true;
+    if (!update() || screens.modal != NULL) {
+        return failed(failure, "The decision panel stays after the decision.", 325);
+    }
+    return 0;
+}
+
+/* Home after the run: a banner opens the Faults dialog. */
+static int fault_banner(const char **failure)
+{
+    char text[64];
+
+    /* The trip stays latched after the session. */
+    state.faults_known = true;
+    state.fault_count = 1U;
+    state.fault_total = 1U;
+    fault_entry(0U, 7U, false, true, true, FURNACE_HMI_FAULT_RECOVERY_PROTECTIVE_EXTERNAL);
+    (void)update();
+    click(screens.manual_exit_button);
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BANNER_FORMAT), 1U);
+    lv_refr_now(NULL);
+    if (screens.page != FURNACE_HMI_OPERATOR_PAGE_HOME || button_with_text(screens.root, text) == NULL) {
+        return failed(failure, "Home has no faults banner while faults remain.", 330);
+    }
+    click(button_with_text(screens.root, text));
+    if (screens.modal == NULL || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_7)) {
+        return failed(failure, "The faults banner does not open the Faults dialog.", 331);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
+    state.fault_count = 0U;
+    state.fault_total = 0U;
+    if (!update() || button_with_text(screens.root, text) != NULL) {
+        return failed(failure, "The faults banner stays without faults.", 332);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure)
+{
+    int result;
+
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    faulted_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 300);
+    }
+    settle();
+    if ((result = fault_commands(failure)) == 0 && (result = decision_commands(failure)) == 0) {
+        result = fault_banner(failure);
+    }
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}
