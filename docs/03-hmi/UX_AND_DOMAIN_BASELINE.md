@@ -222,6 +222,13 @@ sentence on what the controller did, and **Close**. The same dialog reports
   and Pause disappears. **Amended (product owner, 2026-11-11, Phase 21
   M21-5b):** Stop stays, and Return Home is not offered: a faulted run stays
   until the operator stops it, as the controller holds it.
+- **Amended (product owner, 2026-11-11, Phase 21 M21-5c):** the controller's
+  fault entries are listed in a Faults dialog, opened from a red "Faults (n)"
+  button on Running and Manual and from a banner on Home after the run. Each
+  entry offers Acknowledge, or Recover for an acknowledged latch the operator
+  may clear, as requests with the controller's answer; a protective trip is
+  reset at the protection device. A quality decision is a panel that cannot be
+  closed, with the fault, the controller's time left, Continue and Stop.
 - While the link is lost, Running shows the reading values as `-- stale`, the
   stage label reads Connection lost, and Pause and Stop are unavailable; nothing
   is replayed when the link returns.

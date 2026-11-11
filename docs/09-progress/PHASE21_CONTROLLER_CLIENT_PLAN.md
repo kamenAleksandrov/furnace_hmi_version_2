@@ -140,6 +140,27 @@ Three steps, each a commit series on one draft pull request, stacked on M21-2b:
 3. **M21-5c, faults.** Acknowledgement, recovery and the Continue/Stop decision (AWAITING_DECISION);
    fault IDs mapped to the screens' alerts (HMI-FAULT-CATEGORY).
 
+**M21-5c, faults and the decision** (owner 2026-11-11: a Faults dialog; a decision panel that cannot be
+closed; HMI ADR-0018 and ADR-0019):
+- **Faults dialog:** opened from a red "Faults (n)" button on Running and Manual and a banner on
+  Home whenever the controller lists entries. Each entry shows its name (from its fault ID), active
+  or cleared, latched and acknowledged. An unacknowledged entry offers Acknowledge; an acknowledged
+  latched entry the operator may recover offers Recover; a protective trip says it is reset at the
+  protection device. Each is a request naming the entry by ID and source; the controller's answer
+  is shown in the dialog. The actions wait for a pending command, a Stop and a fresh list. The
+  dialog is redrawn only when what it shows changes, so a tap is not lost.
+- **Decision panel:** while the controller awaits a decision it covers Running or Manual and cannot
+  be closed: the fault, "the cure may be affected", the controller's time left (unknown when not
+  current) and Continue and Stop, which follow the link and the commands on every observation. It
+  closes when the controller leaves the decision; a fault alert that comes meanwhile is shown then.
+- **Alerts:** the adapter names the fault behind a faulted run and maps it to an alert kind only
+  where the kind is right; any other controller fault is alerted by its name.
+- **Parity:** the UI lab's simulation and the web demo raise an entry with each fault scenario,
+  keep latched entries after the run, answer Acknowledge, Recover and Continue, and have a decision
+  scenario.
+- **Against the real controller:** firmware #55 raises a continuable LAG with the scenario line
+  `offset`; the workflow check runs the decision with Continue.
+
 **Command rules** (controller interface: "Session, link and delivery", "Start readiness"):
 - **Outcomes:** a command is **accepted** or **rejected** only by the controller's result after it
   was applied (API-03). Sent is never shown as done.

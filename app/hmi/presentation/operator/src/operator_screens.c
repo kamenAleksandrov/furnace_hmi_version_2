@@ -10597,6 +10597,10 @@ static void deferred_action(void *user_data)
     explorer->action_pending = false;
     apply_action(explorer, (operator_action_t)explorer->pending_action,
                  explorer->pending_action_value);
+    /* An open Faults dialog or decision panel shows at once what the action changed (a Stop pending). */
+    if (explorer->faults_open || explorer->decision_open) {
+        follow_modals(explorer);
+    }
 }
 
 static void action_callback(lv_event_t *event)

@@ -774,6 +774,17 @@ static int fault_commands(const char **failure)
         return failed(failure, "Recover is offered before acknowledgement or for a trip.", 302);
     }
 
+    /* While a Stop is pending, no fault command is offered (review F6). */
+    click(screens.manual_stop_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 38U, &request) ||
+        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE))) {
+        return failed(failure, "Acknowledge is offered while a Stop is pending.", 313);
+    }
+    answer(&state.stop_feedback, 38U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    if (!update() || !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE))) {
+        return failed(failure, "Acknowledge does not come back after the Stop.", 314);
+    }
+
     /* A tap names the entry it was drawn for, also when the list moves first (review L1). */
     lv_obj_send_event(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE), LV_EVENT_CLICKED, NULL);
     state.fault_count = 3U;
@@ -895,8 +906,10 @@ static int decision_commands(const char **failure)
     }
     /* A decision with no fault named has a plain title. */
     state.decision_fault_id = 0U;
+    char unnamed[64];
+    (void)snprintf(unnamed, sizeof(unnamed), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_TITLE_FORMAT), 0U);
     if (!update() || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE) ||
-        tree_contains(screens.modal, title)) {
+        tree_contains(screens.modal, title) || tree_contains(screens.modal, unnamed)) {
         return failed(failure, "A decision without a fault is not titled plainly.", 328);
     }
     /* A decision that becomes a fault closes, and the fault's alert is shown (review M1). */
@@ -974,7 +987,7 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
     (void)snprintf(faults_text, sizeof(faults_text),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT), 2U);
     lv_refr_now(NULL);
-    if (button_with_text(screens.root, faults_text) == NULL) {
+    if (!enabled(button_with_text(screens.root, faults_text))) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "Manual's Faults button does not last.", 340);
     }
@@ -994,13 +1007,17 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
         state.fault_count = 1U;
         state.fault_total = 1U;
         fault_entry(0U, 3U, true, true, false, FURNACE_HMI_FAULT_RECOVERY_OPERATOR);
+        /* A controller fault the screens have no kind for is alerted by its name (review M4). */
+        state.fault_id = 6U;
         if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
             return failed(failure, "The operator screens could not be created.", 341);
         }
         settle();
-        if (screens.modal != NULL) {
-            click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
+        if (screens.alert_open == 0U || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_6)) {
+            furnace_hmi_operator_screens_destroy(&screens);
+            return failed(failure, "A fault without a kind is not alerted by its name.", 344);
         }
+        click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
         (void)snprintf(faults_text, sizeof(faults_text),
                        furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT), 1U);
         lv_refr_now(NULL);
@@ -1008,6 +1025,14 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
         state.stage_index = 1U;
         if (screens.modal == NULL || !update() || !screens.faults_open || screens.modal == NULL) {
             result = failed(failure, "The Faults dialog closes as the run moves.", 342);
+        }
+        /* No list is not "no faults" (review F4). */
+        state.faults_known = false;
+        state.fault_count = 0U;
+        state.fault_total = 0U;
+        if (result == 0 && (!update() || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_UNAVAILABLE) ||
+                            shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_NONE))) {
+            result = failed(failure, "An unavailable fault list reads as no faults.", 345);
         }
         furnace_hmi_operator_screens_destroy(&screens);
         return result;
