@@ -11,11 +11,11 @@
 
 /**
  * The controller command for an operator screen request (Phase 21 M21-5b):
- * whole degrees become 0.1 °C, and run commands name run_id, the run the
- * controller reports now. False for requests that are not commands yet
+ * whole degrees become 0.1 °C, and run commands name the run the operator saw
+ * when acting (the request's run_id). False for requests that are not commands yet
  * (program Start and closing a run: M21-7); the host then hands nothing over.
  */
-bool furnace_hmi_operator_command_for(const furnace_hmi_operator_request_t *request, uint32_t run_id,
+bool furnace_hmi_operator_command_for(const furnace_hmi_operator_request_t *request,
                                       furnace_hmi_command_t *command);
 
 #endif /* FURNACE_HMI_ZEPHYR_OPERATOR_COMMANDS_H */

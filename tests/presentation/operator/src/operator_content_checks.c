@@ -523,10 +523,52 @@ static int manual_commands(const char **failure)
         return failed(failure, "A rejected retarget does not return to the controller's target.", 213);
     }
 
-    /* Pause and Resume are requests; the state is the controller's. */
+    /*
+     * A Pause tap means Pause: when the controller pauses the session before the
+     * tap is handled, nothing is sent, never a Resume (review F1).
+     */
+    lv_obj_send_event(screens.manual_pause_button, LV_EVENT_CLICKED, NULL);
+    manual_status(FURNACE_HMI_RUN_STATE_PAUSED);
+    if (!update() || !no_request()) {
+        return failed(failure, "A Pause tap became a Resume when the state changed.", 240);
+    }
+    manual_status(FURNACE_HMI_RUN_STATE_RUNNING);
+    (void)update();
+
+    /*
+     * A tap merged behind a pending retarget is dropped by Stop: nothing pressed
+     * before Stop goes out after it, and nothing ordinary while it is pending
+     * (review F2).
+     */
+    click(increase);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET, 30U, &request)) {
+        return failed(failure, "A target change is not sent.", 241);
+    }
+    answer(&state.command_feedback, 30U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
+    (void)update();
+    click(increase);
+    click(screens.manual_stop_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 31U, &request) || request.run_id != 5U) {
+        return failed(failure, "Stop does not name the session.", 242);
+    }
+    if (enabled(increase) || enabled(screens.manual_pause_button)) {
+        return failed(failure, "Steppers or Pause are offered while Stop is pending.", 243);
+    }
+    answer(&state.command_feedback, 30U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    if (!update() || !no_request()) {
+        return failed(failure, "A tap from before Stop is sent after it.", 244);
+    }
+    answer(&state.stop_feedback, 31U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    state.manual_target_c.value = 121;
+    if (!update() || !no_request() || screens.manual_target_c != 121 || !enabled(increase)) {
+        return failed(failure, "After Stop the controller's target is not shown again.", 245);
+    }
+
+    /* Pause and Resume are requests for the run shown; the state is the controller's. */
     click(screens.manual_pause_button);
-    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PAUSE, 7U, &request) || screens.manual_paused) {
-        return failed(failure, "Pause is not a request.", 214);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PAUSE, 7U, &request) || screens.manual_paused ||
+        request.run_id != 5U) {
+        return failed(failure, "Pause is not a request for the session shown.", 214);
     }
     answer(&state.command_feedback, 7U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     manual_status(FURNACE_HMI_RUN_STATE_PAUSED);
@@ -599,6 +641,61 @@ static int manual_commands(const char **failure)
     answer(&state.command_feedback, 12U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     if (!update() || !enabled(screens.manual_start_button)) {
         return failed(failure, "Start is not offered anew after the session.", 227);
+    }
+
+    /* A tap not sent when the session ends is dropped, never sent to the next session (review F3). */
+    manual_status(FURNACE_HMI_RUN_STATE_RUNNING);
+    state.run_id = 6U;
+    (void)update();
+    increase = button_with_text(screens.manual_steppers, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_INCREASE));
+    click(increase);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET, 13U, &request) || request.run_id != 6U) {
+        return failed(failure, "A target change is not sent for session 6.", 246);
+    }
+    answer(&state.command_feedback, 13U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
+    (void)update();
+    click(increase);
+    answer(&state.command_feedback, 13U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    manual_status(FURNACE_HMI_RUN_STATE_COMPLETE);
+    state.run_id = 6U;
+    if (!update() || !no_request() || screens.manual_retarget_wanted) {
+        return failed(failure, "A tap outlives its session.", 247);
+    }
+
+    /* Faulted: Stop only; awaiting a decision: no Pause or Resume (M21-5c decides). */
+    manual_status(FURNACE_HMI_RUN_STATE_FAULT);
+    state.run_id = 7U;
+    if (!update() || screens.page != FURNACE_HMI_OPERATOR_PAGE_MANUAL || !enabled(screens.manual_stop_button) ||
+        enabled(screens.manual_pause_button) || enabled(increase)) {
+        return failed(failure, "A faulted session offers more than Stop.", 248);
+    }
+    manual_status(FURNACE_HMI_RUN_STATE_PAUSED);
+    state.run_id = 7U;
+    state.awaiting_decision = true;
+    if (!update() || enabled(screens.manual_pause_button)) {
+        return failed(failure, "Resume is offered while the controller awaits a decision.", 249);
+    }
+    state.awaiting_decision = false;
+
+    /* A run ID seen again after the controller left Manual is a new session (review L1). */
+    click(screens.manual_stop_button);
+    answer(&state.stop_feedback, 32U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 32U, &request)) {
+        return failed(failure, "Stop is not sent.", 250);
+    }
+    manual_status(FURNACE_HMI_RUN_STATE_COMPLETE);
+    state.run_id = 7U;
+    (void)update();
+    click(screens.manual_exit_button);
+    ready_status();
+    (void)update();
+    if (!furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_MANUAL)) {
+        return failed(failure, "Manual is not offered after the session.", 251);
+    }
+    manual_status(FURNACE_HMI_RUN_STATE_COMPLETE);
+    state.run_id = 7U;
+    if (!update() || !screens.manual_cooling) {
+        return failed(failure, "A later session with a repeated run ID is not shown.", 252);
     }
     return 0;
 }

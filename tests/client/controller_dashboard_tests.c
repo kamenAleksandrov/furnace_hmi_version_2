@@ -368,8 +368,14 @@ static void command_feedback(void)
         .submission = 5U, .kind = FURNACE_HMI_COMMAND_PAUSE, .reason = FURNACE_HMI_COMMAND_LOCAL_BUSY};
     map();
     EXPECT(s.command_feedback.submission == 5U && s.command_feedback.state == FURNACE_HMI_FEEDBACK_NOT_SENT &&
-               s.command_feedback.reason == FURNACE_HMI_COMMAND_LOCAL_BUSY,
+               s.command_feedback.reason == FURNACE_HMI_NOT_SENT_BUSY,
            "a newer local refusal: not sent");
+    o.command_refusal.reason = FURNACE_HMI_COMMAND_LOCAL_SUPERSEDED_BY_STOP;
+    map();
+    EXPECT(s.command_feedback.reason == FURNACE_HMI_NOT_SENT_SUPERSEDED_BY_STOP, "superseded by Stop");
+    o.command_refusal.reason = FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT;
+    map();
+    EXPECT(s.command_feedback.reason == FURNACE_HMI_NOT_SENT_LINK, "link not current");
     o.command_refusal.submission = 3U;
     map();
     EXPECT(s.command_feedback.submission == 4U && s.command_feedback.state == FURNACE_HMI_FEEDBACK_ACCEPTED,

@@ -128,7 +128,11 @@ static furnace_hmi_command_feedback_t feedback(const furnace_hmi_command_outcome
         (outcome->state == FURNACE_HMI_COMMAND_IDLE || newer(refusal->submission, outcome->submission))) {
         f.submission = refusal->submission;
         f.state = FURNACE_HMI_FEEDBACK_NOT_SENT;
-        f.reason = (uint8_t)refusal->reason;
+        f.reason = (refusal->reason == FURNACE_HMI_COMMAND_LOCAL_BUSY)       ? FURNACE_HMI_NOT_SENT_BUSY
+                   : (refusal->reason == FURNACE_HMI_COMMAND_LOCAL_INVALID) ? FURNACE_HMI_NOT_SENT_INVALID
+                   : (refusal->reason == FURNACE_HMI_COMMAND_LOCAL_SUPERSEDED_BY_STOP)
+                       ? FURNACE_HMI_NOT_SENT_SUPERSEDED_BY_STOP
+                       : FURNACE_HMI_NOT_SENT_LINK;
         return f;
     }
     f.submission = outcome->submission;

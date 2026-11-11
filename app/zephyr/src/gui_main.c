@@ -107,7 +107,7 @@ int main(void)
         while (furnace_hmi_operator_screens_take_request(&screens, &request)) {
             furnace_hmi_command_t command;
             const uint32_t submission =
-                furnace_hmi_operator_command_for(&request, observation.run_id, &command)
+                furnace_hmi_operator_command_for(&request, &command)
                     ? furnace_hmi_controller_link_submit(&command)
                     : 0U;
 

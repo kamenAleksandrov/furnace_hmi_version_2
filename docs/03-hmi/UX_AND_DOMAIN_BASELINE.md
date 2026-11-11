@@ -166,7 +166,8 @@ session (its configured maximum, initially 48 h); the controller still ends the
 session at that length. Start is offered only when the controller reports that
 it is ready to start. During a session target and rate changes are sent at
 once; taps while one is pending are merged and the newest is sent after the
-controller answers. A controller Manual session is shown on the Manual page,
+controller answers; after a refusal or an unresolved outcome nothing is sent
+again. A controller Manual session is shown on the Manual page,
 which it holds.
 
 ### Service-period preflight

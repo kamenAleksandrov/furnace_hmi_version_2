@@ -1010,8 +1010,8 @@ static bool modal_shows(const ui_lab_context_t *context, furnace_hmi_ui_string_i
 }
 
 /* Controller alerts: each fault kind opens its alert over Running (Home for a
- * power interruption), Close only dismisses it, Return Home leaves the ended
- * run, and link loss/restoration raise their own alerts with commands disabled. */
+ * power interruption), Close only dismisses it, Stop ends the faulted run (owner
+ * 2026-11-11), and link loss/restoration raise their own alerts with commands disabled. */
 static int check_controller_alerts(ui_lab_context_t *context)
 {
     static const struct {
@@ -1037,11 +1037,12 @@ static int check_controller_alerts(ui_lab_context_t *context)
             return 3;
         }
         if (faults[i].page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) { continue; }
-        /* The run has ended: the fault replaces the stage label, Pause is gone and Stop is Return Home. */
+        /* The fault replaces the stage label, Pause is gone, Stop stays and Return Home is not offered;
+         * Stop ends the run, and Home follows. */
         if (find_label(context->explorer.content, ui_string(faults[i].title)) == NULL ||
             find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PAUSE_PREVIEW)) != NULL ||
-            find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW)) != NULL ||
-            !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME) ||
+            find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME)) != NULL ||
+            !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) || !pump_controller_requests(context) ||
             context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_HOME) {
             fprintf(stderr, "Faulted Running did not end the run for %s\n", furnace_hmi_sim_scenario_name(faults[i].scenario));
             return 3;
@@ -1964,10 +1965,8 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
             furnace_hmi_simulator_tick(&context->simulator, 1);
             if (!furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) || context->explorer.content != content) { return 3; }
             if (!furnace_hmi_operator_screens_show_service_warning(&context->explorer)) { return 3; }
-            /* A run the controller ended offers Return Home where Stop was. */
-            const bool ended = context->explorer.state->run_state == FURNACE_HMI_RUN_STATE_FAULT;
-            lv_obj_t *stop = find_button(context->explorer.content, ui_string(ended ? FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME
-                                                                                    : FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
+            /* Stop stays reachable below the dialog, a faulted run included (owner 2026-11-11). */
+            lv_obj_t *stop = find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
             lv_area_t stop_area, overlay_area;
             if (!stop) { return 3; }
             lv_obj_get_coords(stop, &stop_area); lv_obj_get_coords(context->explorer.modal, &overlay_area);

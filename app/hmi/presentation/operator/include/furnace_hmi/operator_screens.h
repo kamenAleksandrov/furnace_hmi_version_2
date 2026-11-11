@@ -162,6 +162,8 @@ typedef struct {
     int32_t target_c;
     int32_t rate_tenths_c_per_minute;
     int32_t session_minutes;
+    /* Without simulated answers: the controller's run shown when the operator acted. */
+    uint32_t run_id;
 } furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
@@ -556,6 +558,7 @@ struct furnace_hmi_operator_screens {
      * slot. Each slot awaits the feedback for the number its last request was
      * handed over as; until then it offers no other command. */
     bool stop_requested;
+    uint32_t stop_run_id;
     bool command_awaiting;
     furnace_hmi_operator_request_kind_t command_kind;
     uint32_t command_submission;

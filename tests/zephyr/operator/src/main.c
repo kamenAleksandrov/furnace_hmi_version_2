@@ -25,19 +25,20 @@ ZTEST(furnace_hmi_operator, test_operator_requests_as_commands)
     };
     furnace_hmi_command_t command;
 
-    zassert_true(furnace_hmi_operator_command_for(&request, 0U, &command));
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
     zassert_equal(command.kind, FURNACE_HMI_COMMAND_MANUAL_START);
     zassert_equal(command.target_decicelsius, 1200, "whole degrees as 0.1 C");
     zassert_equal(command.rate_decicelsius_per_min, 25);
     zassert_equal(command.session_minutes, 2880U);
 
     request.session_minutes = 0;
-    zassert_false(furnace_hmi_operator_command_for(&request, 0U, &command),
+    zassert_false(furnace_hmi_operator_command_for(&request, &command),
                   "no Manual Start without the controller's maximum");
 
     request.kind = FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET;
     request.target_c = 121;
-    zassert_true(furnace_hmi_operator_command_for(&request, 5U, &command));
+    request.run_id = 5U;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
     zassert_true(command.kind == FURNACE_HMI_COMMAND_MANUAL_RETARGET && command.run_id == 5U &&
                      command.target_decicelsius == 1210 && command.rate_decicelsius_per_min == 25,
                  "retarget of run 5");
@@ -53,14 +54,14 @@ ZTEST(furnace_hmi_operator, test_operator_requests_as_commands)
     };
     for (size_t i = 0U; i < ARRAY_SIZE(runs); i++) {
         request.kind = runs[i].request;
-        zassert_true(furnace_hmi_operator_command_for(&request, 5U, &command));
+        zassert_true(furnace_hmi_operator_command_for(&request, &command));
         zassert_true(command.kind == runs[i].command && command.run_id == 5U, "request %u", (unsigned int)i);
     }
 
     request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM;
-    zassert_false(furnace_hmi_operator_command_for(&request, 5U, &command), "program Start is M21-7");
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "program Start is M21-7");
     request.kind = FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN;
-    zassert_false(furnace_hmi_operator_command_for(&request, 5U, &command), "nothing to close on a controller");
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "nothing to close on a controller");
 }
 
 ZTEST(furnace_hmi_operator, test_operator_screens_without_content)

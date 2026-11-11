@@ -185,7 +185,14 @@ Three steps, each a commit series on one draft pull request, stacked on M21-2b:
 - **Feedback:** the model carries the newest outcome of each slot (`command_feedback`,
   `stop_feedback`: pending, accepted, rejected, refused, unresolved, not sent, with the reason).
   A slot offers no second command until the outcome for its submission arrives. Every outcome other
-  than accepted opens a dialog with the screens' text for the controller's reason.
+  than accepted opens a dialog with the screens' text for the controller's reason, except for
+  START_PREPARE, which is asked for in the background.
+- **Stop first:** a Stop tap is never lost behind another tap. While a Stop is handed over or
+  pending, no ordinary command goes out (START_PREPARE aside), a merged tap is dropped, and the
+  steppers and Pause are disabled.
+- **What the operator saw:** the Manual Pause button carries its meaning (Pause or Resume) from its
+  label; a tap is dropped when the state changed before it was handled. Every request names the
+  run shown when the operator acted.
 - **Manual:**
   - opening Manual sends START_PREPARE; Start is enabled only when the controller reports READY and
     its Manual maximum (CAPABILITIES `manual_max_minutes`) is known, and asks for that maximum;
@@ -195,7 +202,11 @@ Three steps, each a commit series on one draft pull request, stacked on M21-2b:
   - a stepper change during a session is a retarget; taps while one is pending are merged and the
     newest is sent after the answer; after a refusal or an unresolved outcome nothing is resent and
     the controller's values are shown;
-  - a faulted session offers Stop only; Exit and Start new leave an ended session that still cools.
+  - a faulted session offers Stop only; while the controller awaits a decision, Pause and Resume are
+    not offered (the decision is M21-5c);
+  - a tap not sent when the session ends is dropped;
+  - Exit and Start new leave an ended session that still cools; that mark ends when the controller
+    leaves Manual, so a repeated run ID is a new session.
 - **Running:** Pause, Resume and Stop are requests; a faulted run keeps Stop and offers no Return
   Home (owner 2026-11-11).
 

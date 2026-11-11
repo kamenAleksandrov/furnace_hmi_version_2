@@ -135,6 +135,14 @@ typedef enum {
     FURNACE_HMI_FEEDBACK_COUNT,
 } furnace_hmi_feedback_state_t;
 
+/** Why the HMI did not send a command (reason of FURNACE_HMI_FEEDBACK_NOT_SENT). */
+typedef enum {
+    FURNACE_HMI_NOT_SENT_LINK = 1,
+    FURNACE_HMI_NOT_SENT_BUSY,
+    FURNACE_HMI_NOT_SENT_INVALID,
+    FURNACE_HMI_NOT_SENT_SUPERSEDED_BY_STOP,
+} furnace_hmi_not_sent_t;
+
 typedef struct {
     /** The number the host gave the command when it was handed over (0: none). */
     uint32_t submission;
