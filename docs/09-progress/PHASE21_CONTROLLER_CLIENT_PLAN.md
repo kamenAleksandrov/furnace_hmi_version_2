@@ -443,6 +443,38 @@ commands and operator workflows stay in M21-5 and later.
     implementation, 14 of the review fixes), all killed but one equivalent mutant (the flush's own
     Stop check, which the earlier Stop checks make unreachable). UI lab captures against M21-5a:
     only the four faulted-run captures change.
+- 2026-11-11, M21-5c (draft): **faults and the decision** (M21-5c design above). Owner decisions
+  2026-11-11: a Faults dialog; a decision panel that cannot be closed.
+  - **Client and model:** each fault entry's recovery, category and continuation; the decision's
+    time left and fault; the fault behind a faulted run and its alert kind (HMI-FAULT-CATEGORY).
+  - **Screens:** the Faults dialog with Acknowledge and Recover, the decision panel with Continue and
+    Stop, and their buttons on Running, Manual and Home. The Zephyr host maps the three commands.
+  - **Parity:** the UI lab's simulation and the web demo raise and answer the same entries and have a
+    decision scenario.
+  - **Against the real controller:** furnace firmware #55 (simulation only) brings the controller to
+    a decision with a continuable LAG; the workflow check runs it with Continue.
+  - **Reviews** (AI agents in the HMI roles). No path sends Continue, Resume or a recovery without an
+    operator tap. Fixed test-first, each with a mutation probe the tests kill:
+    - the decision panel's buttons kept their first state, so a brief link loss could leave the
+      operator without Stop (High);
+    - an alert lost as a decision ended; a stale countdown looked live; Manual's Faults button was
+      made anew on every observation; fault actions named a place in a changing list; the Faults
+      dialog closed on Running as the run moved; an unavailable list read as "no faults"; the alert
+      named the lowest inhibiting fault, with "target not reached" for lag and holdback (Medium);
+    - texts for Continue rejections and unknown recovery replies; no reply for an entry not found;
+      fault actions wait for a Stop and a fresh list; texts from the catalogue (Low).
+  - **Found while testing:** on a faulted Manual session each observation enabled and disabled the
+    steppers again, restarting their transitions; LVGL's heap grew from about 63 KB to 180 KB and the
+    Zephyr test ran out at 192 KiB. Fixed; the heap stays flat (peak 85 KB) and a test checks that
+    observations start no animations. A Stop tap now redraws an open Faults dialog at once.
+  - **Evidence:** `host-msvc-core-debug` 15 of 15; `host-msvc-desktop-debug` and `host-debug` (GCC)
+    18 of 18; the three UI lab presets 17 of 17 each; Twister in WSL, 14 of 14 executed cases;
+    Twister on Windows, `qemu_x86`, 4 configurations built (none run); the workflow check 6 of 6
+    against firmware #55; the M21-3 demonstration 10 of 10; the web demo smoke test; 26 mutation
+    probes (22 of the change, 3 of the client and adapter, 1 of the stepper fix), all killed but one
+    equivalent mutant (Recover can never be offered before Acknowledge). UI lab captures against
+    M21-5b: the four faulted-run captures change and the decision capture is new; manual-cooling
+    differs only in its known timing (HMI-CAPTURE-TIMING).
 
 - 2026-11-10, M21-2b (draft): **the operator screens are shared** (design above).
   - **Moved without change first:** all 279 lab captures (93 at 800x480, 800x640 and 1024x600)

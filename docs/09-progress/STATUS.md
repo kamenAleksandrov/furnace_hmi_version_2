@@ -1,5 +1,18 @@
 # Project status
 
+**Fact (2026-11-11, Phase 21 M21-5c):** faults and the quality decision are on the screens.
+- **Faults dialog** (owner 2026-11-11): from a red "Faults (n)" button on Running and Manual and a
+  banner on Home; Acknowledge and Recover are requests with the controller's answer; a protective
+  trip is reset at the protection device.
+- **Decision panel** (owner 2026-11-11): cannot be closed; the fault, the controller's time left,
+  Continue and Stop.
+- **Parity:** the UI lab and the web demo simulate the same entries and a decision scenario.
+- **Evidence:** host presets, Twister, the workflow check against the real controller (6 of 6, with
+  a quality decision from furnace firmware PR #55), the M21-3 demonstration and the web smoke test
+  pass; 26 mutation probes, all killed but one equivalent. Two AI reviews in the HMI roles: the High
+  finding (the decision panel could leave the operator without Stop after a brief link loss) and the
+  Medium ones are fixed test-first.
+
 **Fact (2026-11-11, Phase 21 M21-5b):** the operator screens send commands to the controller.
 - **On Zephyr:** opening Manual asks for start readiness; Start waits for READY and asks for the
   controller's longest session (owner 2026-11-11: no length choice, REQ-FUN-005 amended); the
