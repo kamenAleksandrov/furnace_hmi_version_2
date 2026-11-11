@@ -238,6 +238,28 @@ int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **fai
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "A run the controller holds could be left.", 102);
     }
+    /* It offers Stop, not Return Home, and Stop is a request (owner 2026-11-11). */
+    {
+        furnace_hmi_operator_request_t request;
+
+        lv_refr_now(NULL);
+        lv_obj_t *stop = button_with_text(screens.root,
+                                          furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
+        if (stop == NULL ||
+            button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME)) != NULL) {
+            furnace_hmi_operator_screens_destroy(&screens);
+            return failed(failure, "A faulted run offers Return Home instead of Stop.", 110);
+        }
+        lv_obj_send_event(stop, LV_EVENT_CLICKED, NULL);
+        for (int pass = 0; pass < 3; ++pass) {
+            (void)lv_timer_handler();
+        }
+        if (!furnace_hmi_operator_screens_take_request(&screens, &request) ||
+            request.kind != FURNACE_HMI_OPERATOR_REQUEST_STOP) {
+            furnace_hmi_operator_screens_destroy(&screens);
+            return failed(failure, "Stop on a faulted run is not a request.", 111);
+        }
+    }
 
     /* Stopped and cooling, navigation permitted: says so, and Home may be shown. */
     controller_status(FURNACE_HMI_MACHINE_MODE_PROGRAM, FURNACE_HMI_RUN_STATE_COMPLETE, true);
@@ -424,6 +446,12 @@ static int manual_commands(const char **failure)
         return failed(failure, "Start is offered while a command is pending.", 202);
     }
     answer(&state.command_feedback, 1U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    state.start_ready.value = false; /* PREPARING */
+    if (!update() || enabled(screens.manual_start_button) ||
+        !tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_NOT_READY_NOTE))) {
+        return failed(failure, "Start is offered before the controller is ready.", 230);
+    }
+    state.start_ready.value = true;
     if (!update() || !enabled(screens.manual_start_button)) {
         return failed(failure, "Start is not offered when the controller is ready.", 203);
     }
@@ -486,6 +514,8 @@ static int manual_commands(const char **failure)
         request.target_c != 123 || !no_request()) {
         return failed(failure, "The merged target is not sent after the answer.", 212);
     }
+    /* A tap while it is pending is dropped with it: nothing is sent after a refusal. */
+    click(increase);
     answer(&state.command_feedback, 6U, FURNACE_HMI_FEEDBACK_REJECTED, 19U);
     if (!update() || !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_REJECTED_TITLE,
                                    FURNACE_HMI_UI_STRING_UI_LAB_REASON_MANUAL_REQUEST) ||
