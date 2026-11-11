@@ -774,6 +774,26 @@ static int fault_commands(const char **failure)
         return failed(failure, "Recover is offered before acknowledgement or for a trip.", 302);
     }
 
+    /* A tap names the entry it was drawn for, also when the list moves first (review L1). */
+    lv_obj_send_event(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE), LV_EVENT_CLICKED, NULL);
+    state.fault_count = 3U;
+    state.fault_total = 3U;
+    state.faults[2] = state.faults[1];
+    state.faults[1] = state.faults[0];
+    fault_entry(0U, 2U, true, false, false, FURNACE_HMI_FAULT_RECOVERY_AWAIT_CLEAR);
+    if (!furnace_hmi_operator_screens_update(&screens, &state)) {
+        return failed(failure, "The status was refused.", 310);
+    }
+    settle();
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE, 39U, &request) || request.fault_id != 1U) {
+        return failed(failure, "A tap acknowledged another entry after the list moved.", 311);
+    }
+    answer(&state.command_feedback, 39U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    faulted_status();
+    if (!update()) {
+        return failed(failure, "The status was refused.", 312);
+    }
+
     /* Acknowledge is a request; the entry changes only when the controller says so. */
     click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE, 40U, &request) ||
@@ -843,14 +863,29 @@ static int decision_commands(const char **failure)
     if (!update() || screens.modal != panel || !tree_contains(screens.modal, "1:34")) {
         return failed(failure, "The decision countdown does not follow the controller.", 321);
     }
-    /* Continue is a request for the run; a rejection is shown in the panel. */
+    /* The buttons follow the link: a stale link offers neither, and both come back (review H1). */
+    state.availability = FURNACE_HMI_STATE_AVAILABILITY_STALE;
+    state.decision_remaining_seconds.validity = FURNACE_HMI_VALUE_VALIDITY_STALE;
+    if (!update() || screens.modal != panel || enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE)) ||
+        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW)) || tree_contains(screens.modal, "1:34")) {
+        return failed(failure, "A stale decision looks live or offers commands.", 326);
+    }
+    state.availability = FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
+    state.decision_remaining_seconds.validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT;
+    if (!update() || !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE)) ||
+        !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW))) {
+        return failed(failure, "Continue and Stop do not come back with the link.", 327);
+    }
+    /* Continue is a request for the run; a rejection is shown in the panel and Continue is offered again. */
     click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE));
-    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CONTINUE, 50U, &request) || request.run_id != 7U) {
-        return failed(failure, "Continue is not a request for the run.", 322);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CONTINUE, 50U, &request) || request.run_id != 7U ||
+        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE))) {
+        return failed(failure, "Continue is not a single request for the run.", 322);
     }
     answer(&state.command_feedback, 50U, FURNACE_HMI_FEEDBACK_REJECTED, 16U);
     if (!update() || screens.modal == NULL || !tree_contains(screens.modal, title) ||
-        !tree_contains(screens.modal, "16")) {
+        !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_REASON_CONTINUE_BLOCKED) ||
+        !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE))) {
         return failed(failure, "A rejected Continue is not shown in the decision panel.", 323);
     }
     /* Stop from the panel uses the Stop slot. */
@@ -858,8 +893,26 @@ static int decision_commands(const char **failure)
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 51U, &request) || request.run_id != 7U) {
         return failed(failure, "Stop from the decision panel is not a Stop request.", 324);
     }
-    /* The panel closes when the controller leaves the decision. */
+    /* A decision with no fault named has a plain title. */
+    state.decision_fault_id = 0U;
+    if (!update() || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE) ||
+        tree_contains(screens.modal, title)) {
+        return failed(failure, "A decision without a fault is not titled plainly.", 328);
+    }
+    /* A decision that becomes a fault closes, and the fault's alert is shown (review M1). */
     answer(&state.stop_feedback, 51U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    state.awaiting_decision = false;
+    state.run_state = FURNACE_HMI_RUN_STATE_FAULT;
+    state.fault_id = 16U;
+    state.fault_kind = FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE;
+    if (!update() || screens.decision_open || screens.alert_open == 0U ||
+        !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_OVER_TEMPERATURE_TITLE)) {
+        return failed(failure, "The fault after a decision is not alerted.", 329);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
+    state.fault_id = 0U;
+    state.fault_kind = FURNACE_HMI_FAULT_KIND_NONE;
+    /* The panel closes when the controller leaves the decision. */
     state.awaiting_decision = false;
     state.run_state = FURNACE_HMI_RUN_STATE_COMPLETE;
     state.run_phase = FURNACE_HMI_RUN_PHASE_COOLING;
@@ -912,9 +965,52 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
         return failed(failure, "The operator screens could not be created.", 300);
     }
     settle();
+    /* Manual's Faults button lasts through many observations (review M2). */
+    for (int pass = 0; pass < 70; ++pass) {
+        (void)furnace_hmi_operator_screens_update(&screens, &state);
+    }
+    settle();
+    char faults_text[32];
+    (void)snprintf(faults_text, sizeof(faults_text),
+                   furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT), 2U);
+    lv_refr_now(NULL);
+    if (button_with_text(screens.root, faults_text) == NULL) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "Manual's Faults button does not last.", 340);
+    }
+    if (screens.page_action_count >= 64U) {
+        furnace_hmi_operator_screens_destroy(&screens);
+        return failed(failure, "Manual uses up its button slots.", 343);
+    }
     if ((result = fault_commands(failure)) == 0 && (result = decision_commands(failure)) == 0) {
         result = fault_banner(failure);
     }
     furnace_hmi_operator_screens_destroy(&screens);
+
+    /* On Running, held by the controller, the Faults dialog stays open as the run moves (review F5). */
+    if (result == 0) {
+        controller_status(FURNACE_HMI_MACHINE_MODE_PROGRAM, FURNACE_HMI_RUN_STATE_FAULT, false);
+        state.faults_known = true;
+        state.fault_count = 1U;
+        state.fault_total = 1U;
+        fault_entry(0U, 3U, true, true, false, FURNACE_HMI_FAULT_RECOVERY_OPERATOR);
+        if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+            return failed(failure, "The operator screens could not be created.", 341);
+        }
+        settle();
+        if (screens.modal != NULL) {
+            click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
+        }
+        (void)snprintf(faults_text, sizeof(faults_text),
+                       furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT), 1U);
+        lv_refr_now(NULL);
+        click(button_with_text(screens.root, faults_text));
+        state.stage_index = 1U;
+        if (screens.modal == NULL || !update() || !screens.faults_open || screens.modal == NULL) {
+            result = failed(failure, "The Faults dialog closes as the run moves.", 342);
+        }
+        furnace_hmi_operator_screens_destroy(&screens);
+        return result;
+    }
     return result;
 }

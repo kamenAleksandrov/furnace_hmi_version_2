@@ -265,6 +265,8 @@ typedef struct {
      * list arrives; at most FURNACE_HMI_DASHBOARD_MAX_FAULTS of fault_total.
      */
     bool faults_known;
+    /** A fault changed and the list is being asked for again: actions wait for it. */
+    bool faults_outdated;
     uint8_t fault_count;
     uint8_t fault_total;
     furnace_hmi_fault_entry_t faults[FURNACE_HMI_DASHBOARD_MAX_FAULTS];

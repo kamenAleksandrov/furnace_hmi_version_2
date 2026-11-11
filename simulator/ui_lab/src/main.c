@@ -99,6 +99,19 @@ static bool pump_controller_requests(ui_lab_context_t *context)
     case FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN:
         (void)furnace_hmi_simulator_close_run(&context->simulator);
         break;
+    case FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE:
+        (void)furnace_hmi_simulator_fault_acknowledge(&context->simulator, request.fault_id, request.source);
+        break;
+    case FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY:
+        (void)furnace_hmi_simulator_fault_recover(&context->simulator, request.fault_id, request.source);
+        break;
+    case FURNACE_HMI_OPERATOR_REQUEST_CONTINUE:
+        (void)furnace_hmi_simulator_continue(&context->simulator);
+        break;
+    case FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE:
+    case FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START:
+    case FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET:
+        /* Raised only without simulated answers (the controller application). */
     case FURNACE_HMI_OPERATOR_REQUEST_NONE:
         break;
     }
@@ -1037,6 +1050,17 @@ static int check_controller_alerts(ui_lab_context_t *context)
             return 3;
         }
         if (faults[i].page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) { continue; }
+        /* The Faults dialog lists the entry; Acknowledge is answered by the simulation (M21-5c). */
+        char faults_text[32];
+        (void)snprintf(faults_text, sizeof(faults_text), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT),
+                       (unsigned int)context->explorer.state->fault_total);
+        if (!tap_text(context, faults_text) || context->explorer.modal == NULL ||
+            !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE) || !pump_controller_requests(context) ||
+            !context->explorer.state->faults[0].acknowledged || !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) ||
+            context->explorer.modal != NULL) {
+            fprintf(stderr, "Faults dialog failed for %s\n", furnace_hmi_sim_scenario_name(faults[i].scenario));
+            return 3;
+        }
         /* The fault replaces the stage label, Pause is gone, Stop stays and Return Home is not offered;
          * Stop ends the run, and Home follows. */
         if (find_label(context->explorer.content, ui_string(faults[i].title)) == NULL ||
@@ -1957,6 +1981,14 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         handle_timers(2U);
         /* Fault scenarios open with their alert; close it as an operator would. */
         if (context->explorer.alert_open != 0U && !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) { return 3; }
+        /* A decision is answered first: Continue, and the run goes on (M21-5c). */
+        if (scenario == FURNACE_HMI_SIM_SCENARIO_DECISION &&
+            (!context->explorer.decision_open || !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE) ||
+             !pump_controller_requests(context) || context->explorer.decision_open ||
+             context->explorer.state->run_state != FURNACE_HMI_RUN_STATE_RUNNING)) {
+            fprintf(stderr, "The decision was not answered\n");
+            return 3;
+        }
         if (context->explorer.page == FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
             if (furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_HOME)) { return 3; }
             int64_t domain = context->explorer.trajectory_domain_maximum_seconds;

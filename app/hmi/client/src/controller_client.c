@@ -419,7 +419,8 @@ static void on_fault_recovery_result(furnace_hmi_controller_client_t *c,
 
     if (o != NULL) {
         o->fault_found = r->found;
-        complete(c, o, r->found && r->reply == RECOVERY_RECOVERED, r->reply);
+        /* The reply means nothing when the entry was not found (interface): 0. */
+        complete(c, o, r->found && r->reply == RECOVERY_RECOVERED, r->found ? r->reply : 0U);
     }
 }
 

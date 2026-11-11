@@ -1530,6 +1530,19 @@ static void fault_recovery(void)
     advance(10U);
     EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->reason == RECOVERY_RECOVERED,
            "RECOVERED accepted");
+
+    /* Not found: the reply means nothing, so the outcome carries none (M21-5c review). */
+    (void)submit(FURNACE_HMI_COMMAND_FAULT_RECOVERY, 3U);
+    start_out(FURNACE_WIRE_MSG_FAULT_RECOVERY_RESULT);
+    fx.out.u.fault_recovery_result.request_id = last_request_id();
+    fx.out.u.fault_recovery_result.fault_id = 3U;
+    fx.out.u.fault_recovery_result.source = 1U;
+    fx.out.u.fault_recovery_result.found = false;
+    fx.out.u.fault_recovery_result.reply = RECOVERY_CONDITION_ACTIVE;
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && !c->fault_found && c->reason == 0U,
+           "not found: no reply");
     end();
 }
 

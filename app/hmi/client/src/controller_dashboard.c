@@ -33,12 +33,11 @@ enum {
 #define FAULT_MEASUREMENT_INVALID 1U
 #define FAULT_MEASUREMENT_STALE 2U
 #define FAULT_SENSOR_CHANNEL 3U
-#define FAULT_HOLDBACK 8U
-#define FAULT_CUMULATIVE_HOLDBACK 9U
-#define FAULT_LAG 10U
+#define FAULT_PROTECTIVE_TRIP 7U
 #define FAULT_TARGET_WAIT 11U
 #define FAULT_OVER_TEMPERATURE 16U
-#define FAULT_HOLD_UNDERSHOOT 18U
+
+static uint8_t lowest_fault(uint32_t ids);
 
 static int32_t whole_degrees(int32_t decicelsius)
 {
@@ -123,6 +122,23 @@ static void map_run(const furnace_hmi_controller_observation_t *o, furnace_hmi_d
                                                   : FURNACE_HMI_RUN_PHASE_NONE;
 }
 
+/*
+ * The fault behind a faulted run: the protection's trip, then the firmware's
+ * over-temperature, then a sensor fault, then the lowest other ID (review M4).
+ */
+static uint8_t leading_fault(uint32_t ids)
+{
+    static const uint8_t first[] = {FAULT_PROTECTIVE_TRIP, FAULT_OVER_TEMPERATURE, FAULT_SENSOR_CHANNEL,
+                                    FAULT_MEASUREMENT_INVALID, FAULT_MEASUREMENT_STALE};
+
+    for (size_t i = 0U; i < sizeof(first); i++) {
+        if ((ids & (1U << first[i])) != 0U) {
+            return first[i];
+        }
+    }
+    return lowest_fault(ids);
+}
+
 /* The lowest fault ID in a set (bit per ID); 0 when empty. */
 static uint8_t lowest_fault(uint32_t ids)
 {
@@ -148,11 +164,7 @@ static furnace_hmi_fault_kind_t fault_kind_of(uint8_t id)
     case FAULT_MEASUREMENT_STALE:
     case FAULT_SENSOR_CHANNEL:
         return FURNACE_HMI_FAULT_KIND_SENSOR;
-    case FAULT_HOLDBACK:
-    case FAULT_CUMULATIVE_HOLDBACK:
-    case FAULT_LAG:
     case FAULT_TARGET_WAIT:
-    case FAULT_HOLD_UNDERSHOOT:
         return FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED;
     default:
         return FURNACE_HMI_FAULT_KIND_NONE;
@@ -183,6 +195,7 @@ static void map_faults(const furnace_hmi_controller_observation_t *o, furnace_hm
         return;
     }
     s->faults_known = true;
+    s->faults_outdated = o->faults_outdated;
     s->fault_total = o->fault_count;
     s->fault_count = (o->fault_count < FURNACE_HMI_DASHBOARD_MAX_FAULTS) ? o->fault_count
                                                                        : FURNACE_HMI_DASHBOARD_MAX_FAULTS;
@@ -268,7 +281,7 @@ void furnace_hmi_controller_dashboard_state(const furnace_hmi_controller_observa
     map_run(o, s);
     map_faults(o, s);
     if (s->run_state == FURNACE_HMI_RUN_STATE_FAULT) {
-        s->fault_id = lowest_fault(o->inhibit_ids);
+        s->fault_id = leading_fault(o->inhibit_ids);
         s->fault_kind = fault_kind_of(s->fault_id);
     }
     if (s->awaiting_decision) {

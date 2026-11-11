@@ -443,7 +443,7 @@ static void fault_entries(void)
 
     o.faults_outdated = true;
     map();
-    EXPECT(s.faults_known, "an outdated list is still shown until the new one");
+    EXPECT(s.faults_known && s.faults_outdated, "an outdated list is still shown until the new one");
     o.faults_valid = false;
     map();
     EXPECT(!s.faults_known && s.fault_count == 0U, "no list, no entries");
@@ -480,7 +480,8 @@ static void fault_kinds(void)
     } cases[] = {
         {16U, FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE}, {1U, FURNACE_HMI_FAULT_KIND_SENSOR},
         {2U, FURNACE_HMI_FAULT_KIND_SENSOR},           {3U, FURNACE_HMI_FAULT_KIND_SENSOR},
-        {11U, FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED}, {8U, FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED},
+        {11U, FURNACE_HMI_FAULT_KIND_TARGET_NOT_REACHED}, {8U, FURNACE_HMI_FAULT_KIND_NONE},
+        {10U, FURNACE_HMI_FAULT_KIND_NONE},             {18U, FURNACE_HMI_FAULT_KIND_NONE},
         {7U, FURNACE_HMI_FAULT_KIND_NONE},              {6U, FURNACE_HMI_FAULT_KIND_NONE},
     };
 
@@ -494,7 +495,14 @@ static void fault_kinds(void)
     }
     o.inhibit_ids = (1U << 16) | (1U << 3);
     map();
-    EXPECT(s.fault_kind == FURNACE_HMI_FAULT_KIND_SENSOR && s.fault_id == 3U, "the lowest fault ID");
+    EXPECT(s.fault_kind == FURNACE_HMI_FAULT_KIND_OVER_TEMPERATURE && s.fault_id == 16U,
+           "over-temperature before a sensor fault");
+    o.inhibit_ids = (1U << 7) | (1U << 6) | (1U << 2);
+    map();
+    EXPECT(s.fault_id == 7U, "the protective trip leads");
+    o.inhibit_ids = (1U << 11) | (1U << 6);
+    map();
+    EXPECT(s.fault_id == 6U, "otherwise the lowest fault ID");
     o.run_state = RUN_RUNNING;
     o.inhibit_ids = 1U << 16;
     map();

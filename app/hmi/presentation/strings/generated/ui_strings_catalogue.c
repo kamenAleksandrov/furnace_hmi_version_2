@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 806 of 806 strings; missing entries are NULL and fall back to English. */
+/* en: 815 of 815 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -155,7 +155,17 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_6] = "The controller's checks are not valid yet. Try again shortly.",
     [FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_8] = "Stop the run first.",
     [FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE_FORMAT] = "Decision needed: %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_DECISION_DETAIL] = "The cure may be affected. Heating holds the last setpoint until you decide.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_DECISION_DETAIL] = "The cure may be affected. Heating holds the last setpoint until you decide; without a decision in time, heating stops and the run pauses.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE] = "Decision needed",
+    [FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CLOCK_FORMAT] = "%ld:%02ld",
+    [FURNACE_HMI_UI_STRING_UI_LAB_ALERT_CONTROLLER_FAULT_DETAIL] = "The controller reports this fault and has switched the heaters off. Open Faults for its state and actions.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_UNAVAILABLE] = "The controller's fault list is not available.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_CODE_FORMAT] = "The controller refused recovery (reply %u).",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_NOT_AWAITING_DECISION] = "The controller no longer awaits a decision.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_CONTINUE_BLOCKED] = "A condition still blocks Continue.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_REASON_RUNTIME_POLICY] = "The runtime limit does not allow it.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_NOTE_FORMAT] = "%s: %s",
+    [FURNACE_HMI_UI_STRING_UI_LAB_LIST_SEPARATOR] = ", ",
     [FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TIME_FORMAT] = "Time left: %s",
     [FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE] = "Continue",
     [FURNACE_HMI_UI_STRING_UI_LAB_RUN_AWAITING_DECISION] = "Awaiting operator decision",
@@ -382,7 +392,6 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED] = "Programs deleted",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED_DETAIL_FORMAT] = "%u programs were removed from the program library.",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_NO_PROGRAMS] = "There are no programs to delete.",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LIST_SEPARATOR] = ", ",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_RESTART_DISPLAY_TITLE] = "Restart display?",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_RESTART_DISPLAY_DETAIL] = "The display and its controls will be temporarily unavailable. This does not request a furnace Stop. Unsaved edits and pending local writes must be resolved first.",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_RESTART_DISPLAY_CONFIRM] = "Restart display",
@@ -564,7 +573,7 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_ALERT_OVER_TEMPERATURE_TITLE] = "Over-temperature",
     [FURNACE_HMI_UI_STRING_UI_LAB_ALERT_OVER_TEMPERATURE_DETAIL] = "The chamber is above its temperature limit. The controller has switched the heaters off.",
     [FURNACE_HMI_UI_STRING_UI_LAB_ALERT_TARGET_NOT_REACHED_TITLE] = "Target not reached",
-    [FURNACE_HMI_UI_STRING_UI_LAB_ALERT_TARGET_NOT_REACHED_DETAIL] = "The furnace did not reach the stage target in the expected time. The controller has stopped the program.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_ALERT_TARGET_NOT_REACHED_DETAIL] = "The furnace did not reach the stage target in the expected time. The controller has switched the heaters off.",
     [FURNACE_HMI_UI_STRING_UI_LAB_ALERT_DOOR_OPEN_TITLE] = "Door opened",
     [FURNACE_HMI_UI_STRING_UI_LAB_ALERT_DOOR_OPEN_DETAIL] = "The door was opened during the program. The controller has switched the heaters off.",
     [FURNACE_HMI_UI_STRING_UI_LAB_ALERT_SENSOR_TITLE] = "Temperature sensor fault",

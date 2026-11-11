@@ -586,6 +586,14 @@ struct furnace_hmi_operator_screens {
     uint8_t fault_target_id;
     uint8_t fault_target_source;
     lv_obj_t *decision_time_label;
+    /* The decision panel's buttons follow every observation (review H1); the fault it names. */
+    lv_obj_t *decision_continue_button;
+    lv_obj_t *decision_stop_button;
+    uint8_t decision_shown_fault;
+    /* An alert that arrived while the decision panel was open, shown when it closes (review M1). */
+    uint8_t pending_alert;
+    /* Manual's Faults button, made once with the page (review M2). */
+    lv_obj_t *manual_faults_button;
     /* Service records confirmed this session, newest first, before the
      * controller's earlier records in Service history. */
     furnace_hmi_operator_service_record_t service_records[FURNACE_HMI_OPERATOR_SERVICE_RECORDS];

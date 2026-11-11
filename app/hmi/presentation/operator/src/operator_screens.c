@@ -1221,6 +1221,7 @@ static bool rebuild_page(furnace_hmi_operator_screens_t *explorer);
 static bool update_manual_prediction(furnace_hmi_operator_screens_t *explorer);
 static bool update_manual_run_state(furnace_hmi_operator_screens_t *explorer);
 static void manual_value_changed(furnace_hmi_operator_screens_t *explorer);
+static const char *fault_title(uint8_t fault_id, char *buffer, size_t capacity);
 static bool settings_show_message(
     furnace_hmi_operator_screens_t *explorer,
     const char *title_text,
@@ -2272,6 +2273,8 @@ static void clear_modal(furnace_hmi_operator_screens_t *explorer)
         explorer->faults_open = false;
         explorer->decision_open = false;
         explorer->decision_time_label = NULL;
+        explorer->decision_continue_button = NULL;
+        explorer->decision_stop_button = NULL;
         explorer->keyboard_input = NULL;
         explorer->keyboard_hint = NULL;
         explorer->keyboard_apply = NULL;
@@ -3397,7 +3400,8 @@ static const furnace_hmi_ui_string_id_t fault_alert_details[FURNACE_HMI_FAULT_KI
 static bool state_has_fault_alert(const furnace_hmi_dashboard_state_t *state)
 {
     return state_is_current(state) && state->run_state == FURNACE_HMI_RUN_STATE_FAULT &&
-        state->fault_kind != FURNACE_HMI_FAULT_KIND_NONE && state->fault_kind < FURNACE_HMI_FAULT_KIND_COUNT;
+        ((state->fault_kind != FURNACE_HMI_FAULT_KIND_NONE && state->fault_kind < FURNACE_HMI_FAULT_KIND_COUNT) ||
+         state->fault_id != 0U);
 }
 
 static bool open_alert(furnace_hmi_operator_screens_t *explorer, uint8_t alert)
@@ -3410,7 +3414,14 @@ static bool open_alert(furnace_hmi_operator_screens_t *explorer, uint8_t alert)
     const furnace_hmi_ui_string_id_t detail = alert == OPERATOR_ALERT_FAULT ? fault_alert_details[kind]
         : alert == OPERATOR_ALERT_LINK_LOST ? FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_LOST_DETAIL
         : FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_RESTORED_DETAIL;
-    if (!open_dialog(explorer, ui_string(title), ui_string(detail), OPERATOR_ACTION_CLOSE_MODAL,
+    /* A controller fault the screens have no kind for is named from its ID (M21-5c). */
+    char name[48];
+    const bool named = alert == OPERATOR_ALERT_FAULT && kind == FURNACE_HMI_FAULT_KIND_NONE &&
+                       explorer->state->fault_id != 0U;
+    const char *title_text = named ? fault_title(explorer->state->fault_id, name, sizeof(name)) : ui_string(title);
+    const char *detail_text = named ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ALERT_CONTROLLER_FAULT_DETAIL)
+                                    : ui_string(detail);
+    if (!open_dialog(explorer, title_text, detail_text, OPERATOR_ACTION_CLOSE_MODAL,
                      ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE),
                      alert == OPERATOR_ALERT_FAULT ? OPERATOR_TONE_DANGER : OPERATOR_TONE_PRIMARY)) {
         return false;
@@ -3726,7 +3737,7 @@ static void add_manual_reading(lv_obj_t *strip, furnace_hmi_ui_string_id_t name,
 }
 
 /* "Faults (n)" in red while the controller reports fault entries (M21-5c, owner 2026-11-11). */
-static void add_faults_button(furnace_hmi_operator_screens_t *explorer, lv_obj_t *parent)
+static void add_faults_button(furnace_hmi_operator_screens_t *explorer, lv_obj_t *parent, int32_t height)
 {
     if (explorer->state == NULL || !explorer->state->faults_known || explorer->state->fault_total == 0U) {
         return;
@@ -3736,7 +3747,11 @@ static void add_faults_button(furnace_hmi_operator_screens_t *explorer, lv_obj_t
                    (unsigned int)explorer->state->fault_total);
     lv_obj_t *button = create_page_button(explorer, parent, text, OPERATOR_TONE_DANGER, OPERATOR_ACTION_SHOW_FAULTS, 0);
     if (button != NULL) {
-        lv_obj_set_height(button, 40);
+        /* As wide as its text, as high as the row that holds it. */
+        lv_obj_set_size(button, LV_SIZE_CONTENT, height);
+        lv_obj_set_style_min_height(button, height, LV_PART_MAIN);
+        lv_obj_set_style_pad_hor(button, 12, LV_PART_MAIN);
+        lv_obj_set_style_pad_ver(button, 0, LV_PART_MAIN);
     }
 }
 
@@ -3787,7 +3802,6 @@ static void refresh_manual_readings(furnace_hmi_operator_screens_t *explorer)
     }
     const furnace_hmi_dashboard_state_t *state = explorer->state;
     char value[32];
-    add_faults_button(explorer, strip);
     if (cooling) {
         /* Heating time, cooling time and its estimate, the reading and the cooling target. */
         format_running_time_value(value, sizeof(value), &state->elapsed_seconds);
@@ -4049,6 +4063,19 @@ static bool update_manual_run_state(furnace_hmi_operator_screens_t *explorer)
     if (!explorer->simulated_responses) {
         follow_controller_buttons(explorer);
     }
+    if (explorer->manual_faults_button != NULL) {
+        const furnace_hmi_dashboard_state_t *state = explorer->state;
+        if (state->faults_known && state->fault_total > 0U) {
+            char text[32];
+            (void)snprintf(text, sizeof(text), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT),
+                           (unsigned int)state->fault_total);
+            set_button_label(explorer->manual_faults_button, text);
+            lv_obj_remove_flag(explorer->manual_faults_button, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_add_flag(explorer->manual_faults_button, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
     if (explorer->trajectory_legend_label != NULL) {
         lv_label_set_text(explorer->trajectory_legend_label, trajectory_legend_text(explorer));
     }
@@ -4147,6 +4174,17 @@ static bool build_manual(furnace_hmi_operator_screens_t *explorer)
     explorer->manual_new_button = create_page_button(
         explorer, actions, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_START_NEW),
         OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_MANUAL_NEW, 0);
+    /* Faults (n): its text and visibility follow the controller (update_manual_run_state). */
+    char faults_text[32];
+    (void)snprintf(faults_text, sizeof(faults_text), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT),
+                   (unsigned int)explorer->state->fault_total);
+    explorer->manual_faults_button = create_page_button(
+        explorer, actions, faults_text, OPERATOR_TONE_DANGER, OPERATOR_ACTION_SHOW_FAULTS, 0);
+    if (explorer->manual_faults_button != NULL) {
+        lv_obj_set_height(explorer->manual_faults_button, 56);
+        lv_obj_set_flex_grow(explorer->manual_faults_button, 1);
+        lv_obj_add_flag(explorer->manual_faults_button, LV_OBJ_FLAG_HIDDEN);
+    }
     explorer->manual_steppers = steppers;
     if (explorer->manual_start_button == NULL || explorer->manual_pause_button == NULL ||
         explorer->manual_stop_button == NULL || explorer->manual_exit_button == NULL ||
@@ -4903,7 +4941,7 @@ static bool build_running(furnace_hmi_operator_screens_t *explorer)
     }
     lv_obj_t *program_name = create_page_button(explorer, phase, explorer->state->program_name,
         OPERATOR_TONE_FLAT, OPERATOR_ACTION_SHOW_RUN_DETAILS, 0);
-    add_faults_button(explorer, phase);
+    add_faults_button(explorer, phase, 28);
     if (!program_name) { return false; }
     lv_obj_set_style_min_height(program_name, 28, LV_PART_MAIN); lv_obj_set_height(program_name, 28);
     lv_obj_set_style_pad_all(program_name, 0, LV_PART_MAIN); lv_obj_set_style_border_width(program_name, 0, LV_PART_MAIN);
@@ -8556,6 +8594,7 @@ static bool rebuild_page(furnace_hmi_operator_screens_t *explorer)
     explorer->manual_start_button = NULL;
     explorer->manual_pause_button = NULL;
     explorer->manual_stop_button = NULL;
+    explorer->manual_faults_button = NULL;
     explorer->manual_readings = NULL;
     explorer->manual_marker = NULL;
     explorer->manual_marker_index = -1;
@@ -8805,6 +8844,9 @@ static const char *run_reason_text(uint8_t reason, char *buffer, size_t capacity
         { 12U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_NOT_PAUSED },
         { 13U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_RESUME_BLOCKED },
         { 14U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_FAULT_LATCHED },
+        { 15U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_NOT_AWAITING_DECISION },
+        { 16U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_CONTINUE_BLOCKED },
+        { 17U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_RUNTIME_POLICY },
         { 19U, FURNACE_HMI_UI_STRING_UI_LAB_REASON_MANUAL_REQUEST },
     };
     for (size_t index = 0U; index < sizeof(known) / sizeof(known[0]); ++index) {
@@ -8837,7 +8879,8 @@ static const char *service_reason_text(uint8_t reason, char *buffer, size_t capa
 }
 
 /* The controller's answer to a fault command (interface: FAULT_*_RESULT). */
-static const char *fault_reply_text(furnace_hmi_operator_request_kind_t kind, uint8_t reply)
+static const char *fault_reply_text(furnace_hmi_operator_request_kind_t kind, uint8_t reply, char *buffer,
+                                    size_t capacity)
 {
     static const furnace_hmi_ui_string_id_t replies[] = {
         [0] = FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_0,
@@ -8848,12 +8891,16 @@ static const char *fault_reply_text(furnace_hmi_operator_request_kind_t kind, ui
         [6] = FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_6,
         [8] = FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_8,
     };
-    /* An acknowledgement fails only as NOT_FOUND; a recovery names its reply. */
-    if (kind == FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE || reply >= sizeof(replies) / sizeof(replies[0]) ||
-        (reply != 0U && replies[reply] == 0)) {
+    /* An acknowledgement fails only as NOT_FOUND; a recovery names its reply (0: not found). */
+    if (kind == FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE || reply == 0U) {
         return ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_0);
     }
-    return ui_string(replies[reply]);
+    if (reply < sizeof(replies) / sizeof(replies[0]) && replies[reply] != 0) {
+        return ui_string(replies[reply]);
+    }
+    (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_CODE_FORMAT),
+                   (unsigned int)reply);
+    return buffer;
 }
 
 static bool open_faults(furnace_hmi_operator_screens_t *explorer);
@@ -8871,7 +8918,7 @@ static void show_command_problem(furnace_hmi_operator_screens_t *explorer, bool 
     case FURNACE_HMI_FEEDBACK_REJECTED:
         detail = (kind == FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE ||
                   kind == FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY)
-                     ? fault_reply_text(kind, feedback->reason)
+                     ? fault_reply_text(kind, feedback->reason, buffer, sizeof(buffer))
                      : run_reason_text(feedback->reason, buffer, sizeof(buffer));
         break;
     case FURNACE_HMI_FEEDBACK_REFUSED:
@@ -8892,7 +8939,8 @@ static void show_command_problem(furnace_hmi_operator_screens_t *explorer, bool 
     }
     /* An open Faults dialog or decision panel keeps the operator's place and shows the answer in it. */
     if (explorer->faults_open || explorer->decision_open) {
-        (void)snprintf(explorer->modal_note, sizeof(explorer->modal_note), "%s: %s", ui_string(title), detail);
+        (void)snprintf(explorer->modal_note, sizeof(explorer->modal_note),
+                       ui_string(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_NOTE_FORMAT), ui_string(title), detail);
         if (explorer->decision_open) {
             (void)open_decision(explorer);
         } else {
@@ -9242,7 +9290,8 @@ static uint32_t faults_signature(const furnace_hmi_operator_screens_t *explorer)
     const furnace_hmi_dashboard_state_t *state = explorer->state;
     uint32_t sum = 2166136261U;
     const uint32_t parts[] = { state->faults_known, state->fault_count, state->fault_total,
-                               explorer->command_awaiting, state_is_current(state) };
+                               explorer->command_awaiting, state_is_current(state), stop_in_progress(explorer),
+                               state->faults_outdated };
     for (size_t index = 0U; index < sizeof(parts) / sizeof(parts[0]); ++index) {
         sum = (sum ^ parts[index]) * 16777619U;
     }
@@ -9257,6 +9306,14 @@ static uint32_t faults_signature(const furnace_hmi_operator_screens_t *explorer)
         sum = (sum ^ (uint8_t)*c) * 16777619U;
     }
     return sum;
+}
+
+/* Acknowledge for an entry not yet seen; Recover for an acknowledged latch the operator may clear. */
+static bool fault_offers(const furnace_hmi_fault_entry_t *f, int action)
+{
+    return action == OPERATOR_ACTION_FAULT_ACKNOWLEDGE
+               ? !f->acknowledged
+               : f->acknowledged && f->latched && f->recovery == FURNACE_HMI_FAULT_RECOVERY_OPERATOR;
 }
 
 /* One entry: its name, its state, and the actions the controller allows (ADR-0018). */
@@ -9280,10 +9337,12 @@ static bool add_fault_row(furnace_hmi_operator_screens_t *explorer, lv_obj_t *li
     lv_obj_set_size(texts, 0, LV_SIZE_CONTENT);
     lv_obj_set_flex_grow(texts, 1);
     lv_obj_set_flex_flow(texts, LV_FLEX_FLOW_COLUMN);
+    const char *separator = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIST_SEPARATOR);
     (void)snprintf(status, sizeof(status), "%s%s%s%s%s",
                    ui_string(f->active ? FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACTIVE : FURNACE_HMI_UI_STRING_UI_LAB_FAULT_CLEARED),
-                   f->latched ? ", " : "", f->latched ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_LATCHED) : "",
-                   f->acknowledged ? ", " : "", f->acknowledged ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGED) : "");
+                   f->latched ? separator : "", f->latched ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_LATCHED) : "",
+                   f->acknowledged ? separator : "",
+                   f->acknowledged ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGED) : "");
     if (panel_text(texts, fault_title(f->fault_id, name, sizeof(name)), &furnace_hmi_font_semibold_15,
                    f->active ? OPERATOR_THEME_AMBER_TEXT : OPERATOR_TEXT) == NULL ||
         panel_text(texts, status, &furnace_hmi_font_regular_13, OPERATOR_MUTED) == NULL) {
@@ -9294,15 +9353,18 @@ static bool add_fault_row(furnace_hmi_operator_screens_t *explorer, lv_obj_t *li
                    OPERATOR_MUTED) == NULL) {
         return false;
     }
-    const bool can_send = state_is_current(explorer->state) && !explorer->command_awaiting;
+    const bool can_send = state_is_current(explorer->state) && !explorer->command_awaiting &&
+                          !stop_in_progress(explorer) && !explorer->state->faults_outdated;
+    /* The action names the entry, never its place in a list that may change (review L1). */
+    const int entry = (int)f->fault_id | ((int)f->source << 8);
     lv_obj_t *action = NULL;
-    if (!f->acknowledged) {
+    if (fault_offers(f, OPERATOR_ACTION_FAULT_ACKNOWLEDGE)) {
         action = create_modal_button(explorer, row, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE),
-                                     OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_FAULT_ACKNOWLEDGE, index);
+                                     OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_FAULT_ACKNOWLEDGE, entry);
     }
-    else if (f->latched && f->recovery == FURNACE_HMI_FAULT_RECOVERY_OPERATOR) {
+    else if (fault_offers(f, OPERATOR_ACTION_FAULT_RECOVER)) {
         action = create_modal_button(explorer, row, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER),
-                                     OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_FAULT_RECOVER, index);
+                                     OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_FAULT_RECOVER, entry);
     }
     if (action != NULL) {
         lv_obj_set_size(action, 150, 44);
@@ -9338,8 +9400,9 @@ static bool open_faults(furnace_hmi_operator_screens_t *explorer)
     lv_obj_set_style_pad_row(list, 10, LV_PART_MAIN);
     lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
     if (!state->faults_known || state->fault_count == 0U) {
-        (void)panel_text(list, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_NONE), &furnace_hmi_font_regular_14,
-                         OPERATOR_TEXT);
+        (void)panel_text(list, ui_string(state->faults_known ? FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_NONE
+                                                             : FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_UNAVAILABLE),
+                         &furnace_hmi_font_regular_14, OPERATOR_TEXT);
     }
     for (uint8_t index = 0U; index < state->fault_count; ++index) {
         if (!add_fault_row(explorer, list, index)) {
@@ -9373,13 +9436,24 @@ static void format_decision_time(const furnace_hmi_operator_screens_t *explorer,
 {
     const furnace_hmi_i32_value_t *left = &explorer->state->decision_remaining_seconds;
     char clock[16];
-    if (left->validity == FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE || left->value < 0) {
+    /* A countdown not current is not shown as live (review M3). */
+    if (left->validity != FURNACE_HMI_VALUE_VALIDITY_CURRENT || left->value < 0) {
         copy_text_bounded(clock, sizeof(clock), ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_UNKNOWN));
     }
     else {
-        (void)snprintf(clock, sizeof(clock), "%ld:%02ld", (long)(left->value / 60), (long)(left->value % 60));
+        (void)snprintf(clock, sizeof(clock), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CLOCK_FORMAT),
+                       (long)(left->value / 60), (long)(left->value % 60));
     }
     (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TIME_FORMAT), clock);
+}
+
+/* Continue and Stop follow the link and the commands on every observation (review H1). */
+static void follow_decision_buttons(furnace_hmi_operator_screens_t *explorer)
+{
+    const bool current = state_is_current(explorer->state);
+    set_button_enabled(explorer->decision_continue_button,
+                       current && !explorer->command_awaiting && !stop_in_progress(explorer));
+    set_button_enabled(explorer->decision_stop_button, current && !explorer->stop_awaiting);
 }
 
 /* The quality decision (ADR-0019, owner 2026-11-11): not closable; Continue and Stop. */
@@ -9393,8 +9467,14 @@ static bool open_decision(furnace_hmi_operator_screens_t *explorer)
     char name[48];
     char title[96];
     char left[48];
-    (void)snprintf(title, sizeof(title), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE_FORMAT),
-                   fault_title(explorer->state->decision_fault_id, name, sizeof(name)));
+    explorer->decision_shown_fault = explorer->state->decision_fault_id;
+    if (explorer->decision_shown_fault == 0U) {
+        copy_text_bounded(title, sizeof(title), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE));
+    }
+    else {
+        (void)snprintf(title, sizeof(title), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE_FORMAT),
+                       fault_title(explorer->decision_shown_fault, name, sizeof(name)));
+    }
     format_decision_time(explorer, left, sizeof(left));
     lv_obj_t *time_label = NULL;
     if (panel_text(dialog, title, &furnace_hmi_font_semibold_20, OPERATOR_TEXT) == NULL ||
@@ -9421,13 +9501,9 @@ static bool open_decision(furnace_hmi_operator_screens_t *explorer)
     }
     size_dialog_button(proceed);
     size_dialog_button(stop);
-    const bool current = state_is_current(explorer->state);
-    if (!current || explorer->command_awaiting || stop_in_progress(explorer)) {
-        lv_obj_add_state(proceed, LV_STATE_DISABLED);
-    }
-    if (!current || explorer->stop_awaiting) {
-        lv_obj_add_state(stop, LV_STATE_DISABLED);
-    }
+    explorer->decision_continue_button = proceed;
+    explorer->decision_stop_button = stop;
+    follow_decision_buttons(explorer);
     return true;
 }
 
@@ -9438,9 +9514,6 @@ static bool open_decision(furnace_hmi_operator_screens_t *explorer)
  */
 static void follow_modals(furnace_hmi_operator_screens_t *explorer)
 {
-    if (explorer->simulated_responses) {
-        return;
-    }
     const bool deciding = explorer->state->awaiting_decision;
     if (deciding && !explorer->decision_open) {
         explorer->modal_note[0] = '\0';
@@ -9449,12 +9522,25 @@ static void follow_modals(furnace_hmi_operator_screens_t *explorer)
     }
     if (!deciding && explorer->decision_open) {
         clear_modal(explorer);
+        /* An alert that came during the decision is shown now (review M1). */
+        if (explorer->pending_alert != 0U) {
+            const uint8_t alert = explorer->pending_alert;
+            explorer->pending_alert = 0U;
+            (void)open_alert(explorer, alert);
+        }
         return;
     }
-    if (explorer->decision_open && explorer->decision_time_label != NULL) {
+    if (explorer->decision_open) {
+        if (explorer->state->decision_fault_id != explorer->decision_shown_fault) {
+            (void)open_decision(explorer);
+            return;
+        }
         char left[48];
         format_decision_time(explorer, left, sizeof(left));
-        lv_label_set_text(explorer->decision_time_label, left);
+        if (explorer->decision_time_label != NULL) {
+            lv_label_set_text(explorer->decision_time_label, left);
+        }
+        follow_decision_buttons(explorer);
         return;
     }
     if (explorer->faults_open && faults_signature(explorer) != explorer->faults_signature) {
@@ -10276,28 +10362,45 @@ static void apply_action(
     case OPERATOR_ACTION_FAULT_ACKNOWLEDGE:
     case OPERATOR_ACTION_FAULT_RECOVER:
         /* Requests only: the entry changes when the controller reports it (ADR-0018). */
-        if (value >= 0 && value < (int)explorer->state->fault_count && !explorer->command_awaiting &&
-            !explorer->simulated_responses) {
-            explorer->fault_target_id = explorer->state->faults[value].fault_id;
-            explorer->fault_target_source = explorer->state->faults[value].source;
+    {
+        /* The entry the operator saw, by its ID: gone or changed, nothing is sent (review L1). */
+        const furnace_hmi_fault_entry_t *entry = NULL;
+        for (uint8_t index = 0U; index < explorer->state->fault_count; ++index) {
+            const furnace_hmi_fault_entry_t *f = &explorer->state->faults[index];
+            if ((int)f->fault_id == (value & 0xFF) && (int)f->source == ((value >> 8) & 0xFF)) {
+                entry = f;
+            }
+        }
+        if (entry == NULL || !fault_offers(entry, action)) {
+            (void)snprintf(explorer->modal_note, sizeof(explorer->modal_note), "%s",
+                           ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RECOVERY_REPLY_0));
+            (void)open_faults(explorer);
+            break;
+        }
+        if (!explorer->command_awaiting) {
+            explorer->fault_target_id = entry->fault_id;
+            explorer->fault_target_source = entry->source;
             explorer->modal_note[0] = '\0';
             post_request(explorer, action == OPERATOR_ACTION_FAULT_ACKNOWLEDGE ? FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE
                                                                               : FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY);
             (void)open_faults(explorer);
         }
         break;
+    }
     case OPERATOR_ACTION_DECISION_CONTINUE:
-        if (explorer->state->awaiting_decision && !explorer->command_awaiting && !explorer->simulated_responses) {
+        if (explorer->state->awaiting_decision && !explorer->command_awaiting) {
             explorer->modal_note[0] = '\0';
             post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_CONTINUE);
             (void)open_decision(explorer);
         }
         break;
     case OPERATOR_ACTION_DECISION_STOP:
-        if (!explorer->stop_awaiting && !explorer->simulated_responses) {
+        if (!explorer->stop_awaiting) {
             explorer->modal_note[0] = '\0';
             post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_STOP);
-            (void)open_decision(explorer);
+            if (explorer->state->awaiting_decision) {
+                (void)open_decision(explorer);
+            }
         }
         break;
     case OPERATOR_ACTION_START_AGAIN:
@@ -10752,10 +10855,13 @@ bool furnace_hmi_operator_screens_create(
     }
     lv_obj_update_layout(explorer->root);
     /* An active fault in the first snapshot is presented once, like a new report. */
-    if (state_has_fault_alert(explorer->state) && !open_alert(explorer, OPERATOR_ALERT_FAULT)) {
+    if (state_has_fault_alert(explorer->state) && !explorer->state->awaiting_decision &&
+        !open_alert(explorer, OPERATOR_ALERT_FAULT)) {
         furnace_hmi_operator_screens_destroy(explorer);
         return false;
     }
+    /* A decision already awaited at creation is shown at once (M21-5c). */
+    follow_modals(explorer);
     return true;
 }
 
@@ -10795,7 +10901,8 @@ static uint8_t alert_for_transition(const furnace_hmi_operator_screens_t *explor
 {
     const furnace_hmi_dashboard_state_t *previous = &explorer->observation;
     if (state_has_fault_alert(next) &&
-        (!state_has_fault_alert(previous) || previous->fault_kind != next->fault_kind)) {
+        (!state_has_fault_alert(previous) || previous->fault_kind != next->fault_kind ||
+         previous->fault_id != next->fault_id)) {
         return OPERATOR_ALERT_FAULT;
     }
     if (previous->availability == FURNACE_HMI_STATE_AVAILABILITY_CURRENT &&
@@ -10815,8 +10922,18 @@ bool furnace_hmi_operator_screens_update(furnace_hmi_operator_screens_t *explore
     if (explorer == NULL || explorer->root == NULL || state == NULL || !furnace_hmi_dashboard_state_is_well_formed(state)) { return false; }
     const uint8_t alert = alert_for_transition(explorer, state);
     if (!update_observation(explorer, state)) { return false; }
-    if (alert != OPERATOR_ALERT_NONE && !explorer->decision_open && !open_alert(explorer, alert)) { return false; }
     follow_modals(explorer);
+    if (alert != OPERATOR_ALERT_NONE) {
+        if (explorer->decision_open) {
+            /* A fault waits for the panel; the panel itself shows a lost link (no countdown, no commands). */
+            if (alert == OPERATOR_ALERT_FAULT) {
+                explorer->pending_alert = alert;
+            }
+        }
+        else if (!open_alert(explorer, alert)) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -10833,6 +10950,8 @@ static bool rebuild_page_keeping_modal(furnace_hmi_operator_screens_t *explorer)
     const bool faults_open = explorer->faults_open;
     const bool decision_open = explorer->decision_open;
     lv_obj_t *decision_time_label = explorer->decision_time_label;
+    lv_obj_t *decision_continue = explorer->decision_continue_button;
+    lv_obj_t *decision_stop = explorer->decision_stop_button;
     explorer->modal = NULL;
     const bool rebuilt = rebuild_page(explorer);
     explorer->modal = modal;
@@ -10841,6 +10960,8 @@ static bool rebuild_page_keeping_modal(furnace_hmi_operator_screens_t *explorer)
     explorer->faults_open = faults_open;
     explorer->decision_open = decision_open;
     explorer->decision_time_label = decision_time_label;
+    explorer->decision_continue_button = decision_continue;
+    explorer->decision_stop_button = decision_stop;
     if (modal != NULL) { lv_obj_move_to_index(modal, -1); }
     return rebuilt;
 }
@@ -10874,7 +10995,9 @@ static bool update_observation(furnace_hmi_operator_screens_t *explorer, const f
     if ((structure_changed && explorer->page != FURNACE_HMI_OPERATOR_PAGE_MANUAL) ||
         (locked && explorer->page != held_page(explorer))) {
         if (locked) {
-            clear_modal(explorer);
+            if (explorer->page != held_page(explorer)) {
+                clear_modal(explorer);
+            }
             explorer->page = held_page(explorer);
         } else if (state->mode == FURNACE_HMI_MACHINE_MODE_PROGRAM && (state->run_state == FURNACE_HMI_RUN_STATE_RUNNING || state->run_state == FURNACE_HMI_RUN_STATE_PAUSED)) {
             explorer->page = FURNACE_HMI_OPERATOR_PAGE_RUNNING;
