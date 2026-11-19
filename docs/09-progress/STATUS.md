@@ -1,5 +1,25 @@
 # Project status
 
+**Fact (2026-11-19, Phase 21 M21-6, controller 20d):** the controller's Phase 20d work is in
+furnace firmware PRs #56 to #60 (merged 2026-11-19) and drafts #63 to #65 (the 20d-4 owner
+decisions Q-D11 and Q-D13, and 20d-5).
+- **Codec resync:** `CONTROLLER_SYNC.json` now pins furnace firmware `a96d138` (draft PR #65). The
+  eight copied files and the generated vector table are byte-identical to the previous pin
+  `721f3cb`; `tools/sync_controller_wire.py --against` passes. Only the manifest's revision
+  changed.
+- **ADR-0007 reopen triggers checked:** the 20d messages brought no layout change. 0.16 was
+  amended on 2026-11-12 with result values only: `PROGRAM_SAVE_RESULT` and
+  `PROGRAM_DELETE_RESULT` gained `UNRESOLVED` (10), and `BUSY` also applies while a library write
+  is open. That is message semantics, for M21-7 to handle, not serialization or framing, so the
+  trigger is not met and ADR-0007 stays as accepted. The owner may decide otherwise.
+- **The simulated controller (20d-5):** it seeds three delivered fixture programs and keeps the
+  library and the event logs in its RAM store. Its storage health is reported as measured (owner
+  decision Q-D5), and it is lost when the process ends. The six operator workflows
+  (`tools/controller_workflow_check.py`) pass against it.
+- **Next:** M21-7, the library, program Start, names and the Device log, against this controller.
+  Controller-backed history workflows are accepted only after the Q-D13 fix (firmware #64) is
+  reviewed.
+
 **Fact (2026-11-19, AGENT-OPT-04; configuration/tooling/documentation only):**
 delegation ceiling replaces per-invocation model choice: subagents use the same
 or a weaker model than the session, at an effort no higher than the session's;

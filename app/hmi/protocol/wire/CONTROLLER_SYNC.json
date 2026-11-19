@@ -1,6 +1,6 @@
 {
   "controller_repository": "kamenAleksandrov/furnace-firmware-v2",
-  "controller_revision": "721f3cb0287bfe45507dd917d14f4095dac238dc",
+  "controller_revision": "a96d1381f63faa660d1a38a2ba95714198590918",
   "wire_format": "docs/interfaces/controller-wire-format.md",
   "note": "Pinned copy (ADR-0009). Do not edit the copied files; change the controller first, then sync.",
   "files": [
