@@ -80,6 +80,20 @@ if(NOT TARGET furnace_hmi_wire)
   )
 endif()
 
+if(NOT TARGET furnace_hmi_transport)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/transport"
+    "${CMAKE_CURRENT_BINARY_DIR}/transport"
+  )
+endif()
+
+if(NOT TARGET furnace_hmi_client)
+  add_subdirectory(
+    "${FURNACE_HMI_REPOSITORY_ROOT}/app/hmi/client"
+    "${CMAKE_CURRENT_BINARY_DIR}/client"
+  )
+endif()
+
 # The pinned copy of the controller's codec against the controller's golden vectors
 # (ADR-0007, ADR-0009). The vector table is a copied, generated controller artifact.
 set(FURNACE_HMI_CONFORMANCE_DIR "${FURNACE_HMI_REPOSITORY_ROOT}/tests/conformance/wire")
@@ -96,6 +110,19 @@ else()
   target_compile_options(furnace_hmi_wire_conformance PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME host.wire_conformance COMMAND furnace_hmi_wire_conformance)
+
+set(FURNACE_HMI_CLIENT_TESTS_DIR "${FURNACE_HMI_REPOSITORY_ROOT}/tests/client")
+add_executable(furnace_hmi_controller_client_tests
+  "${FURNACE_HMI_CLIENT_TESTS_DIR}/host_main.c"
+  "${FURNACE_HMI_CLIENT_TESTS_DIR}/controller_client_tests.c"
+)
+target_link_libraries(furnace_hmi_controller_client_tests PRIVATE furnace_hmi::client)
+if(MSVC)
+  target_compile_options(furnace_hmi_controller_client_tests PRIVATE /W4 /WX /permissive-)
+else()
+  target_compile_options(furnace_hmi_controller_client_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME host.controller_client COMMAND furnace_hmi_controller_client_tests)
 add_test(
   NAME tools.controller_wire_copy
   COMMAND "${Python3_EXECUTABLE}" "${FURNACE_HMI_REPOSITORY_ROOT}/tools/sync_controller_wire.py" --check

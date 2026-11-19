@@ -37,7 +37,7 @@ decided (furnace HW-BLOCK-006). What each would mean for the software:
 **Test levels:** the pseudo-terminal adds an integration level above ADR-0004's
 in-memory loopback; it is lossless and untimed, so fault injection stays in the
 loopback tests. How the two native_sim pseudo-terminals are joined (for example
-a bridge in WSL) is checked in Phase 21's M21-4.
+a bridge in WSL) is checked in Phase 21's M21-3 (formerly M21-4).
 
 ## Original proposal (2026-08-24; its link assumption superseded above)
 

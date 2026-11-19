@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 735 of 735 strings; missing entries are NULL and fall back to English. */
+/* en: 736 of 736 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -17,6 +17,7 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_TEXT_INPUT_PLACEHOLDER] = "Type here to exercise keyboard input",
     [FURNACE_HMI_UI_STRING_REMOTE_INTERFACE_LABEL] = "Remote operator interface",
     [FURNACE_HMI_UI_STRING_DESKTOP_DEVELOPMENT_LABEL] = "Desktop UI development mode",
+    [FURNACE_HMI_UI_STRING_SIMULATED_LINK_DEVELOPMENT_LABEL] = "Development mode - simulated controller link",
     [FURNACE_HMI_UI_STRING_STATE_CURRENT_BADGE] = "STATE CURRENT",
     [FURNACE_HMI_UI_STRING_STATE_CURRENT_HEADING] = "Controller state available",
     [FURNACE_HMI_UI_STRING_STATE_CURRENT_DETAIL] = "Current authoritative controller state is available.",

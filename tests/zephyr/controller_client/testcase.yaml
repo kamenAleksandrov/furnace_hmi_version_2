@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
+tests:
+  furnace_hmi.client.controller_link:
+    integration_platforms:
+      - qemu_x86
+      - native_sim
+    platform_allow:
+      - qemu_x86
+      - native_sim
+    tags:
+      - protocol

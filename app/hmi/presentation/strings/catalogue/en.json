@@ -26,6 +26,7 @@
     "TEXT_INPUT_PLACEHOLDER": "Type here to exercise keyboard input",
     "REMOTE_INTERFACE_LABEL": "Remote operator interface",
     "DESKTOP_DEVELOPMENT_LABEL": "Desktop UI development mode",
+    "SIMULATED_LINK_DEVELOPMENT_LABEL": "Development mode - simulated controller link",
     "STATE_CURRENT_BADGE": "STATE CURRENT",
     "STATE_CURRENT_HEADING": "Controller state available",
     "STATE_CURRENT_DETAIL": "Current authoritative controller state is available.",
