@@ -27,6 +27,7 @@ target_sources(app PRIVATE
   "${FURNACE_HMI_PRESENTATION_DIR}/strings/generated/ui_strings_catalogue.c"
   "${FURNACE_HMI_ROOT}/app/hmi/model/src/dashboard_model.c"
   "${FURNACE_HMI_ROOT}/app/zephyr/src/operator_commands.c"
+  "${FURNACE_HMI_ROOT}/app/zephyr/src/operator_library.c"
 )
 
 target_include_directories(app PRIVATE

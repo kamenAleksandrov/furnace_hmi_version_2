@@ -51,6 +51,16 @@ int furnace_hmi_operator_manual_command_check(lv_display_t *display, const char 
  */
 int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure);
 
+/**
+ * The controller's program library (Phase 21 M21-7b): being read, unavailable,
+ * too large and empty each said as such; programs by the controller's names; a
+ * damaged one not opened; 18 stages on two pages; a program the editors would
+ * round not edited; the open program and favourites following the controller's
+ * IDs; a deleted program's page closed. Same contract as
+ * furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_library_check(lv_display_t *display, const char **failure);
+
 #ifdef __cplusplus
 }
 #endif

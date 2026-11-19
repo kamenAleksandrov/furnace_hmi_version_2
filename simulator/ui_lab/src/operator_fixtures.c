@@ -18,7 +18,7 @@
 #include "operator_fixtures.h"
 
 /* The delivered program library (web programCatalogue): three epoxy cure
- * schedules within the furnace limits (180 C, 3.0 C/min, 8 stages). Heating
+ * schedules within the furnace limits (180 C, 3.0 C/min, 18 stages). Heating
  * ramps from the previous target at the given rate (tenths of a degree per
  * minute); its minutes follow from that. Illustrations, not datasheet values. */
 typedef struct {

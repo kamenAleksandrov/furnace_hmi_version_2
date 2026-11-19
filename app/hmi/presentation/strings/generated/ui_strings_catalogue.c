@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 815 of 815 strings; missing entries are NULL and fall back to English. */
+/* en: 820 of 820 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -170,6 +170,11 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE] = "Continue",
     [FURNACE_HMI_UI_STRING_UI_LAB_RUN_AWAITING_DECISION] = "Awaiting operator decision",
     [FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNAVAILABLE] = "Program library unavailable. The controller has not provided it; no programs are assumed.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_LOADING] = "Reading the controller's programs\xE2\x80\xA6",
+    [FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_STORAGE_UNAVAILABLE] = "The controller reports its program library unavailable. No programs are shown or assumed.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_TOO_LARGE] = "The controller holds more programs than this display can list (12). None are shown rather than only some.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UPDATING] = "Updating\xE2\x80\xA6",
+    [FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DAMAGED] = "Damaged: the controller cannot read it",
     [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_IDENTITY_FORMAT] = "%u / %u - %s",
     [FURNACE_HMI_UI_STRING_UI_LAB_CURRENT_TEMPERATURE] = "Current temp",
     [FURNACE_HMI_UI_STRING_UI_LAB_CURRENT_STAGE] = "Current stage",

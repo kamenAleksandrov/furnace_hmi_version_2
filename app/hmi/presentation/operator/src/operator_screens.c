@@ -47,8 +47,8 @@
 #define OPERATOR_GRAPH_TOP (OPERATOR_GRAPH_INSET + 36)
 #define OPERATOR_GRAPH_BOTTOM (OPERATOR_GRAPH_INSET + 20)
 #define OPERATOR_GRAPH_GRID operator_color(FURNACE_HMI_COLOR_GRAPH_GRID)
-#define OPERATOR_MAX_PROGRAM_TEMPERATURE_C 180
-#define OPERATOR_MAX_PROGRAM_RATE_TENTHS 30
+#define OPERATOR_MAX_PROGRAM_TEMPERATURE_C FURNACE_HMI_OPERATOR_PROGRAM_MAX_TEMPERATURE_C
+#define OPERATOR_MAX_PROGRAM_RATE_TENTHS FURNACE_HMI_OPERATOR_PROGRAM_MAX_RATE_TENTHS
 /* Touch keyboards: keys fill their row height but never drop below the touch minimum. */
 #define OPERATOR_KEY_MIN_HEIGHT 48
 /* Numeric keypad panel width: narrower, taller keys instead of wide slabs. */
@@ -328,6 +328,10 @@ static void copy_text_bounded(char *destination, size_t capacity, const char *so
     size_t length = strlen(value);
     if (length >= capacity) {
         length = capacity - 1U;
+        /* Never cut a UTF-8 character: back up over its continuation bytes. */
+        while (length > 0U && ((unsigned char)value[length] & 0xC0U) == 0x80U) {
+            length--;
+        }
     }
     memcpy(destination, value, length);
     destination[length] = 0;
@@ -343,6 +347,9 @@ static const char *program_name_text(
     }
     if (explorer->program_name_overrides[index][0] != 0) {
         return explorer->program_name_overrides[index];
+    }
+    if (explorer->programs[index].name[0] != 0) {
+        return explorer->programs[index].name;
     }
     return explorer->programs[index].library
         ? ui_string((furnace_hmi_ui_string_id_t)explorer->programs[index].name_string) : "";
@@ -3146,7 +3153,7 @@ static void keyboard_apply_value(furnace_hmi_operator_screens_t *explorer)
                               sizeof(explorer->program_editor_name), explorer->keyboard_value);
         } else {
             copy_text_bounded(explorer->program_name_overrides[explorer->selected_program],
-                              FURNACE_HMI_OPERATOR_NAME_CAPACITY, explorer->keyboard_value);
+                              FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY, explorer->keyboard_value);
         }
     }
     else if (target == OPERATOR_KEYBOARD_TARGET_STAGE_NAME &&
@@ -4439,6 +4446,12 @@ static bool make_program_card(
     lv_obj_set_style_border_width(summary, 1, LV_PART_MAIN);
     lv_obj_set_style_border_side(summary, LV_BORDER_SIDE_TOP, LV_PART_MAIN);
     lv_obj_set_style_border_color(summary, OPERATOR_DIVIDER, LV_PART_MAIN);
+    /* A damaged program has no stages to summarize, and nothing to open (M21-7b). */
+    if (program->damaged) {
+        lv_obj_add_state(card, LV_STATE_DISABLED);
+        return create_label(summary, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DAMAGED),
+                            &furnace_hmi_font_regular_14, OPERATOR_MUTED) != NULL;
+    }
     char stage_count[32];
     char duration[32];
     char maximum[32];
@@ -4481,14 +4494,25 @@ static bool build_programs(furnace_hmi_operator_screens_t *explorer)
 {
     if (!explorer->library_known) {
         /* The library is the controller's: not shown as empty, and nothing to edit. */
+        furnace_hmi_ui_string_id_t text = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNAVAILABLE;
+        if (explorer->library_from_controller) {
+            text = explorer->library_state == FURNACE_HMI_OPERATOR_LIBRARY_LOADING
+                       ? FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_LOADING
+                   : explorer->library_state == FURNACE_HMI_OPERATOR_LIBRARY_TOO_LARGE
+                       ? FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_TOO_LARGE
+                       : FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_STORAGE_UNAVAILABLE;
+        }
         lv_obj_set_flex_flow(explorer->content, LV_FLEX_FLOW_COLUMN);
-        return create_label(explorer->content,
-                            ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNAVAILABLE),
-                            &furnace_hmi_font_regular_16, OPERATOR_MUTED) != NULL;
+        return create_label(explorer->content, ui_string(text), &furnace_hmi_font_regular_16,
+                            OPERATOR_MUTED) != NULL;
     }
     const size_t program_count = listed_program_count(explorer);
     const size_t per_page = 6U;
     const size_t page_count = program_count == 0 ? 1 : (program_count + per_page - 1U) / per_page;
+    /* The controller's library can shrink under the open page. */
+    if ((size_t)explorer->program_page >= page_count) {
+        explorer->program_page = (uint8_t)(page_count - 1U);
+    }
     const size_t start = (size_t)explorer->program_page * per_page;
     const size_t end = start + per_page < program_count ? start + per_page : program_count;
     lv_obj_t *toolbar = create_transparent_container(explorer->content);
@@ -4508,6 +4532,12 @@ static bool build_programs(furnace_hmi_operator_screens_t *explorer)
     lv_obj_t *new_draft = create_page_button(explorer, toolbar,
                                              ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT),
                                              OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_NEW_DRAFT, 0);
+    /* A newer listing is being read: what is shown is the previous complete one. */
+    if (explorer->library_updating &&
+        create_label(toolbar, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UPDATING),
+                     &furnace_hmi_font_regular_16, OPERATOR_MUTED) == NULL) {
+        return false;
+    }
     lv_obj_t *spacer = create_transparent_container(toolbar);
     lv_obj_t *pager = create_pager(explorer, toolbar, explorer->program_page, page_count,
                                    OPERATOR_ACTION_PREVIOUS_PROGRAM_PAGE,
@@ -5389,6 +5419,10 @@ static bool build_program_detail(furnace_hmi_operator_screens_t *explorer)
         }
         lv_obj_set_grid_cell(button, LV_GRID_ALIGN_STRETCH, (int32_t)index, 1,
                              LV_GRID_ALIGN_STRETCH, 0, 1);
+        /* The editors would round what they cannot show: such a program is not edited here. */
+        if (entries[index].action == OPERATOR_ACTION_PROGRAM_EDITOR && program->inexact) {
+            lv_obj_add_state(button, LV_STATE_DISABLED);
+        }
     }
 
     lv_obj_set_width(columns, lv_pct(100));
@@ -7961,7 +7995,7 @@ static bool settings_open_delete_dialog(furnace_hmi_operator_screens_t *explorer
         return settings_show_message(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_TITLE),
                                      ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_NO_PROGRAMS));
     }
-    char names[FURNACE_HMI_OPERATOR_MAX_PROGRAMS * (FURNACE_HMI_OPERATOR_NAME_CAPACITY + 2U)];
+    char names[FURNACE_HMI_OPERATOR_MAX_PROGRAMS * (FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY + 2U)];
     size_t used = 0U;
     unsigned count = 0U;
     names[0] = '\0';
@@ -9094,7 +9128,7 @@ static void commit_program_editor(furnace_hmi_operator_screens_t *explorer)
             stage.target_c, hold ? 0 : stage.delta_c_per_minute, stage.duration_minutes
         };
     }
-    char name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
+    char name[FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
     copy_text_bounded(name, sizeof(name), explorer->program_editor_name);
     explorer->programs[slot] = saved;
     /* A library program keeps its catalogue name unless the operator renamed it. */
@@ -9102,7 +9136,7 @@ static void commit_program_editor(furnace_hmi_operator_screens_t *explorer)
         explorer->program_name_overrides[slot][0] = '\0';
     }
     else {
-        copy_text_bounded(explorer->program_name_overrides[slot], FURNACE_HMI_OPERATOR_NAME_CAPACITY, name);
+        copy_text_bounded(explorer->program_name_overrides[slot], FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY, name);
     }
     log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_SAVED, program_name_text(explorer, slot));
     clear_staged_session(explorer);
@@ -10190,7 +10224,7 @@ static void apply_action(
             (void)keyboard_open_number(
                 explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DURATION),
                 explorer->draft_duration_minutes, OPERATOR_KEYBOARD_TARGET_DRAFT_DURATION,
-                explorer->selected_stage, 1, 59999, 1, false);
+                explorer->selected_stage, 1, FURNACE_HMI_OPERATOR_PROGRAM_MAX_STAGE_MINUTES, 1, false);
         }
         break;
     case OPERATOR_ACTION_SHOW_SAVE:
@@ -11171,6 +11205,114 @@ void furnace_hmi_operator_screens_request_submitted(
     }
     if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_MANUAL) {
         (void)update_manual_run_state(explorer);
+    }
+}
+
+/* The slot of the controller program `id` in `programs`, or FURNACE_HMI_OPERATOR_MAX_PROGRAMS. */
+static size_t library_slot_of(const furnace_hmi_operator_program_t *programs, uint32_t id)
+{
+    for (size_t slot = 0U; id != 0U && slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS; ++slot) {
+        if (programs[slot].present && programs[slot].id == id) {
+            return slot;
+        }
+    }
+    return FURNACE_HMI_OPERATOR_MAX_PROGRAMS;
+}
+
+/* Slot indices that name programs by their place: kept by controller ID, dropped when gone. */
+static uint8_t library_follow(const furnace_hmi_operator_program_t *before,
+                              const furnace_hmi_operator_program_t *after, uint8_t *slots,
+                              uint8_t count)
+{
+    uint8_t kept = 0U;
+
+    for (uint8_t index = 0U; index < count; ++index) {
+        const uint8_t slot = slots[index];
+        const size_t moved = slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS
+                                 ? library_slot_of(after, before[slot].id)
+                                 : FURNACE_HMI_OPERATOR_MAX_PROGRAMS;
+        if (moved < FURNACE_HMI_OPERATOR_MAX_PROGRAMS && !after[moved].damaged) {
+            slots[kept++] = (uint8_t)moved;
+        }
+    }
+    return kept;
+}
+
+bool furnace_hmi_operator_screens_set_library(furnace_hmi_operator_screens_t *explorer,
+                                              const furnace_hmi_operator_library_t *library)
+{
+    /* Static: two libraries of programs are too much for the GUI context's stack. */
+    static furnace_hmi_operator_program_t before[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
+
+    if (explorer == NULL || explorer->root == NULL || library == NULL ||
+        library->count > FURNACE_HMI_OPERATOR_MAX_PROGRAMS ||
+        library->state > FURNACE_HMI_OPERATOR_LIBRARY_TOO_LARGE) {
+        return false;
+    }
+    const bool current = library->state == FURNACE_HMI_OPERATOR_LIBRARY_CURRENT;
+    memcpy(before, explorer->programs, sizeof(before));
+    const uint32_t selected_id =
+        before[explorer->selected_program % FURNACE_HMI_OPERATOR_MAX_PROGRAMS].id;
+    const uint32_t running_id =
+        before[explorer->running_program % FURNACE_HMI_OPERATOR_MAX_PROGRAMS].id;
+
+    memset(explorer->programs, 0, sizeof(explorer->programs));
+    memset(explorer->program_name_overrides, 0, sizeof(explorer->program_name_overrides));
+    for (size_t slot = 0U; current && slot < library->count; ++slot) {
+        explorer->programs[slot] = library->programs[slot];
+        explorer->programs[slot].present = true;
+        /* Named by the controller, never by the string catalogue. */
+        explorer->programs[slot].library = false;
+        explorer->programs[slot].name[sizeof(explorer->programs[slot].name) - 1U] = '\0';
+    }
+    explorer->library_count = 0U;
+    explorer->library_known = current;
+    explorer->library_from_controller = true;
+    explorer->library_state = library->state;
+    explorer->library_updating = current && library->updating;
+    explorer->favourite_count = library_follow(before, explorer->programs,
+                                               explorer->quick_launch_favourites,
+                                               explorer->favourite_count);
+    explorer->recent_count = library_follow(before, explorer->programs,
+                                            explorer->quick_launch_recent, explorer->recent_count);
+    const size_t running = library_slot_of(explorer->programs, running_id);
+    if (running < FURNACE_HMI_OPERATOR_MAX_PROGRAMS) {
+        explorer->running_program = (uint8_t)running;
+    }
+
+    const size_t selected = library_slot_of(explorer->programs, selected_id);
+    const bool gone = selected >= FURNACE_HMI_OPERATOR_MAX_PROGRAMS ||
+                      explorer->programs[selected].damaged;
+    const bool editing = explorer->program_editor_active || explorer->stage_session_open;
+    if (!gone) {
+        /* The draft of an open editor follows its program. */
+        if (explorer->staged_program == explorer->selected_program) {
+            explorer->staged_program = (uint8_t)selected;
+        }
+        explorer->selected_program = (uint8_t)selected;
+    } else if (editing) {
+        /* Its program is gone: the draft stays open and would be saved as a new program. */
+        explorer->program_editor_new = true;
+    }
+    if (editing) {
+        return true;
+    }
+    switch (explorer->page) {
+    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL:
+    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES:
+    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_LOADING:
+        if (gone) {
+            /* What was open is no longer in the library. */
+            clear_modal(explorer);
+            explorer->page = FURNACE_HMI_OPERATOR_PAGE_PROGRAMS;
+            return rebuild_page(explorer);
+        }
+        return rebuild_page_keeping_modal(explorer);
+    case FURNACE_HMI_OPERATOR_PAGE_HOME:
+    case FURNACE_HMI_OPERATOR_PAGE_PROGRAMS:
+        return rebuild_page_keeping_modal(explorer);
+    default:
+        return true;
     }
 }
 

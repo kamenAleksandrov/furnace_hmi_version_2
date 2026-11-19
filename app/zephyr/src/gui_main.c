@@ -12,10 +12,11 @@
  * runs in its own thread (controller_link.c); this context takes its newest
  * observation without waiting and maps it to the screens' status model. Every
  * value comes from the controller, the application links no simulator, and
- * the screens get no controller-owned content and no simulated answers: until
- * the controller provides them (M21-7b, M21-7c), library, log and clock are shown as
- * unavailable. Manual, Pause, Resume and Stop are commands to the controller
- * (M21-5b); other actions that would change controller state send nothing.
+ * the screens get no simulated answers. The program library is the
+ * controller's, taken from the link as it changes (M21-7b); until the
+ * controller provides them (M21-7c), log and clock are shown as unavailable.
+ * Manual, Pause, Resume and Stop are commands to the controller (M21-5b); other
+ * actions that would change controller state send nothing.
  */
 
 #include <stdint.h>
@@ -34,6 +35,7 @@
 
 #include "controller_link.h"
 #include "operator_commands.h"
+#include "operator_library.h"
 
 /* The longest the GUI context sleeps between LVGL timer passes. */
 #define GUI_MAX_SLEEP_MS UINT32_C(10)
@@ -49,11 +51,15 @@ static furnace_hmi_operator_screens_t screens;
 static furnace_hmi_operator_content_t no_content;
 static furnace_hmi_controller_observation_t observation;
 static furnace_hmi_dashboard_state_t status;
+/* The controller's library (M21-7b): the link's copy and the screens' form of it. */
+static furnace_hmi_controller_library_t library;
+static furnace_hmi_operator_library_t shown_library;
 
 int main(void)
 {
     const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
     uint32_t seen = 0U;
+    uint32_t library_seen = 0U;
     uint32_t last_taken;
     bool watchdog_stale = false;
 
@@ -72,6 +78,8 @@ int main(void)
         printk("Operator screens could not be created.\n");
         return 13;
     }
+    /* Until the link has read it, the controller's library is being read (LOADING). */
+    (void)furnace_hmi_operator_screens_set_library(&screens, &shown_library);
     if (furnace_hmi_controller_link_start() != 0) {
         printk("Controller link UART not ready.\n");
         return 3;
@@ -102,6 +110,10 @@ int main(void)
         if (refresh) {
             furnace_hmi_controller_dashboard_state(&observation, &status);
             (void)furnace_hmi_operator_screens_update(&screens, &status);
+        }
+        if (furnace_hmi_controller_link_take_library(&library, &library_seen)) {
+            furnace_hmi_operator_library_from_controller(&library, &shown_library);
+            (void)furnace_hmi_operator_screens_set_library(&screens, &shown_library);
         }
         /* The operator's requests go to the link thread; their outcomes come back as feedback. */
         while (furnace_hmi_operator_screens_take_request(&screens, &request)) {

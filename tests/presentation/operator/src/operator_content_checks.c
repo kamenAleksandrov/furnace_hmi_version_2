@@ -1046,3 +1046,144 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
     }
     return result;
 }
+
+/* M21-7b: the controller's library on the screens. */
+static furnace_hmi_operator_library_t library;
+
+/* A controller program: Heating and Hold in turn, from 40 C up in 5 C steps. */
+static void library_program(uint8_t slot, uint32_t id, const char *name, uint8_t stages)
+{
+    furnace_hmi_operator_program_t *program = &library.programs[slot];
+
+    (void)memset(program, 0, sizeof(*program));
+    program->present = true;
+    program->id = id;
+    program->revision = 1U;
+    (void)snprintf(program->name, sizeof(program->name), "%s", name);
+    program->stage_count = stages;
+    for (uint8_t index = 0U; index < stages; ++index) {
+        const int32_t target = 40 + (int32_t)(index / 2U) * 5;
+        program->stages[index] = (index % 2U == 0U)
+            ? (furnace_hmi_operator_program_stage_t){FURNACE_HMI_OPERATOR_STAGE_HEATING, target, 10, 5}
+            : (furnace_hmi_operator_program_stage_t){FURNACE_HMI_OPERATOR_STAGE_HOLD, target, 0, 10};
+    }
+}
+
+static bool give_library(furnace_hmi_operator_library_state_t library_state, uint8_t count,
+                         bool updating)
+{
+    library.state = library_state;
+    library.count = count;
+    library.updating = updating;
+    if (!furnace_hmi_operator_screens_set_library(&screens, &library)) {
+        return false;
+    }
+    settle();
+    lv_refr_now(NULL);
+    return true;
+}
+
+static bool page_says(furnace_hmi_ui_string_id_t id)
+{
+    return tree_contains(screens.root, furnace_hmi_ui_string(id));
+}
+
+static int library_checks(const char **failure)
+{
+    (void)memset(&library, 0, sizeof(library));
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_LOADING, 0U, false) ||
+        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) || !page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_LOADING) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_EMPTY_LIBRARY)) {
+        return failed(failure, "A library being read is not shown as being read.", 401);
+    }
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_UNAVAILABLE, 0U, false) ||
+        !page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_STORAGE_UNAVAILABLE)) {
+        return failed(failure, "An unavailable library is not shown as unavailable.", 402);
+    }
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_TOO_LARGE, 0U, false) ||
+        !page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_TOO_LARGE) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_EMPTY_LIBRARY)) {
+        return failed(failure, "A library too large to list is not said to be.", 403);
+    }
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 0U, false) ||
+        !page_says(FURNACE_HMI_UI_STRING_UI_LAB_EMPTY_LIBRARY)) {
+        return failed(failure, "An empty library is not shown as empty.", 404);
+    }
+
+    library_program(0U, 7U, "Controller cure 7", 4U);
+    library_program(1U, 9U, "Eighteen stages", 18U);
+    library_program(2U, 11U, "Unreadable", 0U);
+    library.programs[2].damaged = true;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, true) ||
+        !tree_contains(screens.root, "Controller cure 7") || !tree_contains(screens.root, "Eighteen stages")) {
+        return failed(failure, "The controller's programs are not listed by their names.", 405);
+    }
+    if (!page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UPDATING)) {
+        return failed(failure, "A library being read again is not marked as updating.", 406);
+    }
+    if (!page_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DAMAGED) ||
+        enabled(button_with_text(screens.root, "Unreadable"))) {
+        return failed(failure, "A damaged program is not shown as damaged, or can be opened.", 407);
+    }
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UPDATING)) {
+        return failed(failure, "A current library is still marked as updating.", 408);
+    }
+
+    /* Eighteen stages: nine to a page, on two pages. */
+    click(button_with_text(screens.root, "Eighteen stages"));
+    if (screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || screens.selected_program != 1U ||
+        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES) || !tree_contains(screens.root, "1 / 2")) {
+        return failed(failure, "A program of 18 stages is not shown on two stage pages.", 409);
+    }
+    /* Values the editors cannot show exactly: not offered for editing. */
+    library.programs[1].inexact = true;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) ||
+        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
+        enabled(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM))) ||
+        !enabled(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)))) {
+        return failed(failure, "A program the editors would round can be edited, or not started.", 410);
+    }
+
+    /* The open program and the favourites follow the controller's IDs, not the places. */
+    screens.quick_launch_favourites[0] = 1U;
+    screens.favourite_count = 1U;
+    const furnace_hmi_operator_program_t first = library.programs[0];
+    library.programs[0] = library.programs[1];
+    library.programs[1] = first;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) || screens.selected_program != 0U ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || screens.favourite_count != 1U ||
+        screens.quick_launch_favourites[0] != 0U || !tree_contains(screens.root, "Eighteen stages")) {
+        return failed(failure, "The open program or a favourite does not follow its controller ID.", 411);
+    }
+    /* Deleted on the controller: its page closes, and it is no favourite. */
+    library.programs[0] = library.programs[1];
+    library.programs[1] = library.programs[2];
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 2U, false) ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS || screens.favourite_count != 0U ||
+        tree_contains(screens.root, "Eighteen stages")) {
+        return failed(failure, "A program deleted on the controller stays open or a favourite.", 412);
+    }
+    /* No longer listed: nothing of the previous listing is shown. */
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_UNAVAILABLE, 0U, false) ||
+        tree_contains(screens.root, "Controller cure 7")) {
+        return failed(failure, "An unavailable library still shows the previous listing.", 413);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_library_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 400);
+    }
+    settle();
+    const int result = library_checks(failure);
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}
