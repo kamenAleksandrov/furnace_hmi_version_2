@@ -9,12 +9,12 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 371 |
-| Git-tracked files | 371 |
+| Repository files | 374 |
+| Git-tracked files | 374 |
 | Git-untracked files | 0 |
-| Manually maintained files | 342 |
+| Manually maintained files | 345 |
 | Generated files | 29 |
-| Modules | 40 |
+| Modules | 41 |
 | Build targets | 120 |
 | Compile units | 59 |
 | Boards | 1 |
@@ -35,6 +35,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | Module | Files | Kinds |
 | --- | ---: | --- |
 | `.` | 11 | build, configuration, documentation, other |
+| `.agents` | 2 | agent-configuration |
 | `.agents/skills/architecture-planning` | 1 | agent-configuration |
 | `.agents/skills/documentation-maintenance` | 1 | agent-configuration |
 | `.agents/skills/protocol-design` | 1 | agent-configuration |
@@ -73,7 +74,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/host` | 5 | test |
 | `tests/presentation` | 6 | test |
 | `tests/zephyr` | 27 | test |
-| `tools` | 23 | test, tool |
+| `tools` | 24 | test, tool |
 
 ## Build Targets
 
@@ -103,7 +104,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `furnace_hmi_wire_conformance` | EXECUTABLE | `Debug` | 3 | 0 |
 | `app` | STATIC_LIBRARY | `default` | 5 | 0 |
 | `offsets` | OBJECT_LIBRARY | `default` | 0 | 1 |
-| `..__..__..__..__furnace_hmi_version_2__.deps__zephyr-workspace__zephyr__arch__x86__core` | STATIC_LIBRARY | `default` | 0 | 19 |
+| `arch__x86__core` | STATIC_LIBRARY | `default` | 0 | 19 |
 | `arch__common` | STATIC_LIBRARY | `default` | 0 | 1 |
 | `drivers__console` | STATIC_LIBRARY | `default` | 0 | 1 |
 | `drivers__interrupt_controller` | STATIC_LIBRARY | `default` | 0 | 3 |
@@ -204,12 +205,14 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Board | Source | Definition/build |
 | --- | --- | --- |
-| `qemu_x86` | CMakeCache.txt | `build/zephyr-qemu_x86` |
+| `qemu_x86` | CMakeCache.txt | `.deps/zephyr-workspace/zephyr/boards/qemu/x86` |
 
 ## Files
 
 | Path | Kind | Module | Ownership | Git |
 | --- | --- | --- | --- | --- |
+| `.agents/delegation/ceiling.json` | agent-configuration | `.agents` | manual | tracked |
+| `.agents/delegation/delegation_ceiling.py` | agent-configuration | `.agents` | manual | tracked |
 | `.agents/skills/architecture-planning/SKILL.md` | agent-configuration | `.agents/skills/architecture-planning` | manual | tracked |
 | `.agents/skills/documentation-maintenance/SKILL.md` | agent-configuration | `.agents/skills/documentation-maintenance` | manual | tracked |
 | `.agents/skills/protocol-design/SKILL.md` | agent-configuration | `.agents/skills/protocol-design` | manual | tracked |
@@ -577,6 +580,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tools/sync_controller_wire.py` | tool | `tools` | manual | tracked |
 | `tools/tests/test_bootstrap_zephyr.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_codebase_index.py` | test | `tools` | manual | tracked |
+| `tools/tests/test_delegation_ceiling.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_desktop_ui.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_foundation.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_ui_lab.py` | test | `tools` | manual | tracked |
