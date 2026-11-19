@@ -1,5 +1,14 @@
 # Session log
 
+## 2026-11-19 - AGENT-OPT-04 delegation ceiling
+
+Owner rule: the owner picks the session model and highest effort; subagents
+use only the same or weaker models at the same or lower effort (Fable never).
+Roles pin their defaults; a Claude hook denies spawns outside the ceiling;
+Codex roles and `[agents]` defaults are pinned (no Codex spawn hook exists).
+Static check and 16 unit tests pass (`tools/tests/test_delegation_ceiling.py`).
+No product behavior changed. [Record](../agent-client-compatibility.md).
+
 ## 2026-10-28 - AGENT-OPT-03 delegation efficiency
 
 Owner authorized bounded adaptive delegation and subscription conservation.
