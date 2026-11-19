@@ -9,14 +9,14 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 294 |
-| Git-tracked files | 294 |
+| Repository files | 313 |
+| Git-tracked files | 313 |
 | Git-untracked files | 0 |
-| Manually maintained files | 265 |
+| Manually maintained files | 284 |
 | Generated files | 29 |
-| Modules | 34 |
-| Build targets | 107 |
-| Compile units | 13 |
+| Modules | 36 |
+| Build targets | 111 |
+| Compile units | 22 |
 | Boards | 1 |
 
 ## Inputs
@@ -47,6 +47,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/foundation` | 3 | build, header, source |
 | `app/hmi/model` | 4 | build, header, source |
 | `app/hmi/presentation` | 91 | build, configuration, documentation, header, other, source |
+| `app/hmi/protocol` | 9 | build, configuration, documentation, header, source |
 | `app/zephyr` | 4 | build, configuration, source |
 | `docs` | 3 | documentation |
 | `docs/.obsidian` | 4 | documentation |
@@ -65,9 +66,10 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `simulator/desktop` | 5 | build, header, source |
 | `simulator/semantic_controller` | 3 | build, header, source |
 | `simulator/ui_lab` | 7 | build, documentation, header, source |
+| `tests/conformance` | 5 | test |
 | `tests/host` | 5 | test |
-| `tests/zephyr` | 4 | test |
-| `tools` | 20 | test, tool |
+| `tests/zephyr` | 8 | test |
+| `tools` | 21 | test, tool |
 
 ## Build Targets
 
@@ -75,16 +77,20 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | --- | --- | --- | ---: | ---: |
 | `furnace_hmi_foundation` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_model` | STATIC_LIBRARY | `Debug` | 1 | 0 |
-| `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 1 | 0 |
+| `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 2 | 0 |
+| `furnace_hmi_theme` | STATIC_LIBRARY | `Debug` | 1 | 0 |
+| `furnace_hmi_wire` | STATIC_LIBRARY | `Debug` | 3 | 0 |
 | `furnace_hmi_desktop` | EXECUTABLE | `Debug` | 1 | 0 |
 | `lvgl` | STATIC_LIBRARY | `Debug` | 0 | 531 |
 | `furnace_hmi_state_availability_view` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_dashboard_model_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_foundation_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
+| `furnace_hmi_theme_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_ui_strings_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
+| `furnace_hmi_wire_conformance` | EXECUTABLE | `Debug` | 3 | 0 |
 | `app` | STATIC_LIBRARY | `default` | 5 | 0 |
 | `offsets` | OBJECT_LIBRARY | `default` | 0 | 1 |
-| `arch__x86__core` | STATIC_LIBRARY | `default` | 0 | 19 |
+| `..__..__..__..__furnace_hmi_version_2__.deps__zephyr-workspace__zephyr__arch__x86__core` | STATIC_LIBRARY | `default` | 0 | 19 |
 | `arch__common` | STATIC_LIBRARY | `default` | 0 | 1 |
 | `drivers__console` | STATIC_LIBRARY | `default` | 0 | 1 |
 | `drivers__interrupt_controller` | STATIC_LIBRARY | `default` | 0 | 3 |
@@ -185,7 +191,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Board | Source | Definition/build |
 | --- | --- | --- |
-| `qemu_x86` | CMakeCache.txt | `.deps/zephyr-workspace/zephyr/boards/qemu/x86` |
+| `qemu_x86` | CMakeCache.txt | `build/zephyr-qemu_x86` |
 
 ## Files
 
@@ -325,6 +331,15 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/presentation/theme/generated/hmi_theme.c` | source | `app/hmi/presentation` | generated | tracked |
 | `app/hmi/presentation/theme/include/furnace_hmi/hmi_theme.h` | header | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/theme/themes.json` | configuration | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/protocol/wire/CMakeLists.txt` | build | `app/hmi/protocol` | manual | tracked |
+| `app/hmi/protocol/wire/CONTROLLER_SYNC.json` | configuration | `app/hmi/protocol` | manual | tracked |
+| `app/hmi/protocol/wire/README.md` | documentation | `app/hmi/protocol` | manual | tracked |
+| `app/hmi/protocol/wire/include/furnace/crc32.h` | header | `app/hmi/protocol` | manual | tracked |
+| `app/hmi/protocol/wire/include/furnace/wire.h` | header | `app/hmi/protocol` | manual | tracked |
+| `app/hmi/protocol/wire/include/furnace/wire_messages.h` | header | `app/hmi/protocol` | manual | tracked |
+| `app/hmi/protocol/wire/src/crc32.c` | source | `app/hmi/protocol` | manual | tracked |
+| `app/hmi/protocol/wire/src/wire_frame.c` | source | `app/hmi/protocol` | manual | tracked |
+| `app/hmi/protocol/wire/src/wire_messages.c` | source | `app/hmi/protocol` | manual | tracked |
 | `app/zephyr/CMakeLists.txt` | build | `app/zephyr` | manual | tracked |
 | `app/zephyr/prj.conf` | build | `app/zephyr` | manual | tracked |
 | `app/zephyr/sample.yaml` | configuration | `app/zephyr` | manual | tracked |
@@ -455,6 +470,11 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `simulator/ui_lab/src/ui_lab_explorer.h` | header | `simulator/ui_lab` | manual | tracked |
 | `simulator/ui_lab/src/ui_lab_theme.c` | source | `simulator/ui_lab` | manual | tracked |
 | `simulator/ui_lab/src/ui_lab_theme.h` | header | `simulator/ui_lab` | manual | tracked |
+| `tests/conformance/wire/host_main.c` | test | `tests/conformance` | manual | tracked |
+| `tests/conformance/wire/vector_table.h` | test | `tests/conformance` | manual | tracked |
+| `tests/conformance/wire/wire_conformance.c` | test | `tests/conformance` | manual | tracked |
+| `tests/conformance/wire/wire_conformance.h` | test | `tests/conformance` | manual | tracked |
+| `tests/conformance/wire/wire_vectors_gen.c` | test | `tests/conformance` | manual | tracked |
 | `tests/host/CMakeLists.txt` | test | `tests/host` | manual | tracked |
 | `tests/host/dashboard_model_smoke.c` | test | `tests/host` | manual | tracked |
 | `tests/host/foundation_smoke.c` | test | `tests/host` | manual | tracked |
@@ -464,6 +484,10 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/zephyr/foundation/prj.conf` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/src/main.c` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/foundation/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/wire_conformance/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/wire_conformance/prj.conf` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/wire_conformance/src/main.c` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/wire_conformance/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
 | `tools/bootstrap_zephyr.py` | tool | `tools` | manual | tracked |
 | `tools/build_fonts.py` | tool | `tools` | manual | tracked |
 | `tools/build_icon_sprite.py` | tool | `tools` | manual | tracked |
@@ -479,6 +503,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tools/run_desktop_ui.py` | tool | `tools` | manual | tracked |
 | `tools/run_foundation.py` | tool | `tools` | manual | tracked |
 | `tools/run_ui_lab.py` | tool | `tools` | manual | tracked |
+| `tools/sync_controller_wire.py` | tool | `tools` | manual | tracked |
 | `tools/tests/test_bootstrap_zephyr.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_codebase_index.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_desktop_ui.py` | test | `tools` | manual | tracked |

@@ -104,4 +104,5 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 
 ## Progress
 
+- 2026-11-10, M21-1 (draft): the codec copied at `721f3cb` with its manifest, `tools/sync_controller_wire.py`, and the conformance test. The golden vectors pass under the desktop MSVC build (`/W4 /WX /permissive-`, the codec unmodified), the host GCC build (`-Werror`) and Zephyr native_sim. Not run: `qemu_x86` on Windows.
 - 2026-11-10: plan and ADR updates (M21-0), draft. Protocol and architect review, and the decision challenger, applied (records in ADR-0007 and ADR-0009).
