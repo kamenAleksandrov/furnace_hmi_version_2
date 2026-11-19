@@ -1,18 +1,24 @@
 # Native agent client compatibility
 
-AGENT-OPT-03; checked 2026-10-28 against installed Windows Codex CLI
-0.164.0-alpha.11.1 and Claude Code 2.1.300 and current official documentation.
-Earlier AGENT-OPT-01/02 results below remain dated historical evidence, not proof
-of current model entitlement. Firmware development/verification stays in WSL;
+AGENT-OPT-04 (2026-11-19, Claude Code 2.1.300, current official documentation
+and the local Codex model catalogue); AGENT-OPT-03 checked 2026-10-28 against
+Codex CLI 0.164.0-alpha.11.1. Earlier AGENT-OPT-01/02/03 results below remain
+dated historical evidence, not proof of current model entitlement. Firmware development/verification stays in WSL;
 Windows native-client smoke tests use isolated committed Windows worktrees.
 
 ## Claude Code
 
-Project Markdown/YAML roles retain `model: inherit` only as a compatibility
-fallback, with no effort pin. Choose current supported aliases and effort on
-the native Agent/Task invocation when the account includes them. If safe
-selection is unavailable, do a small routine task directly rather than spawn
-another inherited high-end session. No permanent family preference is encoded.
+AGENT-OPT-04: project roles pin a model alias and effort under the delegation
+ceiling (`.agents/delegation/ceiling.json`); an invocation may pass another
+alias/effort within it. The project `PreToolUse` hook (`Agent|Task`, fail-closed
+`onFailure: block`, Claude Code 2.1.295+) denies stronger models, excluded
+models, missing models, effort above the limit and forks. Hook input carries the
+session effort but no model, so the hook reads the latest main-session assistant
+model from `transcript_path` (which may lag or be absent, for example with
+`--no-session-persistence`), else the model a `SessionStart` hook recorded for
+the session (reported only sometimes), and otherwise uses the default ceiling. The per-invocation effort parameter needs 2.1.292+. Do not set
+`CLAUDE_CODE_EFFORT_LEVEL` or `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`: they override
+per-role choices (the static check rejects them in project settings).
 
 The installed client supports per-invocation model aliases and effort. It has
 no verified general account-model enumeration tool for the supervisor; inspect
@@ -23,8 +29,8 @@ session start may require a restart. See [subagents](https://code.claude.com/doc
 and [model configuration](https://code.claude.com/docs/en/model-config).
 
 Read-only roles still allow Read/Glob/Grep; the implementation worker also has
-writing/shell tools and needs its own assigned worktree. Limits remain two
-children and one spawn layer. `DISABLE_EXTRA_USAGE_COMMAND=1` in project settings
+writing/shell tools and needs its own assigned worktree. Limits are four
+children (AGENT-OPT-04) and one spawn layer. `DISABLE_EXTRA_USAGE_COMMAND=1` in project settings
 hides the purchase/usage-credits command. It does **not** disable server-side
 overages or prove a model is included: check subscription auth, allowance and
 paid-fallback state before inference; stop if uncertain. No authentication or
@@ -33,9 +39,15 @@ and [authentication](https://code.claude.com/docs/en/authentication).
 
 ## Codex
 
-Standalone TOML roles retain name, description and developer_instructions;
-model/effort are omitted so they cannot override runtime choices. Native spawn
-model/effort controls depend on the current client. Use a fresh-context worker
+AGENT-OPT-04: standalone TOML roles pin `model` and `model_reasoning_effort`
+(a role file takes precedence over spawn values) and `[agents]` sets
+`default_subagent_model`/`default_subagent_reasoning_effort` to the weakest
+model at low effort for unpinned spawns. Codex documents no spawn hook, so the
+ceiling relative to the session model is a policy rule: do not spawn a role
+pinned above the current session model. Multi-Agent V2 may hide spawn
+model/effort fields from the orchestrator (`hide_spawn_agent_metadata`); the
+pins do not depend on them. Model slugs come from the local Codex model
+catalogue (2026-11-19) and are owner-maintained. Use a fresh-context worker
 where supported, rather than carrying the full transcript; some full-history
 fork modes require inheritance. Do not silently equate role selection with
 model selection. For routine fallback, apply the direct-work decision first.
@@ -48,9 +60,7 @@ capabilities, not a new model-discovery service or an automatic routing framewor
 See [app-server](https://learn.chatgpt.com/docs/app-server) and
 [authentication](https://learn.chatgpt.com/docs/auth).
 
-Native configuration still enables agents and caps concurrent children at two;
-no model or reasoning default is added. Custom-agent model settings, if added,
-would override runtime resolution, which is why these files leave them unset.
+Native configuration still enables agents and caps concurrent children at four.
 Permissions/provider/MCP remain inherited from the parent; a role cannot create
 its own read-only filesystem sandbox. Preserve parent controls and never relax
 them to pass a test. See [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
@@ -60,9 +70,7 @@ them to pass a test. See [subagents](https://learn.chatgpt.com/docs/agent-config
 One small read-only delegation per client is enough for this policy change.
 Use a fresh parent and one project repository-explorer, at a committed revision,
 with one policy question, named files, concise output and explicit exclusions.
-Choose an included efficient option and appropriate effort at invocation where
-supported; otherwise record inheritance and the reason this invocation check
-cannot be replaced by doing the task directly. Do not benchmark, exhaust quota,
+Use the pinned role within the delegation ceiling. Do not benchmark, exhaust quota,
 use paid fallback or impose a hard token ceiling that could truncate review.
 
 Inspect auth/provider and allowance before inference; no API-key inference or
@@ -71,6 +79,35 @@ execution. Inspect native role/spawn/result/model/effort metadata, compare the
 response to the actual assigned lines, and check Git status/production paths.
 If unavailable, exhausted or entitlement/paid fallback cannot be established,
 record the blocker and finish static checks without trying a paid route.
+
+## AGENT-OPT-04 delegation ceiling record (2026-11-19)
+
+Configuration, tooling and documentation only, supporting WI-L01 with no
+maturity or phase change. Replaces the AGENT-OPT-01/03 "no model pins, choose
+at invocation" rule after it failed in practice: the Phase 20d-4 session's
+implementation-worker and engineering-reviewer both inherited Opus at high
+effort (native subagent metadata); the worker made 216 calls reading about 75.4
+million cached tokens, the reviewer 51 calls and 4.5 million, against 55 main
+session calls (`delegation_ceiling.py report`; client counts, not a bill).
+Owner decisions: same-or-weaker model, effort no higher than the session's,
+Fable never delegated, default ceiling latest Opus at medium, enforcement by
+hook and pinned files, both repositories, WI-L01; follow-up: weaker models up
+to `high` effort, four concurrent subagents. External evidence and its
+limits are summarized in the policy; no savings are claimed for this change.
+
+Checks: `delegation_ceiling.py check` and `tools/tests/test_delegation_ceiling.py`
+(decision rules, transcript model detection, fail-closed hook, usage report).
+Live check (2026-11-19, Windows Claude Code 2.1.300, claude.ai Pro auth, fresh
+`claude -p` session on Haiku at low effort in the HMI worktree, Agent and Read
+tools only): an explorer spawn requesting Sonnet was denied ("stronger than the
+session model 'haiku'", model read from the transcript, effort `low` from the
+hook input); the pinned explorer without parameters ran and returned, and its
+transcript shows `claude-haiku-5-5` (one call, 4 output tokens). A first attempt
+with `--no-session-persistence` had no transcript, fell back to the Opus default
+and allowed the Sonnet spawn; this led to the `SessionStart` record. In `-p`
+mode `SessionStart` reported no model, so a session without a transcript still
+falls back to the default ceiling. No Codex spawn test was run: Codex
+enforcement is by pinned files only.
 
 ## AGENT-OPT-03 scope and execution record (2026-10-28)
 
