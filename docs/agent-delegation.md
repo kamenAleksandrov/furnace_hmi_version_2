@@ -1,49 +1,85 @@
 # Native agent delegation policy
 
-AGENT-OPT-01/02/03. The firmware copy is canonical; keep the HMI copy byte-identical
-so each repository works independently. This supplements AGENTS.md, approved
-requirements, ADRs, skills and review gates; it grants no product or safety approval.
+AGENT-OPT-01/02/03/04. The firmware copy is canonical; keep the HMI copy
+byte-identical so each repository works independently (also
+`.agents/delegation/`). This supplements AGENTS.md, approved requirements, ADRs,
+skills and review gates; it grants no product or safety approval.
+
+## Delegation ceiling (AGENT-OPT-04)
+
+The owner picks the session model and its highest effort. Delegation goes only
+down from there: a subagent uses the **same or a weaker model**, at an effort no
+higher than the session's. A strictly weaker model may use one effort level more
+(never above `high`), because its tokens cost far less than the session model's.
+Fable is never a delegation target; the owner selects it explicitly for a session.
+
+- **Order** (weakest first, owner-maintained in `.agents/delegation/ceiling.json`):
+  Claude `haiku < sonnet < opus < fable`; Codex `gpt-6-luna < gpt-6.1-terra <
+  gpt-6.2-sol < gpt-6.2-astra`. When the owner adopts newer versions, update the
+  file; Claude aliases follow the latest version automatically.
+- **Session ceiling:** Claude reads the actual session model from the session
+  transcript and the effort from the hook input. When either cannot be read,
+  the default ceiling applies: Opus (latest) at medium for Claude, gpt-6.2-astra
+  at medium for Codex. The owner raises the effort in the session when needed.
+- **No implicit inheritance:** a spawn must name its model, or use a role that
+  pins one. Forks (which copy the whole conversation) are not used.
+- **Enforcement:** Claude: a `PreToolUse` hook on the Agent tool denies spawns
+  outside the ceiling and fails closed (`delegation_ceiling.py hook`). Codex has
+  no spawn hook: each role pins its model/effort (a role file wins over spawn
+  values) and unpinned spawns default to the weakest model at low effort. Do not
+  spawn a Codex role pinned above the current session model.
+  `delegation_ceiling.py check` (firmware `verify.sh docs`) keeps the pins,
+  defaults and hook consistent.
+
+Why: the owner's earlier "no ranking; choose per task" rule let subagents
+inherit the session model. Phase 20d-4 workers ran Opus at high effort; one
+read about 75 million cached tokens. Published measurements
+([claude-model-router](https://github.com/Manuele-T/claude-model-router), small
+runs, API prices as a proxy) found that left alone, Opus never delegated; agent-chosen
+routing mostly picked Sonnet and often cost more; cheap readers coordinated and
+checked by a strong session halved large review costs while finding more; on
+small tasks delegation overhead exceeded the savings.
+
+## Roles and defaults
+
+| Role | Pinned (Claude / Codex) | Delegate | Never |
+| --- | --- | --- | --- |
+| repository-explorer | haiku low / gpt-6-luna low | Read-only sweeps: requirement, traceability and test lookups; docs-versus-code checks; module summaries | Decisions or conclusions on safety |
+| verification-analyst | haiku low / gpt-6-luna low | Twister/verify/benchmark logs, `Verifies:` coverage, mutation survivor lists | Judging whether safety evidence is sufficient |
+| implementation-worker | haiku medium / gpt-6-luna medium | A precise, contained change whose failing tests already exist; documentation edits; scripts | Heater authorization, actuator inhibition, fault/sensor supervision, interlocks, concurrency, persistent recovery, protocol authority |
+| engineering-reviewer | sonnet medium / gpt-6.2-sol medium | A first pass that lists candidate risks for the session to check | The final or required review |
+| HMI specialists (Codex) | gpt-6.2-sol medium | Their REVIEW_POLICY questions, as a first pass | Replacing the session's own review |
+
+A Claude invocation may pass another model/effort within the ceiling (for one
+escalation, below). Codex roles keep their pin.
 
 ## Decide before every delegation
 
-1. Assess the exact task's complexity, consequences and uncertainty. Delegate
-   only when independence, parallelism or context isolation outweighs another
-   agent's instructions, context and coordination. Do small tasks directly;
-   available concurrency is not a reason to spawn.
-2. Check the authenticated client's subscription entitlement, included allowance
-   and exposed model/effort choices. A catalogue or documented alias is not proof
-   of entitlement. Unknown billing means stop affected inference, not a trial
-   against a potentially paid service.
-3. Prefer the least resource-intensive sufficiently capable included model and
-   suitable modest reasoning for routine work; use greater capability for the
-   risks that require it. Select model and effort explicitly where supported,
-   using current choices rather than invented IDs or a permanent ranking.
-4. If safe selection is unavailable, first do routine work in the main agent.
-   Inheritance is a compatibility fallback, not the default reason to spawn
-   another high-end instance. Use it only when delegation still has a concrete
-   benefit or required independence, and included allowance is confirmed;
-   record that reason. Never silently label inheritance as optimization.
-5. For intended delegation, inspect the offered project roles; if unavailable,
-   report the limitation. Do not invoke an agent merely to discover whether it
-   loaded. Apply the assignment contract below, including workspace preflight.
-6. Inspect actual returned evidence and integrate as supervisor. Verify the
-   actual model/effort when exposed; distinguish requested, actual, inherited
-   and unknown values. If scope or required capability grows, stop the bounded
-   investigation, report why, and reassess scope/model/review before continuing.
-
-## Match capability to the task
-
-These are task categories, not fixed model tiers or rankings.
-
-| Task | Examples | Selection and review |
-| --- | --- | --- |
-| Routine | Searches, requirements lookup, simple documentation consistency, log summaries, traceability lookup, straightforward exploration | Prefer an included lightweight choice and modest supported effort; otherwise usually work directly. Check references. |
-| Intermediate | Bounded C17/HMI implementation, unit tests, substantial documentation edits, localized debugging, noncritical refactoring | Choose efficient capabilities that can reliably handle the actual state, language and acceptance checks. Strongest-model use is not automatic. |
-| High consequence | Heater authorization, actuator inhibition, fault/sensor supervision, concurrency, persistent recovery, uncommanded heating, control safety, protocol authority | Use sufficiently capable reasoning and required independent/domain/human review, focused on changed behavior and its failure paths. Correctness takes priority over conserving allowance. |
-
-A small HMI command change can be high consequence. Lower-capability work is
-never the sole authority for safety-sensitive changes. No model approves a
-safety allocation, product decision or regulatory conformity.
+1. **Delegate when the work is mostly reading:** a read-only sweep of roughly
+   10,000 lines or 30 files or more that a script or one search cannot answer.
+   Below about 2,000 lines, or when one script/`rg` answers it, work directly. In
+   between, work directly unless the reading clearly dominates. (Measured: on a
+   ~10k-line project the session alone was cheaper or as cheap; delegation paid
+   from ~22k lines and most on 50k+. This repository has ~50k code lines and
+   ~21k documentation lines.)
+2. **Delegate implementation only** to the implementation-worker under the
+   conditions in the table, with an expected change of more than a few lines;
+   otherwise implement directly. Tests decide acceptance, then the session reviews
+   the diff.
+3. **High-consequence work stays with the session**, at the session model: the
+   "never" column above, safety-relevant review and any change whose correctness
+   tests cannot establish. Under the ceiling a subagent cannot be stronger, so the
+   strongest reasoning available is the session itself. Qualified human
+   engineering review remains mandatory.
+4. **Escalate once:** if a result is wrong, empty or incomplete, retry once with
+   the next stronger model still within the ceiling (Claude), then do it in the
+   session or ask the owner. No loops.
+5. **Check every citation:** cheaper models cited nonexistent lines (up to a
+   fifth of Haiku's and a third of Sonnet's citations in the measurements above).
+   Confirm each file/line before using a finding; record rejected citations.
+6. Subscription entitlement and allowance remain preconditions (below). Inspect
+   offered roles; if unavailable, report it. Do not invoke an agent merely to
+   discover whether it loaded.
 
 ## Bounded assignment contract
 
@@ -68,43 +104,48 @@ because it lies outside the assigned paths. Stop when sufficient evidence
 answers the question. Return actionable findings with file/line references,
 uncertainties and checked/not-checked boundaries, not full files or raw logs.
 
-The native roles remain narrow: repository-explorer investigates read-only;
-implementation-worker implements an approved bounded contract test-first;
-verification-analyst assesses evidence and gaps; engineering-reviewer inspects
-actual source/tests for identified risks. Canonical skills retain engineering
-instructions. HMI specialist roles and REVIEW_POLICY remain required.
+Canonical skills retain engineering instructions. HMI specialist roles and
+REVIEW_POLICY remain required.
 
 ## Reuse review evidence without weakening independence
 
 - Record the prior reviewed revision, scope, assumptions, findings and checks.
   Reuse only conclusions still applicable to unchanged behavior. A previous
   review is neither blanket approval nor a reason to skip required reviewers.
-- Implement and run targeted tests; independent reviewers inspect actual changed
+- Implement and run targeted tests; reviewers inspect actual changed
   source/tests and the affected failure paths, not only a worker's summary.
-- After fixing confirmed findings, rerun relevant regressions and request a
-  bounded final review of corrections/new risks where justified. Do not restart
-  a full architecture/phase review for a localized fix with no new such risk.
+- After fixing confirmed findings, rerun relevant regressions and review the
+  corrections/new risks where justified. Do not restart a full architecture/phase
+  review for a localized fix with no new such risk.
 - Give mandatory specialists distinct questions. Overlapping additional reviews
-  need a clear benefit. Expand review when changed interfaces, concurrency,
-  protective behavior or invalidated assumptions introduce new risks.
+  need a clear benefit.
 - Qualified human engineering review and all existing safety/release gates
-  remain mandatory; token conservation never waives them.
+  remain mandatory; conserving allowance never waives them.
 
 ## Context and verification economy
 
-Prefer fresh sessions for independent phases and fresh-context workers where
-supported; pass committed plans and concise handoffs instead of old transcripts.
-Do not copy successful build logs or whole documentation trees into every task.
-Let local scripts perform mechanical checks and pass machine-readable summaries,
-failing cases and exact evidence paths to the model. Load more only to resolve
-an identified uncertainty. Avoid arbitrary hard token ceilings that could cut
-necessary safety review; escalating an unexpectedly broad investigation is the
-control. Do not run large multi-agent benchmarks for configuration validation.
+Prefer fresh-context workers; pass committed plans and concise handoffs instead
+of old transcripts. Do not copy successful build logs or whole documentation
+trees into every task. Let local scripts perform mechanical checks and pass
+machine-readable summaries, failing cases and exact evidence paths to the model.
+Avoid arbitrary hard token ceilings that could cut necessary safety review;
+escalating an unexpectedly broad investigation is the control.
 
 Preserve repository verification gates. Reuse successful evidence for unchanged
 scope; repeat a full gate only for a relevant change, failure, uncertainty or
 an explicit repository gate (including the firmware pre-push gate), not because
 another agent finished. Run one full gate per worktree at a time.
+
+## Measure, do not estimate
+
+Re-pricing delegated tokens at the session model's rate overstated savings
+(predicted 34-85%; measured from 30% more expensive to 75% cheaper). Report
+actual per-agent model, effort and token counts:
+`python3 .agents/delegation/delegation_ceiling.py report <session.jsonl>`
+(Claude transcripts under `~/.claude/projects/`; decisions in the Git-ignored
+`.claude/delegation-log.jsonl`). Codex usage comes from its native session
+metadata. Token counts are client measurements, not a subscription bill; claim
+savings only from comparable measured workflows.
 
 ## Standing authorization and Git workflow (AGENT-OPT-02)
 
@@ -125,8 +166,8 @@ architecture or safety decisions without explicit owner authorization.
 
 Autonomous delegation is authorized; autonomous spending is prohibited.
 
-- Use only the current authenticated subscription's included model allowance.
-  Choose more capable included models when correctness requires them.
+- Use only the current authenticated subscription's included model allowance,
+  within the delegation ceiling.
 - No API-key/pay-as-you-go inference, purchased or extra-usage credits, paid
   overages, paid third-party providers or paid cloud services. Never change
   authentication, billing/account settings, buy credits or enable overages.
@@ -135,9 +176,6 @@ Autonomous delegation is authorized; autonomous spending is prohibited.
 - If entitlement or paid-fallback status cannot be confidently established,
   finish unaffected local/static work and record the blocker. Catalogue entries,
   pricing estimates, a dollar budget flag or a role name do not establish it.
-- Measure and report usage only when exposed reliably, with its scope; cached
-  tokens, subscription allowance and monetary spend are different quantities.
-  Do not invent savings or treat client list-price estimates as a subscription bill.
 
 ## Resource, worktree and permission boundaries
 
@@ -147,21 +185,22 @@ under its workspace topology. The supervisor integrates; never race edits or
 run duplicate implementations without a reason. Read-only smoke checks use a
 stable snapshot while the supervisor waits; no concurrent writer on their inputs.
 
-Prompts describe behavior; supported sandbox, permissions and tool allowlists
-enforce access. Role labels do not create filesystem restrictions. Never relax
-permissions to pass a test. Keep execution/verification local, with no mandatory
-cloud CI. No heater energization, unauthorized flashing/physical tests, protective
-bypass, unapproved architecture changes or unsupported maturity advancement.
-Existing hardware blockers, phase sequencing, skills and safety rules still apply.
+Prompts describe behavior; supported sandbox, permissions, tool allowlists and
+the ceiling hook enforce it. Role labels do not create filesystem restrictions.
+Never relax permissions or the ceiling to pass a test. Keep execution/verification
+local, with no mandatory cloud CI. No heater energization, unauthorized
+flashing/physical tests, protective bypass, unapproved architecture changes or
+unsupported maturity advancement. Existing hardware blockers, phase sequencing,
+skills and safety rules still apply.
 
 ## Compact phase handoff
 
 Report scope/work items and functionality, actual verification/benchmarks,
 corrected defects, remaining risks/uncertainties/hardware dependencies, branch,
 final commit, PR URL/status and unmerged dependencies, roadmap/maturity changes.
-For delegation add tasks/roles, actual model/effort if exposed, explicit versus
-inherited/unknown selection, reason for an inheritance exception, significant
-findings, supervisor verification and failed/unavailable delegation. If none
-was beneficial, say so. Keep raw logs out of the handoff; link exact evidence.
+For delegation add one line per spawn (role, model, effort, reason), hook
+denials, rejected citations, measured usage where available, and supervisor
+verification. If no delegation was beneficial, say so. Keep raw logs out of the
+handoff; link exact evidence.
 
 Client controls and observed limitations: [agent-client-compatibility.md](agent-client-compatibility.md).

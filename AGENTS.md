@@ -43,12 +43,14 @@ presentations, so themes and languages stay switchable. Use the
 ## Native subagent orchestration
 
 Delegate beneficial bounded work using the native roles and the shared
-[delegation policy](docs/agent-delegation.md). Apply its capability/risk selection
-at every invocation; keep at most two subagents active, avoid nested agents,
-and report actual selection versus inheritance. For routine work, select an
-included lightweight model with suitable effort when supported; otherwise do
-small tasks directly. Inherited delegation needs a concrete benefit or required
-independence, not merely available concurrency. Give every worker an exact
+[delegation policy](docs/agent-delegation.md). Its delegation ceiling applies to
+every spawn: the same or a weaker model than the session, effort no higher than
+the session's, never Fable, never implicit inheritance or forks; roles pin
+their defaults (`.agents/delegation/ceiling.json`, enforced by a Claude hook and
+Codex role pins). Delegate large read-only sweeps and tests-checked contained
+changes; do small tasks and high-consequence work in the session. Keep at most
+two subagents active, avoid nested agents, check every returned citation and
+report each spawn's actual model and effort. Give every worker an exact
 revision, bounded question, output, exclusions and escalation conditions. Keep required domain and human
 review gates. See [client compatibility](docs/agent-client-compatibility.md) for
 current controls, validation and limitations.

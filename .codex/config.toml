@@ -1,5 +1,8 @@
-# Native project limits; choose model/effort at invocation under the shared policy.
-# No permanent model ranking/pins; inheritance is a justified fallback.
+# Native project limits and delegation ceiling (AGENT-OPT-04, docs/agent-delegation.md).
+# Roles pin their model/effort; unpinned spawns default to the weakest model.
+# Owner-maintained order: .agents/delegation/ceiling.json.
 [agents]
 enabled = true
 max_concurrent_threads_per_session = 2
+default_subagent_model = "gpt-6-luna"
+default_subagent_reasoning_effort = "low"
