@@ -87,6 +87,19 @@ int furnace_hmi_operator_library_command_check(lv_display_t *display, const char
  */
 int furnace_hmi_operator_start_check(lv_display_t *display, const char **failure);
 
+/**
+ * The library changing under an open editor, dialog or panel (M21-7b review):
+ * the draft keeps its program and base revision, also through a re-read
+ * library; a save's answer belongs to its own draft; no inexact program is
+ * edited from any page; Delete programs deletes only what it named;
+ * favourites last through an unavailable library; the controller's estimate is
+ * the duration shown; a Start dialog for a revision no longer listed closes;
+ * Confirm acts only on the proposal drawn; every skipped stage is listed; a
+ * library change keeps the proposal panel; an ended proposal is explained.
+ * Same contract as furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_library_review_check(lv_display_t *display, const char **failure);
+
 #ifdef __cplusplus
 }
 #endif

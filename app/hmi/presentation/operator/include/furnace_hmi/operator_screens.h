@@ -149,6 +149,9 @@ typedef struct {
     /* A value the screens cannot show exactly (a target in tenths of a degree, a
      * rate or duration outside the editors' range): shown, startable, not editable. */
     bool inexact;
+    /* The controller's planning estimate of the curing (0: none). When present it is the
+     * duration shown, never one derived from an assumed start temperature (PROG-14). */
+    uint32_t curing_estimate_s;
     char name[FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
 } furnace_hmi_operator_program_t;
 
@@ -603,6 +606,16 @@ struct furnace_hmi_operator_screens {
      * Start, Confirm or Cancel too): the proposal panel is the open modal, with the
      * transaction and revision it shows; the notice of a controller transaction this
      * display has no proposal for, shown once per transaction. */
+    /* M21-7b review: the program the open editor was made from, frozen (its stages, ID and base
+     * revision; a listing that changes meanwhile changes nothing in the draft); the editor
+     * session a save belongs to; the last complete listing, which favourites, recent programs
+     * and the selection are followed from; the name of the latest Start. */
+    furnace_hmi_operator_program_t editor_base;
+    bool editor_base_valid;
+    uint32_t editor_session;
+    uint32_t save_editor_session;
+    furnace_hmi_operator_program_t library_last[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
+    char start_name[FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
     bool proposal_open;
     uint32_t proposal_shown_transaction;
     uint32_t proposal_shown_revision;

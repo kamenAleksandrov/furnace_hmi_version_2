@@ -41,6 +41,8 @@ static bool program_of(const furnace_hmi_controller_program_t *in, furnace_hmi_o
     out->id = in->program_id;
     out->revision = in->program_revision;
     out->damaged = in->damaged;
+    /* The controller's planning estimate is the duration shown (PROG-14). */
+    out->curing_estimate_s = in->curing_estimate_s;
     (void)memcpy(out->name, in->name, sizeof(in->name));
     out->name[sizeof(out->name) - 1U] = '\0';
     if (in->damaged) {

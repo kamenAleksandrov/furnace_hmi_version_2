@@ -157,6 +157,17 @@ ZTEST(furnace_hmi_operator, test_operator_screens_start_on_the_controller)
     zassert_equal(result, 0, "check %d: %s", result, failure);
 }
 
+ZTEST(furnace_hmi_operator, test_operator_screens_follow_library_changes)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_library_review_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
 /* A program Start, Confirm and Cancel as controller commands (M21-7b). */
 ZTEST(furnace_hmi_operator, test_program_start_as_commands)
 {

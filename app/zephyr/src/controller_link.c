@@ -72,6 +72,12 @@ RING_BUF_DECLARE(rx_ring, RX_RING_SIZE);
 static struct k_spinlock rx_lock;
 /* Bytes the ring had no room for since boot; the frame check then rejects their frames. */
 static uint32_t rx_lost;
+/*
+ * Ready with nothing to read (a closed peer: native_sim's emulation polls POLLHUP as ready and
+ * would spin at the highest priority): receiving pauses, and the link thread resumes it.
+ */
+#define RX_RESUME_MS 100U
+static bool rx_paused;
 
 static void uart_receive(const struct device *dev, void *user_data)
 {
@@ -83,6 +89,8 @@ static void uart_receive(const struct device *dev, void *user_data)
         k_spinlock_key_t key;
 
         if (n <= 0) {
+            uart_irq_rx_disable(dev);
+            rx_paused = true;
             break;
         }
         key = k_spin_lock(&rx_lock);
@@ -214,6 +222,7 @@ static void link_main(void *p1, void *p2, void *p3)
     uint32_t published_library;
     uint32_t last_publish;
     uint32_t last_trace;
+    uint32_t rx_paused_at = 0U;
     furnace_hmi_link_state_t traced_link = FURNACE_HMI_LINK_COUNT;
     furnace_hmi_state_availability_t traced_availability = FURNACE_HMI_STATE_AVAILABILITY_COUNT;
 
@@ -230,6 +239,12 @@ static void link_main(void *p1, void *p2, void *p3)
         const uint32_t now = k_uptime_get_32();
         const furnace_hmi_controller_observation_t *o;
 
+        if (rx_paused && (uint32_t)(now - rx_paused_at) >= RX_RESUME_MS) {
+            rx_paused = false;
+            uart_irq_rx_enable(link_uart);
+        } else if (!rx_paused) {
+            rx_paused_at = now;
+        }
         furnace_hmi_controller_client_poll(&client, now);
         take_commands();
         o = furnace_hmi_controller_client_observation(&client);
