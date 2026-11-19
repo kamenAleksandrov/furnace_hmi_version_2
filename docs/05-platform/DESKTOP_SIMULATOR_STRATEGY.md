@@ -28,7 +28,8 @@ production display selection. The executable modes are:
 
 - no argument: visible state-availability UI, initially `UNAVAILABLE`;
 - `--presentation-smoke-test`: headless state mapping, lifetime, read-only, and
-  bounds checks;
+  bounds checks, from `tests/presentation/availability`; the Zephyr test
+  `furnace_hmi.presentation.availability` runs the same checks;
 - `--smoke-test`: the original SDL pointer/text input diagnostic.
 
 The host-only semantic UI laboratory is built by the separate

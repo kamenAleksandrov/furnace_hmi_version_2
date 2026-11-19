@@ -9,3 +9,11 @@ tests:
       - qemu_x86
     tags:
       - foundation
+  sample.furnace_hmi.gui:
+    # Opens an SDL window, so Twister only builds it; the presentation
+    # behavior is tested headless by tests/zephyr/presentation.
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    tags:
+      - presentation

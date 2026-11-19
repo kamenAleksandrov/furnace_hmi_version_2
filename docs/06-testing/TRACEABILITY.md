@@ -6,7 +6,7 @@ honest state, not a failed test. Update this file as design and tests land.
 | Requirement group | Intended verification | Current state |
 | --- | --- | --- |
 | ARCH-INV-007, ARCH-INV-008 | Ownership review plus request/rejection component tests (`TEST-001`) | Documentation baseline; controller request behavior not implemented |
-| ARCH-INV-001; REQ-FUN-001; REQ-NFR-006 | Table-driven availability rendering, fail-closed invalid/zero/NULL input, non-interactive tree, and parent-lifetime checks in `desktop.state_availability_smoke` | Partial UI evidence in the [availability component](../../app/hmi/presentation/state_availability/); no controller/session data path is implemented |
+| ARCH-INV-001; REQ-FUN-001; REQ-NFR-006 | Table-driven availability rendering, fail-closed invalid/zero/NULL input, non-interactive tree, and parent-lifetime checks in `desktop.state_availability_smoke` and, with the same checks on Zephyr native_sim, `furnace_hmi.presentation.availability` | Partial UI evidence in the [availability component](../../app/hmi/presentation/state_availability/); no controller/session data path is implemented |
 | ARCH-INV-002, ARCH-INV-006 | Architecture review and controller contract/system priority tests | Controller implementation outside current scope |
 | ARCH-INV-003, ARCH-INV-004; REQ-FUN-007 | Reconnect/session/snapshot component and integration tests (`TEST-002`, `TEST-003`) | Protocol behavior not implemented |
 | ARCH-INV-005; REQ-NFR-004 | Static ownership review, queue-bound tests, host/Zephyr concurrency tests (`TEST-005`) | Foundation rule documented |
