@@ -9,14 +9,14 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 279 |
-| Git-tracked files | 279 |
+| Repository files | 296 |
+| Git-tracked files | 296 |
 | Git-untracked files | 0 |
-| Manually maintained files | 250 |
+| Manually maintained files | 267 |
 | Generated files | 29 |
-| Modules | 32 |
-| Build targets | 107 |
-| Compile units | 13 |
+| Modules | 35 |
+| Build targets | 109 |
+| Compile units | 16 |
 | Boards | 1 |
 
 ## Inputs
@@ -34,19 +34,22 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Module | Files | Kinds |
 | --- | ---: | --- |
-| `.` | 10 | build, configuration, documentation, other |
+| `.` | 11 | build, configuration, documentation, other |
+| `.agents` | 2 | agent-configuration |
 | `.agents/skills/architecture-planning` | 1 | agent-configuration |
 | `.agents/skills/documentation-maintenance` | 1 | agent-configuration |
 | `.agents/skills/protocol-design` | 1 | agent-configuration |
 | `.agents/skills/theme-and-language` | 1 | agent-configuration |
 | `.agents/skills/ui-parity` | 1 | agent-configuration |
-| `.codex/agents` | 6 | agent-configuration |
+| `.claude` | 5 | configuration, documentation |
+| `.codex/agents` | 10 | agent-configuration |
+| `.codex/config.toml` | 1 | agent-configuration |
 | `.vscode` | 5 | configuration |
 | `app/hmi/foundation` | 3 | build, header, source |
 | `app/hmi/model` | 4 | build, header, source |
 | `app/hmi/presentation` | 91 | build, configuration, documentation, header, other, source |
 | `app/zephyr` | 4 | build, configuration, source |
-| `docs` | 1 | documentation |
+| `docs` | 3 | documentation |
 | `docs/.obsidian` | 4 | documentation |
 | `docs/00-project` | 5 | documentation |
 | `docs/01-architecture` | 3 | documentation |
@@ -57,7 +60,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/06-testing` | 3 | documentation |
 | `docs/07-decisions` | 22 | documentation |
 | `docs/08-pseudocode` | 1 | documentation |
-| `docs/09-progress` | 23 | documentation |
+| `docs/09-progress` | 24 | documentation |
 | `docs/_generated` | 2 | documentation |
 | `docs/images` | 27 | documentation |
 | `simulator/desktop` | 5 | build, header, source |
@@ -65,7 +68,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `simulator/ui_lab` | 7 | build, documentation, header, source |
 | `tests/host` | 5 | test |
 | `tests/zephyr` | 4 | test |
-| `tools` | 20 | test, tool |
+| `tools` | 21 | test, tool |
 
 ## Build Targets
 
@@ -73,12 +76,14 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | --- | --- | --- | ---: | ---: |
 | `furnace_hmi_foundation` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_model` | STATIC_LIBRARY | `Debug` | 1 | 0 |
-| `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 1 | 0 |
+| `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 2 | 0 |
+| `furnace_hmi_theme` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_desktop` | EXECUTABLE | `Debug` | 1 | 0 |
 | `lvgl` | STATIC_LIBRARY | `Debug` | 0 | 531 |
 | `furnace_hmi_state_availability_view` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_dashboard_model_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_foundation_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
+| `furnace_hmi_theme_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_ui_strings_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `app` | STATIC_LIBRARY | `default` | 5 | 0 |
 | `offsets` | OBJECT_LIBRARY | `default` | 0 | 1 |
@@ -189,17 +194,29 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Path | Kind | Module | Ownership | Git |
 | --- | --- | --- | --- | --- |
+| `.agents/delegation/ceiling.json` | agent-configuration | `.agents` | manual | tracked |
+| `.agents/delegation/delegation_ceiling.py` | agent-configuration | `.agents` | manual | tracked |
 | `.agents/skills/architecture-planning/SKILL.md` | agent-configuration | `.agents/skills/architecture-planning` | manual | tracked |
 | `.agents/skills/documentation-maintenance/SKILL.md` | agent-configuration | `.agents/skills/documentation-maintenance` | manual | tracked |
 | `.agents/skills/protocol-design/SKILL.md` | agent-configuration | `.agents/skills/protocol-design` | manual | tracked |
 | `.agents/skills/theme-and-language/SKILL.md` | agent-configuration | `.agents/skills/theme-and-language` | manual | tracked |
 | `.agents/skills/ui-parity/SKILL.md` | agent-configuration | `.agents/skills/ui-parity` | manual | tracked |
+| `.claude/agents/engineering-reviewer.md` | documentation | `.claude` | manual | tracked |
+| `.claude/agents/implementation-worker.md` | documentation | `.claude` | manual | tracked |
+| `.claude/agents/repository-explorer.md` | documentation | `.claude` | manual | tracked |
+| `.claude/agents/verification-analyst.md` | documentation | `.claude` | manual | tracked |
+| `.claude/settings.json` | configuration | `.claude` | manual | tracked |
 | `.codex/agents/architect.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/decision-challenger.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/embedded-reviewer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/engineering-reviewer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/error-auditor.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/implementation-worker.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/protocol-reviewer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/repository-explorer.toml` | agent-configuration | `.codex/agents` | manual | tracked |
 | `.codex/agents/software-critic.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/agents/verification-analyst.toml` | agent-configuration | `.codex/agents` | manual | tracked |
+| `.codex/config.toml` | agent-configuration | `.codex/config.toml` | manual | tracked |
 | `.editorconfig` | other | `.` | manual | tracked |
 | `.gitattributes` | other | `.` | manual | tracked |
 | `.gitignore` | other | `.` | manual | tracked |
@@ -209,6 +226,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `.vscode/settings.json` | configuration | `.vscode` | manual | tracked |
 | `.vscode/tasks.json` | configuration | `.vscode` | manual | tracked |
 | `AGENTS.md` | documentation | `.` | manual | tracked |
+| `CLAUDE.md` | documentation | `.` | manual | tracked |
 | `CMakeLists.txt` | build | `.` | manual | tracked |
 | `CMakePresets.json` | configuration | `.` | manual | tracked |
 | `LICENSE` | documentation | `.` | manual | tracked |
@@ -370,6 +388,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/07-decisions/ADR_TEMPLATE.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/07-decisions/README.md` | documentation | `docs/07-decisions` | manual | tracked |
 | `docs/08-pseudocode/README.md` | documentation | `docs/08-pseudocode` | manual | tracked |
+| `docs/09-progress/AGENT_OPT_01.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/CONTROLLER_INTEGRATION_BACKLOG.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/DEVICE_IMPLEMENTATION_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/DEVICE_SETTINGS_CARDS_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
@@ -396,6 +415,8 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/INDEX.md` | documentation | `docs` | manual | tracked |
 | `docs/_generated/CODEBASE_INDEX.md` | documentation | `docs/_generated` | generated | tracked |
 | `docs/_generated/README.md` | documentation | `docs/_generated` | manual | tracked |
+| `docs/agent-client-compatibility.md` | documentation | `docs` | manual | tracked |
+| `docs/agent-delegation.md` | documentation | `docs` | manual | tracked |
 | `docs/images/concept/Screenshot_20260901-172703.png` | documentation | `docs/images` | manual | tracked |
 | `docs/images/concept/Screenshot_20260901-172716.png` | documentation | `docs/images` | manual | tracked |
 | `docs/images/concept/Screenshot_20260901-172742.png` | documentation | `docs/images` | manual | tracked |
@@ -464,6 +485,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tools/run_ui_lab.py` | tool | `tools` | manual | tracked |
 | `tools/tests/test_bootstrap_zephyr.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_codebase_index.py` | test | `tools` | manual | tracked |
+| `tools/tests/test_delegation_ceiling.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_desktop_ui.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_foundation.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_ui_lab.py` | test | `tools` | manual | tracked |
