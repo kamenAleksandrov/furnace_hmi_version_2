@@ -73,6 +73,20 @@ int furnace_hmi_operator_library_check(lv_display_t *display, const char **failu
  */
 int furnace_hmi_operator_library_command_check(lv_display_t *display, const char **failure);
 
+/**
+ * Program Start against a controller (Phase 21 M21-7b): Start names the program
+ * and revision shown; a proposal opens a panel with the measured temperature,
+ * every skipped stage, the estimate, the duration to accept and the warnings,
+ * never Running; a new revision is shown as it is, Confirm off without a valid
+ * temperature; Confirm names exactly the proposal and the accepted duration; a
+ * refused Confirm shows the newest proposal with the reason; Cancel names the
+ * transaction; a withdrawn proposal says why; a transaction this display has no
+ * proposal for is pointed out once (again after a Start refused because of it)
+ * and cancelled only on request. Same contract as
+ * furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_start_check(lv_display_t *display, const char **failure);
+
 #ifdef __cplusplus
 }
 #endif

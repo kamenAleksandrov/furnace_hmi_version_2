@@ -509,6 +509,81 @@ static void fault_kinds(void)
     EXPECT(s.fault_kind == FURNACE_HMI_FAULT_KIND_NONE && s.fault_id == 0U, "no kind while running");
 }
 
+/* M21-7b: a save's refusal, a program Start's proposal and STATUS's open transaction. */
+static void library_and_start(void)
+{
+    current("library and start");
+    o.command = (furnace_hmi_command_outcome_t){.submission = 5U, .kind = FURNACE_HMI_COMMAND_PROGRAM_SAVE,
+                                                .state = FURNACE_HMI_COMMAND_REJECTED, .reason = 9U,
+                                                .error_field = 6U, .error_reason = 11U, .error_stage = 2U,
+                                                .curing_estimate_s = 36000U};
+    map();
+    EXPECT(s.command_feedback.state == FURNACE_HMI_FEEDBACK_REJECTED && s.command_feedback.reason == 9U &&
+               s.command_feedback.error_field == 6U && s.command_feedback.error_reason == 11U &&
+               s.command_feedback.error_stage == 2U && s.command_feedback.curing_estimate_s == 36000U,
+           "a save's refusal with its error and estimate");
+
+    o.command = (furnace_hmi_command_outcome_t){.submission = 6U, .kind = FURNACE_HMI_COMMAND_PROGRAM_START,
+                                                .state = FURNACE_HMI_COMMAND_PROPOSED};
+    o.start_proposal.state = FURNACE_HMI_PROPOSAL_OPEN;
+    o.start_proposal.transaction_id = 12U;
+    o.start_proposal.proposal_revision = 2U;
+    o.start_proposal.program_id = 4U;
+    o.start_proposal.program_revision = 6U;
+    o.start_proposal.measured_decicelsius = 824;
+    o.start_proposal.measured_validity = FURNACE_HMI_CONTROLLER_MEASURED_VALID;
+    o.start_proposal.proposed_stage = 2U;
+    o.start_proposal.skipped_count = 2U;
+    o.start_proposal.skipped[0] = (furnace_hmi_controller_skipped_stage_t){0U, STAGE_HEATING, 850, 0U};
+    o.start_proposal.skipped[1] = (furnace_hmi_controller_skipped_stage_t){1U, STAGE_HOLD, 0, 30U};
+    o.start_proposal.remaining_curing_s = 11400U;
+    o.start_proposal.duration_ack_required = true;
+    o.start_proposal.recommended_s = 10800U;
+    o.start_proposal.maximum_s = 36000U;
+    o.start_proposal.warnings_count = 2U;
+    o.start_proposal.warnings[0] = 1U;
+    o.start_proposal.warnings[1] = 2U;
+    o.start_state = 2U; /* PENDING */
+    o.start_transaction_id = 12U;
+    o.start_proposal_revision = 2U;
+    map();
+    const furnace_hmi_start_proposal_view_t *p = &s.start_proposal;
+    EXPECT(s.command_feedback.state == FURNACE_HMI_FEEDBACK_PROPOSED && s.command_feedback.submission == 6U,
+           "a proposed Start is proposed, never accepted");
+    EXPECT(p->state == FURNACE_HMI_START_PROPOSAL_OPEN && p->transaction_id == 12U && p->proposal_revision == 2U &&
+               p->program_id == 4U && p->program_revision == 6U && p->measured_valid &&
+               p->measured_decicelsius == 824 && p->proposed_stage == 2U,
+           "the proposal's identity and temperature");
+    EXPECT(p->skipped_count == 2U && !p->skipped[0].hold && p->skipped[0].target_decicelsius == 850 &&
+               p->skipped[1].hold && p->skipped[1].hold_minutes == 30U && p->skipped[1].index == 1U,
+           "every skipped stage");
+    EXPECT(p->remaining_curing_s == 11400U && p->duration_ack_required && p->recommended_s == 10800U &&
+               p->maximum_s == 36000U && p->warnings_count == 2U && p->warnings[1] == 2U,
+           "the estimate, the acknowledgement and the warnings");
+    EXPECT(s.start_pending_transaction_id == 12U && s.start_pending_revision == 2U, "STATUS's open transaction");
+
+    o.start_proposal.measured_validity = 0U;
+    o.start_state = 4U; /* CONSUMED */
+    map();
+    EXPECT(!s.start_proposal.measured_valid, "an invalid temperature");
+    EXPECT(s.start_pending_transaction_id == 0U, "no open transaction outside PENDING");
+    o.start_proposal.state = FURNACE_HMI_PROPOSAL_INVALIDATED;
+    o.start_proposal.invalidation_reason = 20U;
+    map();
+    EXPECT(s.start_proposal.state == FURNACE_HMI_START_PROPOSAL_INVALIDATED &&
+               s.start_proposal.invalidation_reason == 20U,
+           "invalidated with its reason");
+    (void)memset(&o.start_proposal, 0, sizeof(o.start_proposal));
+    o.start_state = 2U;
+    o.start_transaction_id = 13U;
+    map();
+    EXPECT(s.start_proposal.state == FURNACE_HMI_START_PROPOSAL_NONE && s.start_pending_transaction_id == 13U,
+           "a transaction this display has no proposal for");
+    o.status_valid = false;
+    map();
+    EXPECT(s.start_pending_transaction_id == 0U, "no transaction without a status");
+}
+
 int controller_dashboard_tests_run(void)
 {
     failures = 0;
@@ -529,5 +604,6 @@ int controller_dashboard_tests_run(void)
     fault_entries();
     decision();
     fault_kinds();
+    library_and_start();
     return failures;
 }

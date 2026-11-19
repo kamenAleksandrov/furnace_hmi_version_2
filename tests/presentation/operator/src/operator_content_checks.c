@@ -1393,3 +1393,183 @@ int furnace_hmi_operator_library_command_check(lv_display_t *display, const char
     furnace_hmi_operator_screens_destroy(&screens);
     return result;
 }
+
+/* M21-7b: program Start against a controller: the proposal panel, Confirm, Cancel, and a
+ * transaction this display has no proposal for. */
+static void proposal(uint32_t transaction, uint32_t revision, bool measured_valid)
+{
+    furnace_hmi_start_proposal_view_t *p = &state.start_proposal;
+
+    (void)memset(p, 0, sizeof(*p));
+    p->state = FURNACE_HMI_START_PROPOSAL_OPEN;
+    p->transaction_id = transaction;
+    p->proposal_revision = revision;
+    p->program_id = 7U;
+    p->program_revision = 3U;
+    p->measured_valid = measured_valid;
+    p->measured_decicelsius = 824;
+    p->proposed_stage = 2U;
+    p->skipped_count = 2U;
+    p->skipped[0] = (furnace_hmi_skipped_stage_t){0U, false, 850, 0U};
+    p->skipped[1] = (furnace_hmi_skipped_stage_t){1U, true, 0, 30U};
+    p->remaining_curing_s = 11400U;
+    p->duration_ack_required = true;
+    p->recommended_s = 10800U;
+    p->maximum_s = 36000U;
+    p->warnings_count = 2U;
+    p->warnings[0] = 1U;
+    p->warnings[1] = 2U;
+    state.start_pending_transaction_id = transaction;
+    state.start_pending_revision = revision;
+}
+
+static bool modal_contains(const char *text)
+{
+    lv_refr_now(NULL);
+    return screens.modal != NULL && tree_contains(screens.modal, text);
+}
+
+/* Start on the program's details, through the screens' own confirmation. */
+static bool start_from_details(void)
+{
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
+        return false;
+    }
+    click(button_with_text(screens.root, "Controller cure 7"));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM));
+    return true;
+}
+
+static int start_checks(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+
+    (void)memset(&library, 0, sizeof(library));
+    library_program(0U, 7U, "Controller cure 7", 6U);
+    library.programs[0].revision = 3U;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 1U, false) || !start_from_details() ||
+        !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 31U, &request) || request.program_id != 7U ||
+        request.program_revision != 3U || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_SENDING_TITLE)) {
+        return failed(failure, "Start does not ask the controller for the program and revision shown.", 601);
+    }
+
+    /* Proposed: every skipped stage, the estimate, the duration to accept and the warnings. */
+    proposal(12U, 2U, true);
+    if (!library_answer(31U, FURNACE_HMI_FEEDBACK_PROPOSED, 0U) || !screens.proposal_open ||
+        !modal_contains("Start Controller cure 7?") || !modal_contains("82.4") || !modal_contains("stage 3") ||
+        !modal_contains("stage 1, Heating to 85.0") || !modal_contains("stage 2, Hold 30 min") ||
+        !modal_contains("190 min") || !modal_contains("180 min") || !modal_contains("600 min") ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_WARNING_1) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_WARNING_2) || !no_request()) {
+        return failed(failure, "The proposal panel does not show the controller's proposal.", 602);
+    }
+    if (screens.page == FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
+        return failed(failure, "A proposal is shown as a run.", 603);
+    }
+    /* A new revision with an invalid temperature: shown as it now is, and Confirm is off. */
+    proposal(12U, 3U, false);
+    if (!update() || !screens.proposal_open ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_MEASURED_INVALID) ||
+        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM)) ||
+        !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL))) {
+        return failed(failure, "A proposal without a valid temperature can be confirmed.", 604);
+    }
+    proposal(12U, 3U, true);
+    if (!update()) {
+        return failed(failure, "The proposal could not follow the controller.", 605);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM, 32U, &request) || request.transaction_id != 12U ||
+        request.proposal_revision != 3U || request.proposed_stage != 2U || request.program_id != 7U ||
+        request.program_revision != 3U || request.accepted_duration_s != 11400U) {
+        return failed(failure, "Confirm does not name exactly the proposal shown and the duration accepted.", 606);
+    }
+    /* Refused because the proposal changed: the newest one is shown again, with why. */
+    proposal(12U, 4U, true);
+    if (!library_answer(32U, FURNACE_HMI_FEEDBACK_REJECTED, 10U) || !screens.proposal_open ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_10) || !no_request()) {
+        return failed(failure, "A refused Confirm does not show the proposal again with the reason.", 607);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL, 33U, &request) || request.transaction_id != 12U) {
+        return failed(failure, "Cancel does not name the transaction.", 608);
+    }
+    state.start_proposal.state = FURNACE_HMI_START_PROPOSAL_CANCELLED;
+    state.start_pending_transaction_id = 0U;
+    if (!library_answer(33U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.modal != NULL || !no_request()) {
+        return failed(failure, "A cancelled proposal stays on screen or sends more.", 609);
+    }
+
+    /* Withdrawn by the controller: the panel closes and says why. */
+    if (!start_from_details() || !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 34U, &request)) {
+        return failed(failure, "Start cannot be asked for again.", 610);
+    }
+    proposal(14U, 1U, true);
+    if (!library_answer(34U, FURNACE_HMI_FEEDBACK_PROPOSED, 0U) || !screens.proposal_open) {
+        return failed(failure, "The second proposal is not shown.", 611);
+    }
+    state.start_proposal.state = FURNACE_HMI_START_PROPOSAL_INVALIDATED;
+    state.start_proposal.invalidation_reason = 20U;
+    state.start_pending_transaction_id = 0U;
+    if (!update() || screens.proposal_open || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_INVALIDATED_TITLE) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_20)) {
+        return failed(failure, "A withdrawn proposal is not said to be withdrawn, with its reason.", 612);
+    }
+    click(first_button(screens.modal));
+
+    /* A transaction this display has no proposal for: pointed out once, and cancelled on request. */
+    (void)memset(&state.start_proposal, 0, sizeof(state.start_proposal));
+    state.start_pending_transaction_id = 15U;
+    if (!update() || !screens.start_waiting_open || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_TITLE) ||
+        !no_request()) {
+        return failed(failure, "A waiting transaction is not pointed out, or is cancelled by itself.", 613);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_CANCEL));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL, 35U, &request) || request.transaction_id != 15U) {
+        return failed(failure, "Cancel of a waiting transaction does not name it.", 614);
+    }
+    state.start_pending_transaction_id = 0U;
+    if (!library_answer(35U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.modal != NULL) {
+        return failed(failure, "The waiting transaction's notice stays after its Cancel.", 615);
+    }
+    state.start_pending_transaction_id = 16U;
+    if (!update() || !screens.start_waiting_open) {
+        return failed(failure, "A second waiting transaction is not pointed out.", 616);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_KEEP));
+    if (!update() || screens.modal != NULL || !no_request()) {
+        return failed(failure, "A kept waiting transaction is pointed out again, or cancelled.", 617);
+    }
+    /* A Start refused because of it: pointed out again. */
+    if (!start_from_details() || !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 36U, &request) ||
+        !library_answer(36U, FURNACE_HMI_FEEDBACK_REJECTED, 6U) || !screens.start_waiting_open) {
+        return failed(failure, "A Start refused because of a waiting transaction does not point it out.", 618);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_KEEP));
+
+    /* Accepted at once (nothing to confirm): the program is the most recent. */
+    state.start_pending_transaction_id = 0U;
+    if (!start_from_details() || !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 37U, &request) ||
+        !library_answer(37U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.modal != NULL ||
+        screens.recent_count == 0U || screens.quick_launch_recent[0] != 0U) {
+        return failed(failure, "An accepted Start does not close, or is not the most recent program.", 619);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_start_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 600);
+    }
+    settle();
+    const int result = start_checks(failure);
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}

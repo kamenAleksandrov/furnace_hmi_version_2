@@ -75,7 +75,7 @@ ZTEST(furnace_hmi_operator, test_operator_requests_as_commands)
                  "acknowledgement of entry 3/1");
 
     request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM;
-    zassert_false(furnace_hmi_operator_command_for(&request, &command), "program Start is M21-7");
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a program Start names a program (M21-7b)");
     request.kind = FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN;
     zassert_false(furnace_hmi_operator_command_for(&request, &command), "nothing to close on a controller");
 }
@@ -144,6 +144,51 @@ ZTEST(furnace_hmi_operator, test_operator_screens_save_and_delete_on_the_control
     const int result = furnace_hmi_operator_library_command_check(display, &failure);
 
     zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+ZTEST(furnace_hmi_operator, test_operator_screens_start_on_the_controller)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_start_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+/* A program Start, Confirm and Cancel as controller commands (M21-7b). */
+ZTEST(furnace_hmi_operator, test_program_start_as_commands)
+{
+    static furnace_hmi_operator_request_t request;
+    static furnace_hmi_command_t command;
+
+    (void)memset(&request, 0, sizeof(request));
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM;
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a Start names a program");
+    request.program_id = 7U;
+    request.program_revision = 3U;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_PROGRAM_START && command.program_id == 7U &&
+                 command.program_revision == 3U);
+
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM;
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a Confirm names a transaction");
+    request.transaction_id = 12U;
+    request.proposal_revision = 4U;
+    request.proposed_stage = 2U;
+    request.accepted_duration_s = 11400U;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_START_CONFIRM && command.transaction_id == 12U &&
+                     command.proposal_revision == 4U && command.proposed_stage == 2U && command.program_id == 7U &&
+                     command.program_revision == 3U && command.accepted_duration_s == 11400U,
+                 "exactly the proposal shown");
+
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_START_CANCEL && command.transaction_id == 12U);
+    request.transaction_id = 0U;
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a Cancel names a transaction");
 }
 
 /* Library changes as controller commands (M21-7b). */

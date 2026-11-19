@@ -191,6 +191,9 @@ typedef enum {
     /* M21-7b, raised only without simulated answers: the controller's library. */
     FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE,
     FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE,
+    /* M21-7b: Confirm or Cancel of the controller's start transaction (START_PROGRAM opens it). */
+    FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM,
+    FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL,
 } furnace_hmi_operator_request_kind_t;
 
 typedef struct {
@@ -215,6 +218,13 @@ typedef struct {
     uint32_t program_id;
     uint32_t program_revision;
     uint32_t acknowledged_duration_s;
+    /* Without simulated answers, START_PROGRAM names `program_id` and `program_revision`.
+     * START_CONFIRM: exactly the proposal shown (transaction, revision, stage, program) and,
+     * when it requires one, the accepted duration. START_CANCEL: the transaction. */
+    uint32_t transaction_id;
+    uint32_t proposal_revision;
+    uint8_t proposed_stage;
+    uint32_t accepted_duration_s;
 } furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
@@ -588,6 +598,15 @@ struct furnace_hmi_operator_screens {
     uint8_t settings_deleted;
     uint8_t settings_delete_count;
     uint32_t settings_delete_ids[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
+    /* M21-7b, a program Start on a controller (`library_request` holds the latest
+     * Start, Confirm or Cancel too): the proposal panel is the open modal, with the
+     * transaction and revision it shows; the notice of a controller transaction this
+     * display has no proposal for, shown once per transaction. */
+    bool proposal_open;
+    uint32_t proposal_shown_transaction;
+    uint32_t proposal_shown_revision;
+    bool start_waiting_open;
+    uint32_t start_waiting_shown;
     bool settings_saved_24_hour;
     bool settings_candidate_24_hour;
     /* Display preferences: furnace_hmi_theme_id_t and furnace_hmi_ui_language_t. */

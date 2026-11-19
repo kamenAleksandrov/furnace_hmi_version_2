@@ -98,6 +98,34 @@ bool furnace_hmi_operator_command_for(const furnace_hmi_operator_request_t *requ
         command->program_id = request->program_id;
         command->program_revision = request->program_revision;
         return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM:
+        /* The controller's program and the revision the operator saw (M21-7b). */
+        if (request->program_id == 0U) {
+            return false;
+        }
+        command->kind = FURNACE_HMI_COMMAND_PROGRAM_START;
+        command->program_id = request->program_id;
+        command->program_revision = request->program_revision;
+        return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM:
+        if (request->transaction_id == 0U) {
+            return false;
+        }
+        command->kind = FURNACE_HMI_COMMAND_START_CONFIRM;
+        command->transaction_id = request->transaction_id;
+        command->proposal_revision = request->proposal_revision;
+        command->program_id = request->program_id;
+        command->program_revision = request->program_revision;
+        command->proposed_stage = request->proposed_stage;
+        command->accepted_duration_s = request->accepted_duration_s;
+        return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL:
+        if (request->transaction_id == 0U) {
+            return false;
+        }
+        command->kind = FURNACE_HMI_COMMAND_START_CANCEL;
+        command->transaction_id = request->transaction_id;
+        return true;
     default:
         return false;
     }
