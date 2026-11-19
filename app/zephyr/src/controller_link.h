@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <furnace_hmi/controller_library.h>
 #include <furnace_hmi/controller_observation.h>
 
 /**
@@ -20,6 +21,13 @@ int furnace_hmi_controller_link_start(void);
  * nothing new was published or the link thread is publishing at that moment.
  */
 bool furnace_hmi_controller_link_take(furnace_hmi_controller_observation_t *out, uint32_t *seen);
+
+/**
+ * Copy the newest published library copy (M21-7a) into out when it is newer
+ * than *seen, and update *seen. Never waits, as furnace_hmi_controller_link_take().
+ */
+bool furnace_hmi_controller_link_take_library(furnace_hmi_controller_library_t *out,
+                                              uint32_t *seen);
 
 /**
  * Hand an operator command to the link thread, which submits it at its next
