@@ -73,11 +73,17 @@ class DecideTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("exceeds", reason)
 
-    def test_weaker_model_may_go_one_level_above_session_effort(self):
+    def test_weaker_model_may_go_up_to_high_but_not_xhigh(self):
         self.assertTrue(self.decide({"subagent_type": "explorer", "model": "sonnet",
                                      "effort": "high"})[0])
         self.assertFalse(self.decide({"subagent_type": "explorer", "model": "sonnet",
                                       "effort": "xhigh"})[0])
+
+    def test_weaker_model_may_use_high_under_a_low_effort_session(self):
+        self.assertTrue(self.decide({"subagent_type": "explorer", "model": "haiku",
+                                     "effort": "high"}, effort="low")[0])
+        self.assertFalse(self.decide({"subagent_type": "explorer", "model": "opus",
+                                      "effort": "medium"}, effort="low")[0])
 
     def test_weaker_model_effort_is_capped_at_max_subagent_effort(self):
         ok, _, _ = self.decide({"subagent_type": "explorer", "model": "haiku",

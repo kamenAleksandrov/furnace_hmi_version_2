@@ -1,20 +1,40 @@
 {
-  "_comment": "Owner-maintained delegation ceiling (AGENT-OPT-04). Model lists are ordered weakest first. Subagents use the same or a weaker model than the session and an effort no higher than the session's (a strictly weaker model may go weaker_model_extra_effort_levels higher, never above max_subagent_effort). Update model names when the owner adopts newer versions. Keep byte-identical in both furnace repositories.",
-  "effort_order": ["low", "medium", "high", "xhigh", "max"],
+  "_comment": "Owner-maintained delegation ceiling (AGENT-OPT-04). Model lists are ordered weakest first. Subagents use the same or a weaker model than the session and an effort no higher than the session's (a strictly weaker model may go weaker_model_extra_effort_levels higher, never above max_subagent_effort; with 2 and high, weaker models may always use up to high). Update model names when the owner adopts newer versions. Keep byte-identical in both furnace repositories.",
+  "effort_order": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+  ],
   "claude": {
-    "order": ["haiku", "sonnet", "opus", "fable"],
-    "never_delegate": ["fable"],
+    "order": [
+      "haiku",
+      "sonnet",
+      "opus",
+      "fable"
+    ],
+    "never_delegate": [
+      "fable"
+    ],
     "default_session_model": "opus",
     "default_session_effort": "medium",
-    "weaker_model_extra_effort_levels": 1,
+    "weaker_model_extra_effort_levels": 2,
     "max_subagent_effort": "high",
     "deny_fork": true
   },
   "codex": {
-    "order": ["gpt-6-luna", "gpt-6.1-terra", "gpt-6.2-sol", "gpt-6.2-astra"],
+    "order": [
+      "gpt-6-luna",
+      "gpt-6.1-terra",
+      "gpt-6.2-sol",
+      "gpt-6.2-astra"
+    ],
     "never_delegate": [],
     "default_session_model": "gpt-6.2-astra",
     "default_session_effort": "medium",
-    "max_concurrent_threads_per_session": 2
+    "weaker_model_extra_effort_levels": 2,
+    "max_subagent_effort": "high",
+    "max_concurrent_threads_per_session": 4
   }
 }

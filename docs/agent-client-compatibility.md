@@ -29,8 +29,8 @@ session start may require a restart. See [subagents](https://code.claude.com/doc
 and [model configuration](https://code.claude.com/docs/en/model-config).
 
 Read-only roles still allow Read/Glob/Grep; the implementation worker also has
-writing/shell tools and needs its own assigned worktree. Limits remain two
-children and one spawn layer. `DISABLE_EXTRA_USAGE_COMMAND=1` in project settings
+writing/shell tools and needs its own assigned worktree. Limits are four
+children (AGENT-OPT-04) and one spawn layer. `DISABLE_EXTRA_USAGE_COMMAND=1` in project settings
 hides the purchase/usage-credits command. It does **not** disable server-side
 overages or prove a model is included: check subscription auth, allowance and
 paid-fallback state before inference; stop if uncertain. No authentication or
@@ -60,7 +60,7 @@ capabilities, not a new model-discovery service or an automatic routing framewor
 See [app-server](https://learn.chatgpt.com/docs/app-server) and
 [authentication](https://learn.chatgpt.com/docs/auth).
 
-Native configuration still enables agents and caps concurrent children at two.
+Native configuration still enables agents and caps concurrent children at four.
 Permissions/provider/MCP remain inherited from the parent; a role cannot create
 its own read-only filesystem sandbox. Preserve parent controls and never relax
 them to pass a test. See [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
@@ -91,7 +91,8 @@ million cached tokens, the reviewer 51 calls and 4.5 million, against 55 main
 session calls (`delegation_ceiling.py report`; client counts, not a bill).
 Owner decisions: same-or-weaker model, effort no higher than the session's,
 Fable never delegated, default ceiling latest Opus at medium, enforcement by
-hook and pinned files, both repositories, WI-L01. External evidence and its
+hook and pinned files, both repositories, WI-L01; follow-up: weaker models up
+to `high` effort, four concurrent subagents. External evidence and its
 limits are summarized in the policy; no savings are claimed for this change.
 
 Checks: `delegation_ceiling.py check` and `tools/tests/test_delegation_ceiling.py`

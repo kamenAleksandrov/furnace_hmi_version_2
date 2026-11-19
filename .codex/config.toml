@@ -3,6 +3,6 @@
 # Owner-maintained order: .agents/delegation/ceiling.json.
 [agents]
 enabled = true
-max_concurrent_threads_per_session = 2
+max_concurrent_threads_per_session = 4
 default_subagent_model = "gpt-6-luna"
 default_subagent_reasoning_effort = "low"

@@ -49,7 +49,7 @@ the session's, never Fable, never implicit inheritance or forks; roles pin
 their defaults (`.agents/delegation/ceiling.json`, enforced by a Claude hook and
 Codex role pins). Delegate large read-only sweeps and tests-checked contained
 changes; do small tasks and high-consequence work in the session. Keep at most
-two subagents active, avoid nested agents, check every returned citation and
+four subagents active (one writer per worktree), avoid nested agents, check every returned citation and
 report each spawn's actual model and effort. Give every worker an exact
 revision, bounded question, output, exclusions and escalation conditions. Keep required domain and human
 review gates. See [client compatibility](docs/agent-client-compatibility.md) for

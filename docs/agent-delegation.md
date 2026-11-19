@@ -9,9 +9,11 @@ skills and review gates; it grants no product or safety approval.
 
 The owner picks the session model and its highest effort. Delegation goes only
 down from there: a subagent uses the **same or a weaker model**, at an effort no
-higher than the session's. A strictly weaker model may use one effort level more
-(never above `high`), because its tokens cost far less than the session model's.
-Fable is never a delegation target; the owner selects it explicitly for a session.
+higher than the session's. A strictly weaker model may use up to `high` whatever
+the session effort, because its tokens cost far less than the session model's;
+`xhigh` and `max` are not delegated (no evidence of benefit, risk of long
+loops). Fable is never a delegation target; the owner selects it explicitly for
+a session.
 
 - **Order** (weakest first, owner-maintained in `.agents/delegation/ceiling.json`):
   Claude `haiku < sonnet < opus < fable`; Codex `gpt-6-luna < gpt-6.1-terra <
@@ -45,14 +47,19 @@ small tasks delegation overhead exceeded the savings.
 
 | Role | Pinned (Claude / Codex) | Delegate | Never |
 | --- | --- | --- | --- |
-| repository-explorer | haiku low / gpt-6-luna low | Read-only sweeps: requirement, traceability and test lookups; docs-versus-code checks; module summaries | Decisions or conclusions on safety |
-| verification-analyst | haiku low / gpt-6-luna low | Twister/verify/benchmark logs, `Verifies:` coverage, mutation survivor lists | Judging whether safety evidence is sufficient |
-| implementation-worker | haiku medium / gpt-6-luna medium | A precise, contained change whose failing tests already exist; documentation edits; scripts | Heater authorization, actuator inhibition, fault/sensor supervision, interlocks, concurrency, persistent recovery, protocol authority |
-| engineering-reviewer | sonnet medium / gpt-6.2-sol medium | A first pass that lists candidate risks for the session to check | The final or required review |
-| HMI specialists (Codex) | gpt-6.2-sol medium | Their REVIEW_POLICY questions, as a first pass | Replacing the session's own review |
+| repository-explorer | haiku medium / gpt-6-luna medium | Read-only sweeps: requirement, traceability and test lookups; docs-versus-code checks; module summaries | Decisions or conclusions on safety |
+| verification-analyst | haiku medium / gpt-6-luna medium | Twister/verify/benchmark logs, `Verifies:` coverage, mutation survivor lists | Judging whether safety evidence is sufficient |
+| implementation-worker | haiku high / gpt-6-luna high | A precise, contained change whose failing tests already exist; documentation edits; scripts | Heater authorization, actuator inhibition, fault/sensor supervision, interlocks, concurrency, persistent recovery, protocol authority |
+| engineering-reviewer | sonnet high / gpt-6.2-sol high | A first pass that lists candidate risks for the session to check | The final or required review |
+| HMI specialists (Codex) | gpt-6.2-sol high | Their REVIEW_POLICY questions, as a first pass | Replacing the session's own review |
 
-A Claude invocation may pass another model/effort within the ceiling (for one
-escalation, below). Codex roles keep their pin.
+Effort follows the work, not the model: readers at medium (lookups need
+coverage more than depth), code and review first passes at high (reasoning
+reduces rework the session must check). The published measurements ran at the
+client's default effort and did not vary it, so these settings are a
+judgement to confirm with `report`, not a measured optimum. A Claude
+invocation may pass another model/effort within the ceiling (for example
+`low` for a trivial lookup, or one escalation, below). Codex roles keep their pin.
 
 ## Decide before every delegation
 
@@ -180,9 +187,12 @@ Autonomous delegation is authorized; autonomous spending is prohibited.
 
 ## Resource, worktree and permission boundaries
 
-Keep at most two concurrent subagents and no nested delegation. Preserve one
-agent per worktree; parallel tasks get separate worktrees beside the repository
-under its workspace topology. The supervisor integrates; never race edits or
+Keep at most four concurrent subagents (owner, AGENT-OPT-04) and no nested
+delegation. Parallelism is for read-only sweeps split into disjoint parts, which
+cover more ground in less time; it does not reduce total usage, so it never
+justifies extra spawns. At most one writer per worktree, and subagents do not
+run Twister, `verify.sh` or other long builds in parallel (WSL memory). Parallel
+tasks get separate worktrees beside the repository under its workspace topology. The supervisor integrates; never race edits or
 run duplicate implementations without a reason. Read-only smoke checks use a
 stable snapshot while the supervisor waits; no concurrent writer on their inputs.
 

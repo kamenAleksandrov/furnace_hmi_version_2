@@ -185,8 +185,7 @@ def decide(event, root, cfg):
         return False, f"unknown effort '{effort}' or session effort '{session_effort}'", record
     limit = efforts.index(session_effort)
     if model != session:
-        limit = min(limit + int(claude.get("weaker_model_extra_effort_levels", 0)),
-                    efforts.index(claude.get("max_subagent_effort", efforts[-1])))
+        limit = weaker_limit(claude, efforts, session_effort)
     if efforts.index(effort) > limit:
         return False, (f"effort '{effort}' exceeds the allowed '{efforts[limit]}' for model "
                        f"'{model}' under session '{session}'/'{session_effort}'"), record
@@ -230,6 +229,13 @@ def run_hook(stdin, stdout):
     return 0
 
 
+def weaker_limit(client, efforts, session_effort=None):
+    """Highest effort index a strictly weaker model may use under a session effort."""
+    base = efforts.index(session_effort or client["default_session_effort"])
+    return min(base + int(client.get("weaker_model_extra_effort_levels", 0)),
+               efforts.index(client.get("max_subagent_effort", efforts[-1])))
+
+
 def check(root):
     """Return a list of consistency errors (empty when consistent)."""
     import tomllib
@@ -257,10 +263,9 @@ def check(root):
             errors.append(f"{where}: model must be pinned to a delegable alias, got {model!r}")
         elif claude["order"].index(model) >= top:
             errors.append(f"{where}: pinned model must be weaker than the default session model")
-        if effort not in efforts or efforts.index(effort) > efforts.index(
-                claude["default_session_effort"]):
-            errors.append(f"{where}: effort must be pinned at or below the default session "
-                          f"effort, got {effort!r}")
+        if effort not in efforts or efforts.index(effort) > weaker_limit(claude, efforts):
+            errors.append(f"{where}: effort must be pinned within the weaker-model limit "
+                          f"of the default session, got {effort!r}")
 
     settings = json.loads((root / ".claude/settings.json").read_text(encoding="utf-8"))
     env = settings.get("env", {})
@@ -291,6 +296,10 @@ def check(root):
     if agents.get("max_concurrent_threads_per_session") != codex[
             "max_concurrent_threads_per_session"]:
         errors.append(".codex/config.toml: max_concurrent_threads_per_session differs")
+    if env.get("CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS") != str(
+            codex["max_concurrent_threads_per_session"]):
+        errors.append(".claude/settings.json: CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS differs "
+                      "from the Codex concurrency cap")
     croles = sorted((root / ".codex/agents").glob("*.toml"))
     if not croles:
         errors.append(".codex/agents: no roles")
@@ -302,10 +311,9 @@ def check(root):
             errors.append(f"{where}: model must be pinned to a listed model, got {model!r}")
         elif codex["order"].index(model) >= ctop:
             errors.append(f"{where}: pinned model must be weaker than the default session model")
-        if effort not in efforts or efforts.index(effort) > efforts.index(
-                codex["default_session_effort"]):
-            errors.append(f"{where}: effort must be pinned at or below the default session "
-                          f"effort, got {effort!r}")
+        if effort not in efforts or efforts.index(effort) > weaker_limit(codex, efforts):
+            errors.append(f"{where}: effort must be pinned within the weaker-model limit "
+                          f"of the default session, got {effort!r}")
     return errors
 
 
