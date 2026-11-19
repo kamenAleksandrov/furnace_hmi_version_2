@@ -31,3 +31,7 @@ docs/.trash/
 .DS_Store
 Desktop.ini
 Thumbs.db
+
+# Local agent delegation decisions (AGENT-OPT-04)
+.claude/delegation-log.jsonl
+.claude/delegation-sessions.json
