@@ -2487,6 +2487,93 @@ static void proposal_ends_with_the_session(void)
     EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_ENDED,
            "another controller session ends it");
     end();
+    propose("proposal ends with the client session");
+    send_hello_ack(2U /* INVALID_CLIENT_SESSION */, SESSION_A);
+    advance(10U);
+    EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_ENDED,
+           "a new client session ends it (critic L5)");
+    end();
+}
+
+/*
+ * Critic M2: an answer that arrives after the Start became unresolved still
+ * shows the controller's transaction, and STATUS's transaction is always shown,
+ * so an open transaction is never invisible.
+ */
+static void late_proposal_is_shown(void)
+{
+    const furnace_hmi_command_t command = start_command();
+    uint32_t id;
+
+    begin_commands("late proposal is shown");
+    (void)submit_command(&command, 1U);
+    id = last_request_id();
+    keep_current(3500U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED, "unresolved after its attempts");
+    send_start_proposal(id, 5U, 1U, 1U);
+    EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_OPEN &&
+               obs()->start_proposal.transaction_id == 5U &&
+               obs()->start_proposal.program_id == 11U,
+           "the proposal for that Start is shown");
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED, "the outcome stays unresolved");
+    fx.status_start.transaction_id = 7U;
+    fx.status_start.proposal_revision = 2U;
+    fx.status_start.state = START_STATE_PENDING;
+    keep_current(200U);
+    EXPECT(obs()->start_transaction_id == 7U && obs()->start_state == START_STATE_PENDING,
+           "STATUS's transaction is observed");
+    end();
+    begin_commands("a proposal for no Start of ours is not shown");
+    send_start_proposal(42U, 5U, 1U, 1U);
+    EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_NONE, "nothing opened");
+    end();
+}
+
+/* Critic M3: after a change's result the library is listed again, also at the same revision. */
+static void library_listed_after_a_change(void)
+{
+    const furnace_hmi_command_t command = save_command();
+    size_t lists;
+
+    begin_library("library listed after a change", 5U);
+    fx.commands_allowed = true;
+    serve_library(5U, 2U);
+    lists = fx.lists_sent;
+    (void)submit_command(&command, 1U);
+    send_save_result(last_request_id(), LIBRARY_UNRESOLVED);
+    keep_current(200U);
+    EXPECT(fx.lists_sent == lists + 1U, "listed again after UNRESOLVED");
+    fx.reads_served = fx.reads_sent - 1U;
+    serve_library(5U, 2U);
+    lists = fx.lists_sent;
+    (void)submit_command(&command, 2U);
+    send_save_result(last_request_id(), SAVE_SAVED);
+    keep_current(200U);
+    EXPECT(fx.lists_sent == lists + 1U, "and after SAVED");
+    fx.reads_served = fx.reads_sent - 1U;
+    serve_library(5U, 2U);
+    lists = fx.lists_sent;
+    (void)submit_command(&command, 3U);
+    send_save_result(last_request_id(), SAVE_INVALID);
+    keep_current(200U);
+    EXPECT(fx.lists_sent == lists, "not after a refusal");
+    end();
+}
+
+/* Critic L6: a refusal is held at the revision observed, so it is not listed again at once. */
+static void unavailable_held_at_the_observed_revision(void)
+{
+    begin_library("unavailable held at the observed revision", 6U);
+    start_out(FURNACE_WIRE_MSG_PROGRAM_LIST);
+    fx.out.u.program_list.request_id = fx.last_list.envelope.request_id;
+    fx.out.u.program_list.result = LIST_STORAGE_UNAVAILABLE;
+    fx.out.u.program_list.library_revision = 5U;
+    send_out();
+    advance(10U);
+    keep_current(1000U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_UNAVAILABLE && fx.lists_sent == 1U,
+           "not listed again");
+    end();
 }
 
 static void program_start_rejected(void)
@@ -2548,6 +2635,9 @@ int controller_client_tests_run(void)
     proposal_cancelled();
     proposal_follows_status();
     proposal_ends_with_the_session();
+    late_proposal_is_shown();
+    library_listed_after_a_change();
+    unavailable_held_at_the_observed_revision();
     program_start_rejected();
     hello_ack_ends_an_ordinary_command();
     stop_kept_through_not_connected();

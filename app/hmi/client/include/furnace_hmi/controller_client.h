@@ -137,6 +137,8 @@ typedef struct {
     uint8_t library_next;
     uint32_t library_request_id;
     uint32_t library_sent_ms;
+    /** A change's result came: list again once, also at the same revision (review M3). */
+    bool library_relist;
 } furnace_hmi_controller_client_t;
 
 /** Start a client: a new client session, no controller known, HELLO due at once. */

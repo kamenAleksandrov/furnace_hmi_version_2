@@ -183,6 +183,20 @@ Three steps, each its own draft pull request, stacked:
   service refusal, is unresolved, as for every command.
 - **After the proposal:** the command slot keeps `PROPOSED` until the next command; where the
   proposal stands is `start_proposal.state`.
+- **No invisible transaction (review M2):** a proposal answering the latest Start of this client
+  session is shown also when that Start already became unresolved; the outcome stays unresolved.
+  `STATUS`'s start transaction (ID, revision, state, reason) is always observed, so M21-7b can show
+  and cancel a transaction whose proposal never arrived. The HMI never cancels one by itself: that
+  would be a new client behavior, for the owner (M21-7b).
+- **Listed again after a change (review M3):** after `SAVED`, `DELETED` or `UNRESOLVED` the library
+  is listed again once, also when the revision has not risen (the interface: "the client lists the
+  library again"). A refusal lists nothing.
+- **Names the codec refuses:** a page or program whose name is not strict UTF-8 fails to decode as
+  a whole frame (wire format §7.1), so that step is asked again after its timeout; `name_valid`
+  flags only a name over 31 code points. The controller validates every name it saves.
+- **A new client session** ends an open proposal (the controller invalidates it,
+  `CLIENT_SESSION_CHANGED`). An unavailable or too large library is held at the newest revision
+  seen, never below `STATUS`'s.
 - **Not yet decided here:** the polled UART of the Zephyr port loses bytes during a sleep on a real
   UART, and library pages are about 1 KB. An interrupt-driven receive buffer is needed before the
   library runs on a board (review M2; HW-BLOCK-006 sets the link). On the simulated link (a pty)

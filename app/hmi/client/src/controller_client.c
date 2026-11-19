@@ -70,6 +70,7 @@ _Static_assert(FURNACE_HMI_CLIENT_LIBRARY_PAGE ==
 static void unresolve(furnace_hmi_controller_client_t *c, bool stop,
                       furnace_hmi_command_unresolved_t cause);
 static void library_discard(furnace_hmi_controller_client_t *c);
+static void end_open_proposal(furnace_hmi_controller_client_t *c);
 
 static void saturating_increment(uint32_t *counter)
 {
@@ -152,6 +153,8 @@ static void new_client_session(furnace_hmi_controller_client_t *c)
     /* A result goes only to the client session that sent the command. */
     unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED);
     unresolve(c, true, FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED);
+    /* Another client session invalidates the transaction (CLIENT_SESSION_CHANGED; review L5). */
+    end_open_proposal(c);
     changed(c);
 }
 
@@ -553,6 +556,8 @@ static void on_program_save_result(furnace_hmi_controller_client_t *c,
     o->error_stage = r->error_stage;
     o->curing_estimate_s = r->curing_estimate_s;
     o->planning_reference_decicelsius = r->planning_reference;
+    /* After a change, or one that may still take effect, the library is listed again (review M3). */
+    c->library_relist = (r->result == SAVE_SAVED || r->result == LIBRARY_UNRESOLVED);
     if (r->result == LIBRARY_UNRESOLVED) {
         o->reason = r->result;
         c->client_session_confirmed = true;
@@ -572,6 +577,7 @@ static void on_program_delete_result(furnace_hmi_controller_client_t *c,
         return;
     }
     o->program_id = r->program_id;
+    c->library_relist = (r->result == DELETE_DELETED || r->result == LIBRARY_UNRESOLVED);
     if (r->result == LIBRARY_UNRESOLVED) {
         o->reason = r->result;
         c->client_session_confirmed = true;
@@ -621,6 +627,26 @@ static void end_proposal(furnace_hmi_controller_client_t *c,
     }
 }
 
+static void end_open_proposal(furnace_hmi_controller_client_t *c)
+{
+    end_proposal(c, open_proposal(c, c->observation.start_proposal.transaction_id),
+                 FURNACE_HMI_PROPOSAL_ENDED, 0U);
+}
+
+/*
+ * The answer to the latest Start of this client session, also after that Start
+ * became unresolved: the controller's transaction is then still shown (review M2).
+ */
+static bool answers_latest_start(const furnace_hmi_controller_client_t *c, uint32_t request_id)
+{
+    const furnace_hmi_command_outcome_t *o = &c->observation.command;
+
+    return request_id != 0U && o->kind == FURNACE_HMI_COMMAND_PROGRAM_START &&
+           o->request_id == request_id && o->state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+           o->unresolved_cause != FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED &&
+           o->unresolved_cause != FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED;
+}
+
 static void fill_proposal(furnace_hmi_controller_start_proposal_t *p,
                           const struct furnace_wire_start_proposal *w)
 {
@@ -663,6 +689,16 @@ static void on_start_proposal(furnace_hmi_controller_client_t *c,
         o->transaction_id = w->transaction_id;
         o->state = FURNACE_HMI_COMMAND_PROPOSED;
         c->client_session_confirmed = true;
+        (void)memset(p, 0, sizeof(*p));
+        p->program_id = start->program_id;
+        p->program_revision = start->program_revision;
+        fill_proposal(p, w);
+        changed(c);
+        return;
+    }
+    if (answers_latest_start(c, w->request_id) && p->state != FURNACE_HMI_PROPOSAL_OPEN) {
+        const furnace_hmi_command_t *start = &c->command_delivery.command;
+
         (void)memset(p, 0, sizeof(*p));
         p->program_id = start->program_id;
         p->program_revision = start->program_revision;
@@ -934,8 +970,11 @@ static void discard_session_data(furnace_hmi_controller_client_t *c)
     /* Another controller session: a restart, which ends every run; no result will come. */
     unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED);
     unresolve(c, true, FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED);
-    end_proposal(c, open_proposal(c, o->start_proposal.transaction_id), FURNACE_HMI_PROPOSAL_ENDED,
-                 0U);
+    end_open_proposal(c);
+    o->start_transaction_id = 0U;
+    o->start_proposal_revision = 0U;
+    o->start_state = 0U;
+    o->start_invalidation_reason = 0U;
     o->library_revision = 0U;
     library_discard(c);
     changed(c);
@@ -1130,6 +1169,10 @@ static void copy_status(furnace_hmi_controller_observation_t *o, const struct fu
     o->door_state = s->equipment.door_state;
     o->emergency_active = s->equipment.emergency_active;
     o->library_revision = s->library_revision;
+    o->start_transaction_id = s->start.transaction_id;
+    o->start_proposal_revision = s->start.proposal_revision;
+    o->start_state = s->start.state;
+    o->start_invalidation_reason = s->start.invalidation_reason;
     o->status_valid = true;
 }
 
@@ -1341,6 +1384,7 @@ static void library_discard(furnace_hmi_controller_client_t *c)
     l->count = 0U;
     (void)memset(l->programs, 0, sizeof(l->programs));
     c->library_step = LIBRARY_IDLE;
+    c->library_relist = false;
     library_changed(c);
 }
 
@@ -1391,7 +1435,10 @@ static void library_settle(furnace_hmi_controller_client_t *c, furnace_hmi_libra
                            uint32_t revision)
 {
     c->library.state = state;
-    c->library.library_revision = revision;
+    /* Held at the newest revision seen, so a STATUS ahead of the page does not list it again (L6). */
+    c->library.library_revision = (revision > c->observation.library_revision)
+                                      ? revision
+                                      : c->observation.library_revision;
     c->library.updating = false;
     c->library.count = 0U;
     c->library_step = LIBRARY_IDLE;
@@ -1551,7 +1598,9 @@ static void library_time(furnace_hmi_controller_client_t *c)
             library_changed(c);
             library_send(c);
         }
-    } else if (l->state == FURNACE_HMI_LIBRARY_UNKNOWN || wanted > l->library_revision) {
+    } else if (l->state == FURNACE_HMI_LIBRARY_UNKNOWN || wanted > l->library_revision ||
+               c->library_relist) {
+        c->library_relist = false;
         library_list_from_start(c);
     }
 }

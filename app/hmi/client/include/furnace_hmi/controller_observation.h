@@ -219,6 +219,15 @@ typedef struct {
 
     /* The program Start's proposal (M21-7a). */
     furnace_hmi_controller_start_proposal_t start_proposal;
+    /**
+     * The controller's start transaction as the newest STATUS shows it, codes
+     * as received: also one whose proposal this client never received, so it
+     * can be shown and cancelled (review M2).
+     */
+    uint32_t start_transaction_id;
+    uint32_t start_proposal_revision;
+    uint8_t start_state;
+    uint8_t start_invalidation_reason;
 
     /* FAULT_LIST of the newest complete snapshot. */
     bool faults_valid;
