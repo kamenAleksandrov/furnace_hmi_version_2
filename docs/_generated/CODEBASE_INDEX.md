@@ -9,14 +9,14 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 296 |
-| Git-tracked files | 296 |
+| Repository files | 294 |
+| Git-tracked files | 294 |
 | Git-untracked files | 0 |
-| Manually maintained files | 267 |
+| Manually maintained files | 265 |
 | Generated files | 29 |
-| Modules | 35 |
-| Build targets | 109 |
-| Compile units | 16 |
+| Modules | 34 |
+| Build targets | 107 |
+| Compile units | 13 |
 | Boards | 1 |
 
 ## Inputs
@@ -35,7 +35,6 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | Module | Files | Kinds |
 | --- | ---: | --- |
 | `.` | 11 | build, configuration, documentation, other |
-| `.agents` | 2 | agent-configuration |
 | `.agents/skills/architecture-planning` | 1 | agent-configuration |
 | `.agents/skills/documentation-maintenance` | 1 | agent-configuration |
 | `.agents/skills/protocol-design` | 1 | agent-configuration |
@@ -60,7 +59,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/06-testing` | 3 | documentation |
 | `docs/07-decisions` | 22 | documentation |
 | `docs/08-pseudocode` | 1 | documentation |
-| `docs/09-progress` | 24 | documentation |
+| `docs/09-progress` | 25 | documentation |
 | `docs/_generated` | 2 | documentation |
 | `docs/images` | 27 | documentation |
 | `simulator/desktop` | 5 | build, header, source |
@@ -68,7 +67,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `simulator/ui_lab` | 7 | build, documentation, header, source |
 | `tests/host` | 5 | test |
 | `tests/zephyr` | 4 | test |
-| `tools` | 21 | test, tool |
+| `tools` | 20 | test, tool |
 
 ## Build Targets
 
@@ -76,14 +75,12 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | --- | --- | --- | ---: | ---: |
 | `furnace_hmi_foundation` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_model` | STATIC_LIBRARY | `Debug` | 1 | 0 |
-| `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 2 | 0 |
-| `furnace_hmi_theme` | STATIC_LIBRARY | `Debug` | 1 | 0 |
+| `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_desktop` | EXECUTABLE | `Debug` | 1 | 0 |
 | `lvgl` | STATIC_LIBRARY | `Debug` | 0 | 531 |
 | `furnace_hmi_state_availability_view` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_dashboard_model_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_foundation_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
-| `furnace_hmi_theme_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `furnace_hmi_ui_strings_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
 | `app` | STATIC_LIBRARY | `default` | 5 | 0 |
 | `offsets` | OBJECT_LIBRARY | `default` | 0 | 1 |
@@ -194,8 +191,6 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Path | Kind | Module | Ownership | Git |
 | --- | --- | --- | --- | --- |
-| `.agents/delegation/ceiling.json` | agent-configuration | `.agents` | manual | tracked |
-| `.agents/delegation/delegation_ceiling.py` | agent-configuration | `.agents` | manual | tracked |
 | `.agents/skills/architecture-planning/SKILL.md` | agent-configuration | `.agents/skills/architecture-planning` | manual | tracked |
 | `.agents/skills/documentation-maintenance/SKILL.md` | agent-configuration | `.agents/skills/documentation-maintenance` | manual | tracked |
 | `.agents/skills/protocol-design/SKILL.md` | agent-configuration | `.agents/skills/protocol-design` | manual | tracked |
@@ -400,6 +395,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `docs/09-progress/OPEN_QUESTIONS.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/OPERATOR_FEEDBACK_2026_10_06_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/OPERATOR_WORKFLOW_IMPLEMENTATION_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
+| `docs/09-progress/PHASE21_CONTROLLER_CLIENT_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/PROGRAMS_STYLE_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/ROADMAP.md` | documentation | `docs/09-progress` | manual | tracked |
 | `docs/09-progress/RUNNING_READINGS_REFINEMENT_PLAN.md` | documentation | `docs/09-progress` | manual | tracked |
@@ -485,7 +481,6 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tools/run_ui_lab.py` | tool | `tools` | manual | tracked |
 | `tools/tests/test_bootstrap_zephyr.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_codebase_index.py` | test | `tools` | manual | tracked |
-| `tools/tests/test_delegation_ceiling.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_desktop_ui.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_foundation.py` | test | `tools` | manual | tracked |
 | `tools/tests/test_run_ui_lab.py` | test | `tools` | manual | tracked |

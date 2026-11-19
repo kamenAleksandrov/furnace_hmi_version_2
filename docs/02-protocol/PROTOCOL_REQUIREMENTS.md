@@ -1,10 +1,12 @@
 # Protocol requirements
 
-The protocol is not implemented and no wire schema is approved. The normative
-constraints are `PROTO-001` through `PROTO-011` in the
+The normative constraints are `PROTO-001` through `PROTO-011` in the
 [requirements register](../00-project/REQUIREMENTS.md#protocol-requirements).
-This document frames the later design work without selecting serialization,
-framing, identifiers, packet sizes, or UART parameters.
+Since 2026-11-10 the wire format is the controller's 0.x draft series
+([ADR-0007](../07-decisions/0007-serialization-and-framing.md)), and the HMI uses
+a pinned copy of the controller's codec
+([ADR-0009](../07-decisions/0009-protocol-source-sharing.md)). UART parameters
+and the production link remain open ([ADR-0006](../07-decisions/0006-transport-selection.md)).
 
 ## Required outcomes
 
@@ -75,7 +77,8 @@ events must retain priority.
 
 ## Deliberately unresolved
 
-Serialization, framing, integrity mechanism, retry windows, transaction IDs,
-compatibility/version negotiation, exact snapshot partitioning, and transport
-parameters require evidence and ADRs. See the
-[deferred serialization ADR](../07-decisions/0007-serialization-and-framing.md).
+Serialization, framing, integrity, transaction IDs, version negotiation and
+snapshot partitioning now follow the controller's format
+([ADR-0007](../07-decisions/0007-serialization-and-framing.md), with its reopen
+triggers and its PROTO-010/PROTO-011 gaps). Retry windows in the client and the
+transport parameters remain open.

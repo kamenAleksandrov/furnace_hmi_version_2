@@ -6,6 +6,7 @@ browser and ordinary editors.
 
 ## Start here
 
+- [Phase 21 plan: controller client over a simulated link](09-progress/PHASE21_CONTROLLER_CLIENT_PLAN.md)
 - [Native agent delegation](agent-delegation.md), [client compatibility](agent-client-compatibility.md), and [AGENT-OPT-01 record](09-progress/AGENT_OPT_01.md)
 
 - [Operator workflow plan](09-progress/OPERATOR_WORKFLOW_IMPLEMENTATION_PLAN.md), [screen concepts](03-hmi/OPERATOR_WORKFLOW_SCREEN_CONCEPTS.md), and [controller integration backlog](09-progress/CONTROLLER_INTEGRATION_BACKLOG.md)
