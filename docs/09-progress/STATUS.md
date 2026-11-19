@@ -1,5 +1,37 @@
 # Project status
 
+**Fact (2026-11-19, Phase 21 M21-7a, draft):** the controller client mirrors the controller's
+program library and sends saves, deletes and the program Start transaction. No screen changes
+(M21-7b); health and history are M21-7c.
+- **Library copy:**
+  - The client lists the library whenever the controller's revision is newer than the copy, after
+    every new controller session and after a change's result.
+  - It reads every program that is not damaged, and shows only a complete listing at one revision.
+  - The states are unknown, current (also empty), unavailable and too large (more than 12).
+  - The Zephyr link thread publishes the copy through a mailbox of its own.
+- **Commands:**
+  - Save and delete are retried only after 12 s, beyond the controller's own deadline.
+  - A Start's proposal is an outcome of its own, never "accepted". It is kept until the
+    controller ends the transaction. `STATUS`'s start transaction is always observed.
+- **Controller defect found and fixed in the controller first:** `STATUS` and `SNAPSHOT_END`
+  always carried library revision 0, so no client could see a change. Furnace firmware PR #66
+  (draft, stacked on #65) fixes it; the codec is unchanged.
+- **Evidence:**
+  - host GCC 18 of 18, MSVC core 15 of 15, MSVC desktop 18 of 18;
+  - Zephyr Twister on native_sim, 14 of 14 test cases;
+  - the operator workflows against firmware #66's `link_pty`, 7 of 7, including a new library and
+    program Start workflow;
+  - the M21-3 demonstration, 10 of 10;
+  - 30 mutation probes, all killed.
+- **Reviews:** three AI reviews in the HMI roles (embedded-reviewer, software-critic,
+  error-auditor). Their findings were fixed test-first: an empty library never completed, a
+  transaction whose answer came late was invisible, and there was no relisting after a change at
+  the same revision. One stays open: the Zephyr port polls the UART, which would lose bytes of
+  ~1 KB library pages on a real UART. It needs an interrupt-driven receive buffer before a board
+  run (HW-BLOCK-006).
+- **Next:** M21-7b, the screens. Its open choices: how to present a transaction whose proposal
+  never arrived (show and Cancel), and programs with more than the screens' 8 stages.
+
 **Fact (2026-11-19, Phase 21 M21-6, controller 20d):** the controller's Phase 20d work is in
 furnace firmware PRs #56 to #60 (merged 2026-11-19) and drafts #63 to #65 (the 20d-4 owner
 decisions Q-D11 and Q-D13, and 20d-5).
