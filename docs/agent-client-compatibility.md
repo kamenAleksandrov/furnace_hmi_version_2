@@ -93,7 +93,7 @@ Fable never delegated, default ceiling latest Opus at medium, enforcement by
 hook and pinned files, both repositories, WI-L01. External evidence and its
 limits are summarized in the policy; no savings are claimed for this change.
 
-Checks: `delegation_ceiling.py check` and `scripts/tests/test_delegation_ceiling.py`
+Checks: `delegation_ceiling.py check` and `tools/tests/test_delegation_ceiling.py`
 (decision rules, transcript model detection, fail-closed hook, usage report).
 The live hook check in a fresh Claude session is reported in the PR/handoff.
 
