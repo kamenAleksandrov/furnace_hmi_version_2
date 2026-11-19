@@ -32,6 +32,11 @@ production display selection. The executable modes are:
   `furnace_hmi.presentation.availability` runs the same checks;
 - `--smoke-test`: the original SDL pointer/text input diagnostic.
 
+The operator screens themselves are shared (`app/hmi/presentation/operator`,
+Phase 21 M21-2b): the lab composes them with its simulated content
+(`simulator/ui_lab/src/operator_fixtures.c`), as the Zephyr application
+composes them with the controller's.
+
 The host-only semantic UI laboratory is built by the separate
 `host-msvc-ui-lab-debug` preset and launched with `tools/run_ui_lab.py`. It is a
 distinct executable from the foundation proof, shows an explicit simulation

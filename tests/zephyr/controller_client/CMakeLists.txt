@@ -12,7 +12,10 @@ set(FURNACE_HMI_TESTS_DIR "${FURNACE_HMI_ROOT}/tests/client")
 target_sources(app PRIVATE
   src/main.c
   "${FURNACE_HMI_TESTS_DIR}/controller_client_tests.c"
+  "${FURNACE_HMI_TESTS_DIR}/controller_dashboard_tests.c"
   "${FURNACE_HMI_ROOT}/app/hmi/client/src/controller_client.c"
+  "${FURNACE_HMI_ROOT}/app/hmi/client/src/controller_dashboard.c"
+  "${FURNACE_HMI_ROOT}/app/hmi/model/src/dashboard_model.c"
   "${FURNACE_HMI_ROOT}/app/hmi/transport/src/loopback_port.c"
   "${FURNACE_HMI_WIRE_DIR}/src/crc32.c"
   "${FURNACE_HMI_WIRE_DIR}/src/wire_frame.c"

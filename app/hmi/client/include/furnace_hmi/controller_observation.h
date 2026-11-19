@@ -15,6 +15,8 @@ extern "C" {
 
 #define FURNACE_HMI_CONTROLLER_SESSION_ID_SIZE 16U
 #define FURNACE_HMI_CONTROLLER_MODEL_ID_CAPACITY 32U
+/** The controller's program_name field (wire format: 124 bytes of UTF-8). */
+#define FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY 124U
 /** The controller's fault table holds up to 27 entries (controller interface, FAULT_LIST). */
 #define FURNACE_HMI_CONTROLLER_MAX_FAULTS 27U
 /** status_age_ms before the first STATUS. */
@@ -119,6 +121,12 @@ typedef struct {
     uint32_t program_revision;
     uint8_t stage_index;
     uint8_t stage_count;
+    uint8_t stage_kind;
+    char program_name[FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY + 1U];
+    uint32_t run_elapsed_s;
+    /** The final cooling: NONE 0, ACTIVE 1, COMPLETE 2, ENDED 3 (controller interface). */
+    uint8_t cooling;
+    uint32_t cooling_s;
     bool setpoint_valid;
     int32_t setpoint_decicelsius;
     bool heating_requested;
@@ -130,6 +138,9 @@ typedef struct {
     uint8_t store_readiness;
     bool execution_active;
     bool heating_authorized;
+    /** The controller's lifecycle decides navigation, never a local flag (interface: Lifecycle). */
+    bool navigation_permitted;
+    uint8_t fan_feedback;
     uint8_t door_state;
     bool emergency_active;
 

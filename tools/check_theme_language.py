@@ -6,7 +6,7 @@ checks (probe theme and pseudo language in both presentations' smoke tests)
 catch what a static scan cannot; this scan gives fast feedback first.
 
 Checked:
-  simulator/ui_lab/src/ui_lab_explorer.c, ui_lab_theme.c
+  app/hmi/presentation/operator/src/operator_screens.c, operator_theme.c
       colour literals: lv_color_hex(0x...), lv_color_white/black/make(), lv_palette_*
       visible text: string literals with words (a capitalised word or a space)
   docs/images/theme/hmi-web-demo.html, HMI parts only (base style, soft-tile
@@ -28,8 +28,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-C_FILES = [ROOT / "simulator" / "ui_lab" / "src" / "ui_lab_explorer.c",
-           ROOT / "simulator" / "ui_lab" / "src" / "ui_lab_theme.c"]
+C_FILES = [ROOT / "app" / "hmi" / "presentation" / "operator" / "src" / "operator_screens.c",
+           ROOT / "app" / "hmi" / "presentation" / "operator" / "src" / "operator_theme.c"]
 WEB_PAGE = ROOT / "docs" / "images" / "theme" / "hmi-web-demo.html"
 
 C_COLOUR = re.compile(r"lv_color_hex\(\s*0[xX]|lv_color_(white|black|make)\s*\(|lv_palette_")

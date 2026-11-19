@@ -14,7 +14,7 @@ Facts: review sizes are 800 x 480, 800 x 640 and 1024 x 600; existing touch
 baseline is 48 x 48 logical pixels. Preserve substantial prior worktree changes.
 Affect [browser source](../images/theme/hmi-web-demo.html) renderHome,
 renderLoading, renderPrograms, renderStageEditor, renderRunning, switchMain,
-graph/keyboard helpers, [native explorer](../../simulator/ui_lab/src/ui_lab_explorer.c),
+graph/keyboard helpers, [native explorer](../../app/hmi/presentation/operator/src/operator_screens.c) (moved from the UI lab in Phase 21 M21-2b),
 host main, service catalogue and shared strings. Inspect current source before
 assuming packet status in the [previous browser plan](WEB_DEMO_CLIENT_BUILD_PLAN.md).
 

@@ -49,7 +49,7 @@ progress record and keep it out of production authority/protocol claims.
 ## Repository anchors
 
 - Browser source: docs/images/theme/hmi-web-demo.html
-- Native source: simulator/ui_lab/src/ui_lab_explorer.c
+- Native source: app/hmi/presentation/operator/src/operator_screens.c
 - Native lab entry/tests: simulator/ui_lab/src/main.c
 - Shared operator concepts: docs/03-hmi/OPERATOR_WORKFLOW_SCREEN_CONCEPTS.md
 - Implementation plan: docs/09-progress/OPERATOR_WORKFLOW_IMPLEMENTATION_PLAN.md

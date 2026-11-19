@@ -69,13 +69,50 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 | M21-0 | This plan; ADR-0006, ADR-0007, ADR-0009 | Reviewed by the protocol and architecture reviewers and the decision challenger; merged on the owner's authorization |
 | M21-1 | The codec in the HMI | Copied at a pinned controller revision with a manifest and HMI build files; a sync check; the golden vectors pass in the desktop MSVC build, the host GCC build and on Zephyr |
 | M21-2 | The HMI as a Zephyr application | Evidence gate first (native_sim with SDL in WSL); then the shared presentation that exists runs on native_sim from the shared sources (the operator screens: M21-2b); the desktop program keeps working; the environment recorded |
-| M21-2b | The operator screens in the shared presentation | The lab's screens move from `simulator/ui_lab` into `app/hmi/presentation`, fed only by the HMI model; simulator data stays in the lab; the lab and the Zephyr application compose the same screens; the lab's smoke tests and web demo parity unchanged. Before M21-5 |
+| M21-2b | The operator screens in the shared presentation | The lab's screens move from `simulator/ui_lab` into `app/hmi/presentation`, fed only by the HMI model; simulator data stays in the lab; the lab and the Zephyr application compose the same screens; parity kept, with the intentional behavior changes in the design below in both presentations. Before M21-5 |
 | M21-3 | Transport and client against the controller (WI-H06), with the former M21-4 | The controller and the Zephyr HMI run as separate programs in WSL over the simulated link; the 0.16 handshake and compatibility check; authentic `CAPABILITIES`, snapshot and `STATUS`; faults, measurement qualification, run state and freshness in the client's observation; disconnect, reconnect, controller restart and stale sessions handled; nonblocking; nothing simulated by the HMI; automated tests and an end-to-end demonstration. No heating command (design below) |
 | M21-4 | Merged into M21-3 | Owner decision 2026-11-10: the end-to-end link is part of M21-3 |
 | M21-5 | Run, Manual and fault workflows (WI-H03, WI-H04) | Each workflow runs against the controller; the same behavior in the web demo, simulated |
 | M21-6 | Controller 20d (firmware) | A controller-side plan with its open decisions for the product owner and the controller's reviewers (for example the health rules still proposed); the messages built test-first with the controller's verification; the HMI resynced to the new revision in lockstep, ADR-0007 checked against its reopen triggers, before M21-7 |
 | M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo |
 | M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria |
+
+### M21-2b design
+
+Owner decision 2026-11-10 (after M21-3): migrate the lab's Home, Programs, Running, Manual, Settings
+and Device screens into the shared application, preserving their design and navigation where they
+agree with the controller's lifecycle; no state-changing command yet.
+
+- **One implementation:** `app/hmi/presentation/operator` (moved from `simulator/ui_lab`, renamed).
+  The UI lab, the desktop program's check and the Zephyr application compose it.
+- **The data seam:** the screens take the status model (`furnace_hmi_dashboard_state_t`) and the
+  controller-owned content (`furnace_hmi_operator_content_t`: library, recent programs, clock, event
+  log, program limits, Device catalogue), each with a "known" flag.
+  - The lab fills the content from `simulator/ui_lab/src/operator_fixtures.c` (SIMULATION ONLY).
+  - The Zephyr application has none yet, so those parts are shown unavailable, never as empty.
+- **Simulated answers:** only the lab answers controller actions itself (`simulated_responses`).
+  - Elsewhere, an action that would change controller state sends nothing and says it is not
+    connected yet. This covers runs, Manual, the light, the library, maintenance, acknowledgements,
+    the clock, resets and restarts.
+  - The screens never write the controller's log themselves.
+- **No assumed values:** Manual forecasts only from a current measured temperature; the former
+  25 C fallback is gone, in the web demo too.
+- **Lifecycle:** navigation never ends the controller's final cooling. Return Home while it cools
+  shows Home, and the run goes on; a run is closed only after its cooling. This applies in the
+  screens and in the web demo; before, both dropped the cooling run.
+  - The controller's `navigation_permitted` is followed on every observation (interface:
+    Lifecycle). While it is false, the screens stay on Running, at creation and on every update;
+    `navigate` and Return Home do nothing, a faulted run included.
+  - Where no controller reports it (the UI lab), the lab's own containment applies.
+- **The status adapter** (`app/hmi/client`, `furnace_hmi_controller_dashboard_state`) maps only
+  what the controller reported:
+  - unknown codes map to safe defaults;
+  - controller-reported execution always maps to a running or paused run, so Running stays
+    authoritative;
+  - STOPPED is a finished run with `run_stopped` (a new model field);
+  - AWAITING_DECISION is paused, and named "Awaiting operator decision" (`awaiting_decision`);
+    the decision itself is M21-5.
+  - A finished run that still cools is shown as cooling, never as complete.
 
 ### M21-3 design
 
@@ -160,7 +197,7 @@ commands and operator workflows stay in M21-5 and later.
 - The window carries a development marker for the simulated link.
 - Values (temperature with validity and age, measurement state, run state, faults, lifecycle) are
   in the observation, its tests and the console trace. The operator screens that show them come
-  with M21-2b and M21-5.
+  with M21-2b (connected) and M21-5 (the workflows).
 - The Zephyr application links no simulator: every value comes from controller frames. A value is
   current only when the controller marks it valid and the link is current.
 
@@ -204,6 +241,63 @@ commands and operator workflows stay in M21-5 and later.
 
 ## Progress
 
+- 2026-11-10, M21-2b (draft): **the operator screens are shared** (design above).
+  - **Moved without change first:** all 279 lab captures (93 at 800x480, 800x640 and 1024x600)
+    were byte-identical after the move and after the content seam.
+  - **Compiled with GCC `-Werror` for the first time.** This removed ten dead functions
+    (`device_build_components`, `page_title`, `format_stage_card_summary`, then their helpers
+    `device_add_row`, `device_component_summary`, `device_count_components`,
+    `device_create_list`, `format_rate_tenths`, `device_component_visible` and
+    `device_task_needs_attention`), and marked an intentional switch fall-through.
+  - **Behavior changed on purpose, in both presentations:**
+    - Return Home leaves a cooling run cooling. Two lab captures changed for it: Home now shows the
+      stopped run at 115 C cooling, where it showed an idle furnace at 24 C.
+    - Manual has no forecast without a live temperature.
+
+    The smoke tests of the lab and of the web demo were updated to match. A third capture differs
+    by timing alone: it was taken during LVGL's disabled-state animation, and is identical once it
+    settles (checked in two probe builds).
+  - **Evidence** (CTest per preset; Twister per test instance):
+    - `host-msvc-ui-lab-debug`, `-800x640-debug` and `-1024x600-debug`: 17 of 17 each;
+    - `host-msvc-core-debug` 15 of 15;
+    - `host-msvc-desktop-debug` and `host-debug` (GCC): 18 of 18 each. They include the new
+      `desktop.operator_content_smoke`:
+      - content: no simulated date, clock or program; no assumed forecast; the unavailable
+        presentation; a Start that sends nothing;
+      - lifecycle: a held run stays on Running; a run that still cools is not complete and is left
+        by Return Home; a decision is named; a controller Manual session holds Running;
+    - `tools/hmi_web_demo_p1_smoke.cjs` passes;
+    - Twister in WSL, `native_sim` and `native_sim/native/64`: every executed instance passes,
+      including `furnace_hmi.presentation.operator_content` and the client test with its 11
+      adapter scenarios;
+    - Twister on Windows, `qemu_x86` (`--short-build-path`): 5 of 5 cases;
+    - the end-to-end demonstration, 10 of 10, with the operator screens.
+  - **Proven on the old code:** the protocol review's two presentation defects were run against
+    the code before the fixes in a probe build, and both checks failed there: a zero clock
+    (check 95) and "complete" while cooling (check 104).
+  - **The Zephyr window:** Home from the controller, at 20 C current, with the target and remaining
+    time unknown and the door and fan unknown (the simulated controller has no feedback).
+  - **Follow-ups (owner 2026-11-10):**
+    - correct the simulated controller's repeated session identity in a narrow firmware change,
+      with explicit fixtures for intentional repetition (CTRL-SIM-SESSION-ID);
+    - add end-to-end fault injection with the controller's simulation before Phase 21 acceptance
+      (E2E-FAULTS);
+    - the HMI's client-session entropy is a hardware requirement before live commands.
+  - **The architecture review** (architect with software critic; AI agents in the HMI roles)
+    escalated controller state shown that was never reported:
+    - "complete" while cooling;
+    - a zero clock;
+    - the decision state shown as paused;
+    - Running left during a held or Manual session.
+
+    All are fixed with tests. Log writes and library changes outside the editor are also
+    gated, for the library milestone.
+  - **Open, recorded in the backlog:**
+    - how Home presents a background cooling run, and a way back to Running;
+    - the decision state (AWAITING_DECISION);
+    - web parity for unknown controller content (with the library, M21-7);
+    - the quick launch's hint while the library is unknown;
+    - the lab capture harness's sensitivity to animation timing.
 - 2026-11-10, M21-3 (draft), on the owner's decision to connect to the actual controller first:
   - **Built:** `app/hmi/transport` (the byte port and a loopback), `app/hmi/client` (session,
     synchronization, freshness, the snapshot request, the observation), and the Zephyr link thread

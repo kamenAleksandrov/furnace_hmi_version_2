@@ -17,6 +17,7 @@ target_include_directories(
 target_link_libraries(
   furnace_hmi_development_marker
   PUBLIC lvgl::lvgl furnace_hmi::ui_strings
+  PRIVATE furnace_hmi::fonts
 )
 target_compile_features(
   furnace_hmi_development_marker
