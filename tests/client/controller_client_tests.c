@@ -2433,6 +2433,12 @@ static void proposal_follows_status(void)
     propose("proposal follows status");
     keep_current(400U);
     EXPECT(p->state == FURNACE_HMI_PROPOSAL_OPEN, "a STATUS without the transaction trails it");
+    fx.status_start.transaction_id = 4U;
+    fx.status_start.state = START_STATE_INVALIDATED;
+    fx.status_start.invalidation_reason = START_MEASUREMENT_STALE;
+    keep_current(200U);
+    EXPECT(p->state == FURNACE_HMI_PROPOSAL_OPEN,
+           "a STATUS still showing the previous transaction's end trails it too");
     fx.status_start.transaction_id = 5U;
     fx.status_start.proposal_revision = 1U;
     fx.status_start.state = START_STATE_PENDING;
