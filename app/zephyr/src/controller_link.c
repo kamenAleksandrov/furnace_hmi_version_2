@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /*
- * The controller link on Zephyr (Phase 21 M21-3). A thread of its own polls the
- * UART and the portable client, and publishes the observation, and since M21-7a
+ * The controller link on Zephyr (Phase 21 M21-3). The UART's receive interrupt
+ * fills a ring (M21-7b); a thread of its own drains it into the portable client,
+ * polls the client and publishes the observation, and since M21-7a
  * the library copy, to single-slot mailboxes: the latest value, never a queue
  * that could fall behind. Commands come from the GUI context through a two-slot
  * mailbox (M21-5). Only the GUI context reads the mailboxes, without waiting,
@@ -14,6 +15,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/random/random.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/sys/ring_buffer.h>
 
 #include <furnace_hmi/controller_client.h>
 
@@ -57,14 +59,45 @@ static const char *const link_names[FURNACE_HMI_LINK_COUNT] = {
 };
 static const char *const availability_names[] = {"UNAVAILABLE", "STALE", "CURRENT"};
 
+/*
+ * Received bytes (M21-7b): the UART's receive interrupt moves them into this ring at once, so
+ * nothing is lost while the link thread sleeps or the GUI draws. A library page is about 1 KB;
+ * at 115 200 baud the ring holds about 350 ms of continuous reception. A real board's UART,
+ * line and rate are HW-BLOCK-006; on native_sim the driver emulates the interrupt with a thread.
+ */
+BUILD_ASSERT(IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN),
+             "the controller link receives by interrupt (CONFIG_UART_INTERRUPT_DRIVEN)");
+#define RX_RING_SIZE 4096U
+RING_BUF_DECLARE(rx_ring, RX_RING_SIZE);
+static struct k_spinlock rx_lock;
+/* Bytes the ring had no room for since boot; the frame check then rejects their frames. */
+static uint32_t rx_lost;
+
+static void uart_receive(const struct device *dev, void *user_data)
+{
+    uint8_t chunk[64];
+
+    (void)user_data;
+    while (uart_irq_update(dev) > 0 && uart_irq_rx_ready(dev) > 0) {
+        const int n = uart_fifo_read(dev, chunk, (int)sizeof(chunk));
+        k_spinlock_key_t key;
+
+        if (n <= 0) {
+            break;
+        }
+        key = k_spin_lock(&rx_lock);
+        rx_lost += (uint32_t)n - ring_buf_put(&rx_ring, chunk, (uint32_t)n);
+        k_spin_unlock(&rx_lock, key);
+    }
+}
+
 static size_t uart_read(void *context, uint8_t *buffer, size_t capacity)
 {
-    size_t n = 0U;
+    k_spinlock_key_t key = k_spin_lock(&rx_lock);
+    const uint32_t n = ring_buf_get(&rx_ring, buffer, (uint32_t)capacity);
 
+    k_spin_unlock(&rx_lock, key);
     (void)context;
-    while (n < capacity && uart_poll_in(link_uart, &buffer[n]) == 0) {
-        n++;
-    }
     return n;
 }
 
@@ -148,7 +181,7 @@ static void trace(const furnace_hmi_controller_observation_t *o,
            "age=%u measurement=%u qualified=%u run_state=%u run=%u inhibited=%u latched=%u "
            "unack=%u faults=%u outdated=%u fresh=%u ready=%u requests=%u request_state=%u "
            "gaps=%u regressions=%u incomplete=%u caps_rejected=%u dropped=%u "
-           "command=%u/%u/%u/%u stop=%u/%u/%u library=%u/%u/%u/%u proposal=%u/%u\n",
+           "command=%u/%u/%u/%u stop=%u/%u/%u library=%u/%u/%u/%u proposal=%u/%u rx_lost=%u\n",
            link_names[o->link], availability_names[o->availability],
            (unsigned int)o->client_session_id, o->session_id[0], o->session_id[1],
            o->session_id[2], o->session_id[3], (unsigned int)o->controller_session_changes,
@@ -166,7 +199,8 @@ static void trace(const furnace_hmi_controller_observation_t *o,
            o->command.kind, o->command.state, o->command.reason, o->command.unresolved_cause,
            o->stop.state, o->stop.reason, o->stop.unresolved_cause, l->state,
            (unsigned int)l->library_revision, l->count, (unsigned int)o->library_revision,
-           o->start_proposal.state, (unsigned int)o->start_proposal.transaction_id);
+           o->start_proposal.state, (unsigned int)o->start_proposal.transaction_id,
+           (unsigned int)rx_lost);
 }
 
 static void link_main(void *p1, void *p2, void *p3)
@@ -225,6 +259,10 @@ int furnace_hmi_controller_link_start(void)
     if (!device_is_ready(link_uart)) {
         return -ENODEV;
     }
+    if (uart_irq_callback_set(link_uart, uart_receive) != 0) {
+        return -ENOTSUP;
+    }
+    uart_irq_rx_enable(link_uart);
     (void)k_thread_create(&link_thread, link_stack, K_THREAD_STACK_SIZEOF(link_stack), link_main,
                           NULL, NULL, NULL, LINK_PRIORITY, 0, K_NO_WAIT);
     k_thread_name_set(&link_thread, "controller_link");
