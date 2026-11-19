@@ -2510,6 +2510,9 @@ static void late_proposal_is_shown(void)
     id = last_request_id();
     keep_current(3500U);
     EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED, "unresolved after its attempts");
+    send_start_proposal(id + 100U, 5U, 1U, 1U);
+    EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_NONE,
+           "a proposal answering another request is not shown");
     send_start_proposal(id, 5U, 1U, 1U);
     EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_OPEN &&
                obs()->start_proposal.transaction_id == 5U &&
