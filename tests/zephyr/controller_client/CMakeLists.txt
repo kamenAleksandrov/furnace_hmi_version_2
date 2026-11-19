@@ -14,6 +14,7 @@ target_sources(app PRIVATE
   "${FURNACE_HMI_TESTS_DIR}/controller_client_tests.c"
   "${FURNACE_HMI_TESTS_DIR}/controller_dashboard_tests.c"
   "${FURNACE_HMI_ROOT}/app/hmi/client/src/controller_client.c"
+  "${FURNACE_HMI_ROOT}/app/hmi/client/src/controller_library.c"
   "${FURNACE_HMI_ROOT}/app/hmi/client/src/controller_dashboard.c"
   "${FURNACE_HMI_ROOT}/app/hmi/model/src/dashboard_model.c"
   "${FURNACE_HMI_ROOT}/app/hmi/transport/src/loopback_port.c"

@@ -51,6 +51,18 @@ typedef struct {
     bool commands_allowed;
     uint16_t last_command_type;
     struct furnace_wire_message last_command;
+    /* Library reads (M21-7a), which the client sends by itself: the newest of each. */
+    struct furnace_wire_program_list_request last_list;
+    struct furnace_wire_program_read_request last_read;
+    uint16_t last_read_type;
+    size_t reads_sent;
+    size_t lists_sent;
+    size_t reads_served;
+    /* The scripted library: entry n (1-based) is damaged; 0 none. */
+    uint8_t damaged_entry;
+    /* What the scripted STATUS reports besides its defaults (M21-7a). */
+    uint32_t status_library_revision;
+    struct furnace_wire_start_status status_start;
 } fixture_t;
 
 static fixture_t fx;
@@ -108,6 +120,17 @@ static void drain_client(void)
             case FURNACE_WIRE_MSG_HEARTBEAT:
             case FURNACE_WIRE_MSG_SNAPSHOT_REQUEST:
             case FURNACE_WIRE_MSG_CAPABILITIES_REQUEST:
+                break;
+            case FURNACE_WIRE_MSG_PROGRAM_LIST_REQUEST:
+                fx.last_list = fx.in.u.program_list_request;
+                fx.last_read_type = frame.msg_type;
+                fx.reads_sent++;
+                fx.lists_sent++;
+                break;
+            case FURNACE_WIRE_MSG_PROGRAM_READ_REQUEST:
+                fx.last_read = fx.in.u.program_read_request;
+                fx.last_read_type = frame.msg_type;
+                fx.reads_sent++;
                 break;
             default:
                 if (!fx.commands_allowed) {
@@ -178,7 +201,8 @@ static void begin(const char *name)
 
 static void end(void)
 {
-    EXPECT(!fx.forbidden_sent, "only HELLO, HEARTBEAT, SNAPSHOT_REQUEST, CAPABILITIES_REQUEST");
+    EXPECT(!fx.forbidden_sent,
+           "only HELLO, HEARTBEAT, SNAPSHOT_REQUEST, CAPABILITIES_REQUEST and library reads");
 }
 
 /* ---- the scripted controller ------------------------------------------------------------ */
@@ -272,6 +296,8 @@ static void send_status(uint32_t sequence, int32_t temperature, uint8_t validity
     start_out(FURNACE_WIRE_MSG_STATUS);
     (void)memset(s->session_id, session, FURNACE_WIRE_SESSION_ID_SIZE);
     s->status_sequence = sequence;
+    s->library_revision = fx.status_library_revision;
+    s->start = fx.status_start;
     s->measured_temperature.value = temperature;
     s->measured_temperature.validity = validity;
     s->measured_temperature.age_ms = 120U;
@@ -344,6 +370,7 @@ static void send_snapshot_end(uint32_t request_id, uint32_t status_sequence, uin
     fx.out.u.snapshot_end.status_sequence = status_sequence;
     fx.out.u.snapshot_end.fault_sequence = fault_seq;
     fx.out.u.snapshot_end.run_event_sequence = run_seq;
+    fx.out.u.snapshot_end.library_revision = fx.status_library_revision;
     send_out();
 }
 
@@ -514,13 +541,14 @@ static void reconnect_same_session(void)
     EXPECT(sent_since(mark, FURNACE_WIRE_MSG_SNAPSHOT_REQUEST) == 1U, "snapshot requested");
     EXPECT(fx.last_snapshot_request.envelope.session_id[0] == SESSION_A &&
                fx.last_snapshot_request.envelope.client_session_id == FIRST_CLIENT_ID &&
-               fx.last_snapshot_request.envelope.request_id == 1U,
+               fx.last_snapshot_request.envelope.request_id == obs()->snapshot_request_id &&
+               obs()->snapshot_request_id != 0U,
            "envelope");
     EXPECT(obs()->snapshot_request == FURNACE_HMI_REQUEST_PENDING, "pending");
     EXPECT(obs()->availability == FURNACE_HMI_STATE_AVAILABILITY_STALE, "stale until complete");
     send_status(30U, 1250, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
-    send_fault_list(1U, 30U, 0U, 0U, 0U);
-    send_snapshot_end(1U, 30U, 3U, 5U);
+    send_fault_list(obs()->snapshot_request_id, 30U, 0U, 0U, 0U);
+    send_snapshot_end(obs()->snapshot_request_id, 30U, 3U, 5U);
     advance(10U);
     EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "connected");
     EXPECT(obs()->snapshot_request == FURNACE_HMI_REQUEST_COMPLETED, "completed");
@@ -713,7 +741,7 @@ static void duplicate_on_first_request(void)
     send_hello_ack(HELLO_OK, SESSION_A);
     advance(10U);
     mark = fx.sent_count;
-    send_command_rejected(1U, REJECT_DUPLICATE_REQUEST);
+    send_command_rejected(obs()->snapshot_request_id, REJECT_DUPLICATE_REQUEST);
     advance(10U);
     EXPECT(obs()->snapshot_request == FURNACE_HMI_REQUEST_REJECTED &&
                obs()->snapshot_reject_reason == REJECT_DUPLICATE_REQUEST,
@@ -736,7 +764,7 @@ static void rejected_request(void)
     send_hello_ack(HELLO_OK, SESSION_A);
     advance(10U);
     mark = fx.sent_count;
-    send_command_rejected(1U, REJECT_MALFORMED);
+    send_command_rejected(obs()->snapshot_request_id, REJECT_MALFORMED);
     advance(10U);
     EXPECT(obs()->snapshot_request == FURNACE_HMI_REQUEST_REJECTED &&
                obs()->snapshot_reject_reason == REJECT_MALFORMED,
@@ -1127,6 +1155,16 @@ static const struct furnace_wire_envelope *last_envelope(void)
         return &m->u.fault_acknowledge.envelope;
     case FURNACE_WIRE_MSG_FAULT_RECOVERY_REQUEST:
         return &m->u.fault_recovery_request.envelope;
+    case FURNACE_WIRE_MSG_PROGRAM_SAVE:
+        return &m->u.program_save.envelope;
+    case FURNACE_WIRE_MSG_PROGRAM_DELETE:
+        return &m->u.program_delete.envelope;
+    case FURNACE_WIRE_MSG_START_REQUEST:
+        return &m->u.start_request.envelope;
+    case FURNACE_WIRE_MSG_START_CONFIRM:
+        return &m->u.start_confirm.envelope;
+    case FURNACE_WIRE_MSG_START_CANCEL:
+        return &m->u.start_cancel.envelope;
     default:
         return NULL;
     }
@@ -1692,9 +1730,797 @@ static void result_of_another_kind_ignored(void)
     end();
 }
 
+/* ---- the library mirror and the program Start (M21-7a) ---------------------------------- */
+
+#define LIST_STORAGE_UNAVAILABLE 1U
+#define DATA_OK 0U
+#define DATA_NOT_FOUND 2U
+#define DATA_DAMAGED 3U
+#define SAVE_SAVED 0U
+#define SAVE_INVALID 1U
+#define SAVE_ACKNOWLEDGMENT_REQUIRED 9U
+#define LIBRARY_UNRESOLVED 10U
+#define DELETE_DELETED 0U
+#define DELETE_REVISION_CONFLICT 3U
+#define START_DUPLICATE_REQUEST 5U
+#define START_MEASUREMENT_STALE 24U
+#define START_MEASUREMENT_INVALID 23U
+#define REJECT_STORE_NOT_READY 10U
+#define START_STATE_PENDING 2U
+#define START_STATE_INVALIDATED 6U
+#define LONG_NAME "abcdefghijklmnopqrstuvwxyz012345" /* 32 code points */
+
+static const furnace_hmi_controller_library_t *library(void)
+{
+    return furnace_hmi_controller_client_library(&fx.client);
+}
+
+/* The scripted library's program names: one is UTF-8, one too long to be shown. */
+static const char *entry_name(uint8_t index)
+{
+    static const char *const names[] = {"Cure 120", "H\xC3\xA4rtung 160", LONG_NAME, "Post-cure"};
+
+    return names[index % 4U];
+}
+
+static void begin_library(const char *name, uint32_t revision)
+{
+    begin(name);
+    fx.status_library_revision = revision;
+    status_sequence = 10U;
+    synchronize(SESSION_A, status_sequence);
+}
+
+static void send_program_list(uint32_t request_id, uint32_t revision, uint8_t total, uint8_t first,
+                              uint8_t count)
+{
+    struct furnace_wire_program_list *l = &fx.out.u.program_list;
+
+    start_out(FURNACE_WIRE_MSG_PROGRAM_LIST);
+    l->request_id = request_id;
+    l->library_revision = revision;
+    l->total = total;
+    l->first_index = first;
+    l->entries_count = count;
+    for (uint8_t i = 0U; i < count; i++) {
+        struct furnace_wire_library_entry *e = &l->entries[i];
+        const uint8_t index = (uint8_t)(first + i);
+        const char *n = entry_name(index);
+
+        e->program_id = 11U + index;
+        e->damaged = (fx.damaged_entry == index + 1U);
+        e->program_revision = e->damaged ? 0U : 1U;
+        (void)memcpy(e->name, n, strlen(n) + 1U);
+        e->stage_count = e->damaged ? 0U : 2U;
+        e->max_target = 1200 + 10 * index;
+        e->curing_estimate_s = 4000U + index;
+        e->planning_reference = 230;
+    }
+    send_out();
+    advance(10U);
+}
+
+static void send_program_data(uint32_t request_id, uint8_t result, uint32_t program_id,
+                              uint32_t revision)
+{
+    struct furnace_wire_program_data *d = &fx.out.u.program_data;
+    const uint8_t index = (uint8_t)(program_id - 11U);
+    const char *n = entry_name(index);
+
+    start_out(FURNACE_WIRE_MSG_PROGRAM_DATA);
+    d->request_id = request_id;
+    d->result = result;
+    d->program_id = program_id;
+    d->program_revision = revision;
+    if (result == DATA_OK) {
+        (void)memcpy(d->name, n, strlen(n) + 1U);
+        d->curing_estimate_s = 4000U + index;
+        d->planning_reference = 230;
+        d->stages_count = 2U;
+        d->stages[0].kind = FURNACE_HMI_CONTROLLER_STAGE_HEATING;
+        d->stages[0].target = 1200 + 10 * index;
+        d->stages[0].rate = 20;
+        d->stages[1].kind = FURNACE_HMI_CONTROLLER_STAGE_HOLD;
+        d->stages[1].duration_minutes = 60U;
+    }
+    send_out();
+    advance(10U);
+}
+
+/* Answer each library read the client sends, at this revision and size, until it asks no more. */
+static void serve_library(uint32_t revision, uint8_t total)
+{
+    for (int guard = 0; guard < 64 && fx.reads_served < fx.reads_sent; guard++) {
+        fx.reads_served = fx.reads_sent;
+        if (fx.last_read_type == FURNACE_WIRE_MSG_PROGRAM_LIST_REQUEST) {
+            const uint8_t first = fx.last_list.first_index;
+            const uint8_t left = (first < total) ? (uint8_t)(total - first) : 0U;
+
+            send_program_list(fx.last_list.envelope.request_id, revision, total, first,
+                              (left < fx.last_list.max_count) ? left : fx.last_list.max_count);
+        } else {
+            send_program_data(fx.last_read.envelope.request_id, DATA_OK, fx.last_read.program_id,
+                              1U);
+        }
+    }
+}
+
+static void names_are_checked(void)
+{
+    scenario = "names are checked";
+    EXPECT(furnace_hmi_controller_name_valid("Cure", 4U, 31U), "ASCII");
+    EXPECT(furnace_hmi_controller_name_valid("", 0U, 31U), "empty is well-formed");
+    EXPECT(furnace_hmi_controller_name_valid("H\xC3\xA4rtung", 8U, 31U), "two-byte form");
+    EXPECT(furnace_hmi_controller_name_valid("\xE2\x82\xAC\xF0\x9F\x94\xA5", 7U, 2U),
+           "three and four bytes, two code points");
+    EXPECT(furnace_hmi_controller_name_valid(LONG_NAME, 31U, 31U), "31 code points");
+    EXPECT(!furnace_hmi_controller_name_valid(LONG_NAME, 32U, 31U), "32 code points");
+    EXPECT(!furnace_hmi_controller_name_valid("\xC3", 1U, 31U), "truncated");
+    EXPECT(!furnace_hmi_controller_name_valid("\xC0\xAF", 2U, 31U), "overlong");
+    EXPECT(!furnace_hmi_controller_name_valid("\xE0\x80\xAF", 3U, 31U), "overlong, three bytes");
+    EXPECT(!furnace_hmi_controller_name_valid("\xED\xA0\x80", 3U, 31U), "surrogate");
+    EXPECT(!furnace_hmi_controller_name_valid("\xF4\x90\x80\x80", 4U, 31U), "above U+10FFFF");
+    EXPECT(!furnace_hmi_controller_name_valid("\xFF", 1U, 31U), "never a lead byte");
+    EXPECT(!furnace_hmi_controller_name_valid("a\x80", 2U, 31U), "a lone continuation");
+    EXPECT(!furnace_hmi_controller_name_valid("a\0b", 3U, 31U), "NUL inside");
+}
+
+static void library_listed_and_read(void)
+{
+    const furnace_hmi_controller_program_t *p;
+    uint32_t generation;
+
+    begin_library("library listed and read", 5U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_UNKNOWN, "nothing before a complete listing");
+    EXPECT(fx.lists_sent == 1U && fx.last_list.first_index == 0U && fx.last_list.max_count == 6U,
+           "the first page asked for once current");
+    EXPECT(fx.last_list.envelope.session_id[0] == SESSION_A &&
+               fx.last_list.envelope.client_session_id == FIRST_CLIENT_ID,
+           "the envelope names both sessions");
+    generation = furnace_hmi_controller_client_library_generation(&fx.client);
+    send_program_list(fx.last_list.envelope.request_id, 5U, 3U, 0U, 3U);
+    fx.reads_served = fx.reads_sent;
+    EXPECT(fx.last_read_type == FURNACE_WIRE_MSG_PROGRAM_READ_REQUEST &&
+               fx.last_read.program_id == 11U,
+           "then the first program read");
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_UNKNOWN, "not shown before every read");
+    send_program_data(fx.last_read.envelope.request_id, DATA_OK, 11U, 1U);
+    serve_library(5U, 3U);
+    EXPECT(fx.reads_sent == 4U, "one page and three reads");
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT && library()->library_revision == 5U &&
+               library()->count == 3U && !library()->updating,
+           "current at the revision");
+    EXPECT(furnace_hmi_controller_client_library_generation(&fx.client) != generation,
+           "its generation changed");
+    p = &library()->programs[0];
+    EXPECT(p->program_id == 11U && p->program_revision == 1U && strcmp(p->name, "Cure 120") == 0 &&
+               p->name_valid && !p->damaged,
+           "the first program's identity and name");
+    EXPECT(p->max_target_decicelsius == 1200 && p->curing_estimate_s == 4000U &&
+               p->planning_reference_decicelsius == 230,
+           "its card values");
+    EXPECT(p->stage_count == 2U && p->stages[0].kind == FURNACE_HMI_CONTROLLER_STAGE_HEATING &&
+               p->stages[0].target_decicelsius == 1200 && p->stages[0].rate_decicelsius_per_min == 20 &&
+               p->stages[1].kind == FURNACE_HMI_CONTROLLER_STAGE_HOLD &&
+               p->stages[1].duration_minutes == 60U,
+           "its stages as the controller holds them");
+    EXPECT(strcmp(library()->programs[1].name, "H\xC3\xA4rtung 160") == 0 &&
+               library()->programs[1].name_valid,
+           "a UTF-8 name as received");
+    EXPECT(!library()->programs[2].name_valid, "a name of 32 code points is flagged");
+    keep_current(4000U);
+    EXPECT(fx.reads_sent == 4U, "nothing read again while the revision holds");
+    end();
+}
+
+static void library_paged(void)
+{
+    begin_library("library paged", 5U);
+    serve_library(5U, 8U);
+    EXPECT(fx.lists_sent == 2U && fx.reads_sent == 10U, "two pages and eight reads");
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT && library()->count == 8U &&
+               library()->programs[7].program_id == 18U,
+           "every program, in listing order");
+    end();
+}
+
+static void library_changed_between_pages(void)
+{
+    begin_library("library changed between pages", 5U);
+    send_program_list(fx.last_list.envelope.request_id, 5U, 8U, 0U, 6U);
+    EXPECT(fx.last_read_type == FURNACE_WIRE_MSG_PROGRAM_LIST_REQUEST &&
+               fx.last_list.first_index == 6U,
+           "the second page asked for");
+    send_program_list(fx.last_list.envelope.request_id, 6U, 8U, 6U, 2U);
+    EXPECT(fx.last_list.first_index == 0U && fx.lists_sent == 3U, "listed again from index 0");
+    EXPECT(library()->restarts == 1U && library()->state == FURNACE_HMI_LIBRARY_UNKNOWN,
+           "a restart, nothing shown");
+    fx.reads_served = fx.reads_sent - 1U;
+    serve_library(6U, 8U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT && library()->library_revision == 6U &&
+               library()->count == 8U,
+           "current at the newer revision");
+    end();
+}
+
+static void read_of_another_revision_restarts(void)
+{
+    begin_library("read of another revision restarts", 5U);
+    send_program_list(fx.last_list.envelope.request_id, 5U, 2U, 0U, 2U);
+    send_program_data(fx.last_read.envelope.request_id, DATA_OK, 11U, 2U);
+    EXPECT(fx.last_read_type == FURNACE_WIRE_MSG_PROGRAM_LIST_REQUEST &&
+               fx.last_list.first_index == 0U && library()->restarts == 1U,
+           "another revision: listed again");
+    send_program_list(fx.last_list.envelope.request_id, 5U, 2U, 0U, 2U);
+    send_program_data(fx.last_read.envelope.request_id, DATA_OK, 11U, 1U);
+    send_program_data(fx.last_read.envelope.request_id, DATA_NOT_FOUND, 12U, 0U);
+    EXPECT(fx.last_read_type == FURNACE_WIRE_MSG_PROGRAM_LIST_REQUEST && library()->restarts == 2U,
+           "NOT_FOUND: listed again");
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_UNKNOWN, "nothing shown meanwhile");
+    fx.reads_served = fx.reads_sent - 1U;
+    serve_library(5U, 2U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT && library()->count == 2U, "then current");
+    end();
+}
+
+static void damaged_programs_listed(void)
+{
+    begin_library("damaged programs listed", 5U);
+    fx.damaged_entry = 2U;
+    serve_library(5U, 3U);
+    EXPECT(fx.reads_sent == 3U, "a damaged entry is not read");
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT && library()->count == 3U &&
+               library()->programs[1].damaged && library()->programs[1].stage_count == 0U &&
+               library()->programs[1].program_revision == 0U && library()->programs[1].program_id == 12U,
+           "listed as damaged, without stages");
+    fx.damaged_entry = 0U;
+    fx.status_library_revision = 6U;
+    keep_current(200U);
+    send_program_list(fx.last_list.envelope.request_id, 6U, 1U, 0U, 1U);
+    send_program_data(fx.last_read.envelope.request_id, DATA_DAMAGED, 11U, 1U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT && library()->library_revision == 6U &&
+               library()->count == 1U && library()->programs[0].damaged &&
+               library()->programs[0].stage_count == 0U,
+           "a read answered DAMAGED: damaged");
+    end();
+}
+
+static void library_unavailable(void)
+{
+    begin_library("library unavailable", 5U);
+    start_out(FURNACE_WIRE_MSG_PROGRAM_LIST);
+    fx.out.u.program_list.request_id = fx.last_list.envelope.request_id;
+    fx.out.u.program_list.result = LIST_STORAGE_UNAVAILABLE;
+    fx.out.u.program_list.library_revision = 5U;
+    send_out();
+    advance(10U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_UNAVAILABLE && library()->library_revision == 5U,
+           "unavailable at the revision");
+    keep_current(5000U);
+    EXPECT(fx.lists_sent == 1U, "not asked again while the revision holds");
+    fx.status_library_revision = 6U;
+    keep_current(200U);
+    EXPECT(fx.lists_sent == 2U, "asked again when the revision changes");
+    end();
+}
+
+static void library_too_large(void)
+{
+    begin_library("library too large", 5U);
+    send_program_list(fx.last_list.envelope.request_id, 5U, 13U, 0U, 6U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_TOO_LARGE && library()->count == 0U,
+           "too large, nothing shown");
+    keep_current(4000U);
+    EXPECT(fx.reads_sent == 1U, "nothing more read");
+    end();
+}
+
+static void library_updating_keeps_the_previous(void)
+{
+    begin_library("library updating keeps the previous", 5U);
+    serve_library(5U, 2U);
+    fx.status_library_revision = 6U;
+    keep_current(200U);
+    EXPECT(obs()->library_revision == 6U, "STATUS's revision observed");
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT && library()->library_revision == 5U &&
+               library()->count == 2U && library()->updating,
+           "the previous listing stays, updating");
+    EXPECT(fx.last_list.first_index == 0U && fx.lists_sent == 2U, "listed again");
+    fx.reads_served = fx.reads_sent - 1U;
+    serve_library(6U, 3U);
+    EXPECT(library()->library_revision == 6U && library()->count == 3U && !library()->updating,
+           "replaced when complete");
+    end();
+}
+
+static void lost_library_answer_asked_again(void)
+{
+    uint32_t first;
+
+    begin_library("lost library answer asked again", 5U);
+    first = fx.last_list.envelope.request_id;
+    keep_current(FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS - 200U);
+    EXPECT(fx.lists_sent == 1U, "not before the timeout");
+    keep_current(400U);
+    EXPECT(fx.lists_sent == 2U && fx.last_list.envelope.request_id != first &&
+               fx.last_list.first_index == 0U,
+           "asked again under a new request ID");
+    EXPECT(library()->retries == 1U, "counted");
+    send_program_list(first, 5U, 1U, 0U, 1U);
+    EXPECT(fx.last_read_type == FURNACE_WIRE_MSG_PROGRAM_LIST_REQUEST, "the late answer is ignored");
+    fx.reads_served = fx.reads_sent - 1U;
+    serve_library(5U, 1U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT, "then current");
+    end();
+}
+
+static void library_follows_the_link(void)
+{
+    size_t reads;
+
+    begin("library follows the link");
+    fx.status_library_revision = 5U;
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_capabilities(0U, SESSION_A);
+    advance(10U);
+    EXPECT(fx.reads_sent == 0U, "nothing before the link is current");
+    status_sequence = 10U;
+    synchronize(SESSION_A, status_sequence);
+    serve_library(5U, 2U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT, "current");
+    fx.status_library_revision = 6U;
+    keep_current(200U);
+    reads = fx.reads_sent;
+    advance(FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS + 500U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT && fx.reads_sent == reads,
+           "nothing asked while the link is silent");
+    synchronize(SESSION_B, 1U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_UNKNOWN && library()->count == 0U,
+           "another controller session discards it");
+    EXPECT(fx.last_list.first_index == 0U && fx.reads_sent == reads + 1U,
+           "and its own is listed from index 0");
+    end();
+}
+
+/* Submit a command built by the scenario, as submit() does for the plain ones. */
+static furnace_hmi_command_local_t submit_command(const furnace_hmi_command_t *command,
+                                                  uint32_t submission)
+{
+    const furnace_hmi_command_local_t refusal =
+        furnace_hmi_controller_client_submit(&fx.client, command, submission);
+
+    advance(10U);
+    return refusal;
+}
+
+static furnace_hmi_command_t save_command(void)
+{
+    furnace_hmi_command_t c = {.kind = FURNACE_HMI_COMMAND_PROGRAM_SAVE};
+
+    (void)memcpy(c.name, "Cure 140", sizeof("Cure 140"));
+    c.stage_count = 2U;
+    c.stages[0].kind = FURNACE_HMI_CONTROLLER_STAGE_HEATING;
+    c.stages[0].target_decicelsius = 1400;
+    c.stages[0].rate_decicelsius_per_min = 15;
+    c.stages[1].kind = FURNACE_HMI_CONTROLLER_STAGE_HOLD;
+    c.stages[1].duration_minutes = 90U;
+    return c;
+}
+
+static void send_save_result(uint32_t request_id, uint8_t result)
+{
+    struct furnace_wire_program_save_result *r = &fx.out.u.program_save_result;
+
+    start_out(FURNACE_WIRE_MSG_PROGRAM_SAVE_RESULT);
+    r->request_id = request_id;
+    r->result = result;
+    r->program_id = (result == SAVE_SAVED) ? 14U : 0U;
+    r->program_revision = (result == SAVE_SAVED) ? 1U : 0U;
+    if (result == SAVE_INVALID) {
+        r->error_reason = 3U;
+        r->error_field = 2U;
+        r->error_stage = 1U;
+    }
+    r->curing_estimate_s = 7200U;
+    r->planning_reference = 230;
+    send_out();
+    advance(10U);
+}
+
+static void program_save_accepted(void)
+{
+    const struct furnace_wire_program_save *m = &fx.last_command.u.program_save;
+    const furnace_hmi_command_t command = save_command();
+    const furnace_hmi_command_outcome_t *c = &obs()->command;
+
+    begin_commands("program save accepted");
+    EXPECT(submit_command(&command, 3U) == FURNACE_HMI_COMMAND_LOCAL_NONE, "sent");
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_PROGRAM_SAVE, "PROGRAM_SAVE on the wire");
+    EXPECT(m->program_id == 0U && m->base_revision == 0U && m->acknowledged_duration_s == 0U &&
+               strcmp(m->name, "Cure 140") == 0 && m->stages_count == 2U,
+           "a new program, its name");
+    EXPECT(m->stages[0].kind == 1U && m->stages[0].target == 1400 && m->stages[0].rate == 15 &&
+               m->stages[1].kind == 2U && m->stages[1].duration_minutes == 90U,
+           "its stages");
+    EXPECT(c->state == FURNACE_HMI_COMMAND_PENDING && c->kind == FURNACE_HMI_COMMAND_PROGRAM_SAVE,
+           "pending");
+    send_save_result(last_request_id(), SAVE_SAVED);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->program_id == 14U &&
+               c->program_revision == 1U && c->curing_estimate_s == 7200U &&
+               c->planning_reference_decicelsius == 230,
+           "accepted with the new identity and estimate");
+    end();
+}
+
+static void program_save_rejected(void)
+{
+    const furnace_hmi_command_t command = save_command();
+    const furnace_hmi_command_outcome_t *c = &obs()->command;
+
+    begin_commands("program save rejected");
+    (void)submit_command(&command, 1U);
+    send_save_result(last_request_id(), SAVE_INVALID);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && c->reason == SAVE_INVALID &&
+               c->error_reason == 3U && c->error_field == 2U && c->error_stage == 1U,
+           "INVALID with the first violation");
+    (void)submit_command(&command, 2U);
+    send_save_result(last_request_id(), SAVE_ACKNOWLEDGMENT_REQUIRED);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && c->reason == SAVE_ACKNOWLEDGMENT_REQUIRED &&
+               c->curing_estimate_s == 7200U,
+           "the estimate to acknowledge");
+    (void)submit_command(&command, 3U);
+    send_save_result(last_request_id(), LIBRARY_UNRESOLVED);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               c->unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_BY_CONTROLLER,
+           "UNRESOLVED: it may still take effect");
+    end();
+}
+
+static void program_save_refused_unless_encodable(void)
+{
+    furnace_hmi_command_t command = save_command();
+    size_t mark;
+
+    begin_commands("program save refused unless encodable");
+    mark = fx.sent_count;
+    command.name[0] = '\xC3'; /* truncated UTF-8 */
+    command.name[1] = '\0';
+    EXPECT(submit_command(&command, 1U) == FURNACE_HMI_COMMAND_LOCAL_INVALID, "a malformed name");
+    command = save_command();
+    command.stage_count = FURNACE_HMI_CONTROLLER_MAX_STAGES + 1U;
+    EXPECT(submit_command(&command, 2U) == FURNACE_HMI_COMMAND_LOCAL_INVALID, "too many stages");
+    command = save_command();
+    command.stages[1].target_decicelsius = 100;
+    EXPECT(submit_command(&command, 3U) == FURNACE_HMI_COMMAND_LOCAL_INVALID, "a Hold with a target");
+    command = save_command();
+    command.stages[0].kind = 3U;
+    EXPECT(submit_command(&command, 4U) == FURNACE_HMI_COMMAND_LOCAL_INVALID, "an unknown kind");
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_PROGRAM_SAVE) == 0U, "nothing sent");
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_IDLE, "the slot is unchanged");
+    end();
+}
+
+static void library_change_waits_before_a_retry(void)
+{
+    const furnace_hmi_command_t command = save_command();
+    size_t mark;
+    uint32_t id;
+
+    begin_commands("library change waits before a retry");
+    mark = fx.sent_count;
+    (void)submit_command(&command, 1U);
+    id = last_request_id();
+    keep_current(FURNACE_HMI_CLIENT_LIBRARY_RETRY_MS - 200U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_PROGRAM_SAVE) == 1U,
+           "not sent again while the controller may still write it");
+    keep_current(400U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_PROGRAM_SAVE) == 2U && last_request_id() == id &&
+               obs()->command.attempts == 2U,
+           "then again under the same request ID");
+    keep_current(FURNACE_HMI_CLIENT_LIBRARY_RETRY_MS + 200U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               obs()->command.unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_NO_ANSWER &&
+               sent_since(mark, FURNACE_WIRE_MSG_PROGRAM_SAVE) == 2U,
+           "unresolved after its attempts");
+    end();
+}
+
+static void program_delete(void)
+{
+    const struct furnace_wire_program_delete *m = &fx.last_command.u.program_delete;
+    const furnace_hmi_command_t command = {
+        .kind = FURNACE_HMI_COMMAND_PROGRAM_DELETE, .program_id = 11U, .program_revision = 3U};
+    const furnace_hmi_command_outcome_t *c = &obs()->command;
+
+    begin_commands("program delete");
+    (void)submit_command(&command, 1U);
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_PROGRAM_DELETE && m->program_id == 11U &&
+               m->program_revision == 3U,
+           "the exact revision");
+    start_out(FURNACE_WIRE_MSG_PROGRAM_DELETE_RESULT);
+    fx.out.u.program_delete_result.request_id = last_request_id();
+    fx.out.u.program_delete_result.result = DELETE_REVISION_CONFLICT;
+    fx.out.u.program_delete_result.program_id = 11U;
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && c->reason == DELETE_REVISION_CONFLICT &&
+               c->program_id == 11U,
+           "a conflict is rejected");
+    (void)submit_command(&command, 2U);
+    start_out(FURNACE_WIRE_MSG_PROGRAM_DELETE_RESULT);
+    fx.out.u.program_delete_result.request_id = last_request_id();
+    fx.out.u.program_delete_result.result = DELETE_DELETED;
+    fx.out.u.program_delete_result.program_id = 11U;
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->program_id == 11U, "DELETED is accepted");
+    end();
+}
+
+static furnace_hmi_command_t start_command(void)
+{
+    const furnace_hmi_command_t c = {
+        .kind = FURNACE_HMI_COMMAND_PROGRAM_START, .program_id = 11U, .program_revision = 2U};
+
+    return c;
+}
+
+static void send_start_accepted(uint32_t request_id, uint32_t transaction, uint32_t run_id)
+{
+    start_out(FURNACE_WIRE_MSG_START_ACCEPTED);
+    fx.out.u.start_accepted.request_id = request_id;
+    fx.out.u.start_accepted.transaction_id = transaction;
+    fx.out.u.start_accepted.run_id = run_id;
+    fx.out.u.start_accepted.accepted_duration_s = 7200U;
+    send_out();
+    advance(10U);
+}
+
+static void send_start_proposal(uint32_t request_id, uint32_t transaction, uint32_t revision,
+                                uint8_t stage)
+{
+    struct furnace_wire_start_proposal *p = &fx.out.u.start_proposal;
+
+    start_out(FURNACE_WIRE_MSG_START_PROPOSAL);
+    p->request_id = request_id;
+    p->transaction_id = transaction;
+    p->proposal_revision = revision;
+    p->measured_temperature.value = 1234;
+    p->measured_temperature.validity = FURNACE_HMI_CONTROLLER_MEASURED_VALID;
+    p->measured_temperature.age_ms = 100U;
+    p->proposed_stage = stage;
+    p->skipped_stages_count = stage;
+    for (uint8_t i = 0U; i < stage; i++) {
+        p->skipped_stages[i].index = i;
+        p->skipped_stages[i].kind = (i % 2U == 0U) ? 1U : 2U;
+        p->skipped_stages[i].target = (i % 2U == 0U) ? 1200 : 0;
+        p->skipped_stages[i].hold_minutes = (i % 2U == 0U) ? 0U : 60U;
+    }
+    p->remaining_curing_s = 5000U - revision;
+    p->duration_ack_required = true;
+    p->recommended_s = 3600U;
+    p->maximum_s = 9000U;
+    p->warnings_count = 1U;
+    p->warnings[0] = 1U;
+    send_out();
+    advance(10U);
+}
+
+/* A program Start answered with a proposal of transaction 5, revision 1, stage 1. */
+static void propose(const char *name)
+{
+    const furnace_hmi_command_t command = start_command();
+
+    begin_commands(name);
+    (void)submit_command(&command, 1U);
+    send_start_proposal(last_request_id(), 5U, 1U, 1U);
+}
+
+static void program_start_accepted(void)
+{
+    const struct furnace_wire_start_request *m = &fx.last_command.u.start_request;
+    const furnace_hmi_command_t command = start_command();
+    const furnace_hmi_command_outcome_t *c = &obs()->command;
+
+    begin_commands("program start accepted");
+    EXPECT(submit_command(&command, 1U) == FURNACE_HMI_COMMAND_LOCAL_NONE, "sent");
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_START_REQUEST && m->program_id == 11U &&
+               m->program_revision == 2U,
+           "START_REQUEST names the revision the operator saw");
+    EXPECT(c->state == FURNACE_HMI_COMMAND_PENDING, "pending");
+    send_start_accepted(last_request_id(), 4U, 90U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->run_id == 90U && c->transaction_id == 4U,
+           "accepted: the run started");
+    EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_NONE, "no proposal");
+    end();
+}
+
+static void program_start_proposed_and_confirmed(void)
+{
+    const struct furnace_wire_start_confirm *m = &fx.last_command.u.start_confirm;
+    const furnace_hmi_controller_start_proposal_t *p = &obs()->start_proposal;
+    const furnace_hmi_command_outcome_t *c = &obs()->command;
+    furnace_hmi_command_t confirm = {.kind = FURNACE_HMI_COMMAND_START_CONFIRM};
+
+    propose("program start proposed and confirmed");
+    EXPECT(c->state == FURNACE_HMI_COMMAND_PROPOSED && c->transaction_id == 5U,
+           "a proposal, never accepted");
+    EXPECT(p->state == FURNACE_HMI_PROPOSAL_OPEN && p->transaction_id == 5U &&
+               p->proposal_revision == 1U && p->program_id == 11U && p->program_revision == 2U,
+           "open, for the program the Start named");
+    EXPECT(p->proposed_stage == 1U && p->skipped_count == 1U && p->skipped[0].index == 0U &&
+               p->skipped[0].kind == 1U && p->skipped[0].target_decicelsius == 1200,
+           "the stage and the skipped stages");
+    EXPECT(p->measured_decicelsius == 1234 &&
+               p->measured_validity == FURNACE_HMI_CONTROLLER_MEASURED_VALID &&
+               p->remaining_curing_s == 4999U && p->duration_ack_required &&
+               p->recommended_s == 3600U && p->maximum_s == 9000U && p->warnings_count == 1U &&
+               p->warnings[0] == 1U,
+           "the temperature, durations and warnings");
+    send_start_proposal(0U, 5U, 2U, 2U);
+    EXPECT(p->proposal_revision == 2U && p->proposed_stage == 2U && p->skipped_count == 2U &&
+               p->skipped[1].hold_minutes == 60U,
+           "a newer revision replaces it");
+    send_start_proposal(0U, 5U, 1U, 1U);
+    EXPECT(p->proposal_revision == 2U, "an older revision does not");
+    send_start_proposal(0U, 9U, 3U, 1U);
+    EXPECT(p->transaction_id == 5U && p->proposal_revision == 2U, "nor another transaction's");
+    confirm.transaction_id = 5U;
+    confirm.proposal_revision = 2U;
+    confirm.program_id = 11U;
+    confirm.program_revision = 2U;
+    confirm.proposed_stage = 2U;
+    confirm.accepted_duration_s = 6000U;
+    EXPECT(submit_command(&confirm, 2U) == FURNACE_HMI_COMMAND_LOCAL_NONE, "Confirm sent");
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_START_CONFIRM && m->transaction_id == 5U &&
+               m->proposal_revision == 2U && m->program_id == 11U && m->program_revision == 2U &&
+               m->proposed_stage == 2U && m->accepted_duration_s == 6000U,
+           "exactly the proposal shown");
+    send_start_accepted(last_request_id(), 5U, 91U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->kind == FURNACE_HMI_COMMAND_START_CONFIRM &&
+               c->run_id == 91U,
+           "the Confirm accepted");
+    EXPECT(p->state == FURNACE_HMI_PROPOSAL_ACCEPTED, "the proposal ended accepted");
+    end();
+}
+
+static void proposal_invalidated(void)
+{
+    const furnace_hmi_controller_start_proposal_t *p = &obs()->start_proposal;
+
+    propose("proposal invalidated");
+    start_out(FURNACE_WIRE_MSG_START_PROPOSAL_INVALIDATED);
+    fx.out.u.start_proposal_invalidated.transaction_id = 4U;
+    fx.out.u.start_proposal_invalidated.reason = START_MEASUREMENT_STALE;
+    send_out();
+    advance(10U);
+    EXPECT(p->state == FURNACE_HMI_PROPOSAL_OPEN, "another transaction's invalidation is ignored");
+    fx.out.u.start_proposal_invalidated.transaction_id = 5U;
+    send_out();
+    advance(10U);
+    EXPECT(p->state == FURNACE_HMI_PROPOSAL_INVALIDATED &&
+               p->invalidation_reason == START_MEASUREMENT_STALE,
+           "invalidated with the reason");
+    end();
+}
+
+static void proposal_cancelled(void)
+{
+    const struct furnace_wire_start_cancel *m = &fx.last_command.u.start_cancel;
+    const furnace_hmi_command_t cancel = {.kind = FURNACE_HMI_COMMAND_START_CANCEL,
+                                          .transaction_id = 5U};
+
+    propose("proposal cancelled");
+    (void)submit_command(&cancel, 2U);
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_START_CANCEL && m->transaction_id == 5U,
+           "START_CANCEL names the transaction");
+    start_out(FURNACE_WIRE_MSG_START_CANCELLED);
+    fx.out.u.start_cancelled.request_id = last_request_id();
+    fx.out.u.start_cancelled.transaction_id = 5U;
+    send_out();
+    advance(10U);
+    EXPECT(obs()->command.state == FURNACE_HMI_COMMAND_ACCEPTED &&
+               obs()->command.kind == FURNACE_HMI_COMMAND_START_CANCEL,
+           "the Cancel accepted");
+    EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_CANCELLED, "the proposal cancelled");
+    end();
+}
+
+static void proposal_follows_status(void)
+{
+    const furnace_hmi_controller_start_proposal_t *p = &obs()->start_proposal;
+
+    propose("proposal follows status");
+    keep_current(400U);
+    EXPECT(p->state == FURNACE_HMI_PROPOSAL_OPEN, "a STATUS without the transaction trails it");
+    fx.status_start.transaction_id = 5U;
+    fx.status_start.proposal_revision = 1U;
+    fx.status_start.state = START_STATE_PENDING;
+    keep_current(200U);
+    EXPECT(p->state == FURNACE_HMI_PROPOSAL_OPEN, "pending confirmation");
+    fx.status_start.state = START_STATE_INVALIDATED;
+    fx.status_start.invalidation_reason = START_MEASUREMENT_INVALID;
+    keep_current(200U);
+    EXPECT(p->state == FURNACE_HMI_PROPOSAL_INVALIDATED &&
+               p->invalidation_reason == START_MEASUREMENT_INVALID,
+           "an invalidation learned from STATUS");
+    end();
+    propose("proposal ended by a newer transaction");
+    fx.status_start.transaction_id = 6U;
+    fx.status_start.state = START_STATE_PENDING;
+    keep_current(200U);
+    EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_ENDED, "a newer transaction ends it");
+    end();
+}
+
+static void proposal_ends_with_the_session(void)
+{
+    propose("proposal ends with the session");
+    synchronize(SESSION_B, 1U);
+    EXPECT(obs()->start_proposal.state == FURNACE_HMI_PROPOSAL_ENDED,
+           "another controller session ends it");
+    end();
+}
+
+static void program_start_rejected(void)
+{
+    const furnace_hmi_command_t command = start_command();
+    const furnace_hmi_command_outcome_t *c = &obs()->command;
+    size_t mark;
+
+    begin_commands("program start rejected");
+    (void)submit_command(&command, 1U);
+    start_out(FURNACE_WIRE_MSG_START_REJECTED);
+    fx.out.u.start_rejected.request_id = last_request_id();
+    fx.out.u.start_rejected.reason = START_MEASUREMENT_STALE;
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && c->reason == START_MEASUREMENT_STALE,
+           "rejected with the reason");
+    (void)submit_command(&command, 2U);
+    fx.out.u.start_rejected.request_id = last_request_id();
+    fx.out.u.start_rejected.reason = START_DUPLICATE_REQUEST;
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+               c->unresolved_cause == FURNACE_HMI_COMMAND_UNRESOLVED_DUPLICATE,
+           "a duplicate is unresolved");
+    mark = fx.sent_count;
+    (void)submit_command(&command, 3U);
+    send_rejected_command(last_request_id(), FURNACE_WIRE_MSG_START_REQUEST, REJECT_STORE_NOT_READY);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REFUSED && c->reason == REJECT_STORE_NOT_READY,
+           "STORE_NOT_READY refuses it");
+    keep_current(3000U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_START_REQUEST) == 1U, "and it is never sent again");
+    end();
+}
+
 int controller_client_tests_run(void)
 {
     failures = 0;
+    names_are_checked();
+    library_listed_and_read();
+    library_paged();
+    library_changed_between_pages();
+    read_of_another_revision_restarts();
+    damaged_programs_listed();
+    library_unavailable();
+    library_too_large();
+    library_updating_keeps_the_previous();
+    lost_library_answer_asked_again();
+    library_follows_the_link();
+    program_save_accepted();
+    program_save_rejected();
+    program_save_refused_unless_encodable();
+    library_change_waits_before_a_retry();
+    program_delete();
+    program_start_accepted();
+    program_start_proposed_and_confirmed();
+    proposal_invalidated();
+    proposal_cancelled();
+    proposal_follows_status();
+    proposal_ends_with_the_session();
+    program_start_rejected();
     hello_ack_ends_an_ordinary_command();
     stop_kept_through_not_connected();
     stop_patience_while_silent();

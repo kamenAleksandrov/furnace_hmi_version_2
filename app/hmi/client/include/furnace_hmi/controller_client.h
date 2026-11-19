@@ -10,6 +10,7 @@
 #include <furnace/wire_messages.h>
 #include <furnace_hmi/byte_port.h>
 #include <furnace_hmi/controller_command.h>
+#include <furnace_hmi/controller_library.h>
 #include <furnace_hmi/controller_observation.h>
 
 #ifdef __cplusplus
@@ -39,6 +40,15 @@ extern "C" {
 #define FURNACE_HMI_CLIENT_STOP_ATTEMPTS 10U
 /* A Stop that could not be sent again for this long (the link not usable) is unresolved. */
 #define FURNACE_HMI_CLIENT_STOP_PATIENCE_MS 10000U
+/*
+ * A library change (save, delete) is answered once its write ended, or UNRESOLVED
+ * after the controller's deadline of at most 10 s; it is sent again only after
+ * this long, up to the attempts below. Provisional HMI values (plan, M21-7 design).
+ */
+#define FURNACE_HMI_CLIENT_LIBRARY_RETRY_MS 12000U
+#define FURNACE_HMI_CLIENT_LIBRARY_ATTEMPTS 2U
+/** Programs asked for per PROGRAM_LIST page (the controller's page holds at most six). */
+#define FURNACE_HMI_CLIENT_LIBRARY_PAGE 6U
 
 typedef struct {
     furnace_hmi_byte_port_t port;
@@ -111,6 +121,19 @@ typedef struct {
     /* The commands being delivered, one per slot (observation.command and .stop). */
     furnace_hmi_controller_client_delivery_t command_delivery;
     furnace_hmi_controller_client_delivery_t stop_delivery;
+
+    /*
+     * The library mirror (M21-7a): the listing shown, the one being read, and
+     * where the reading stands (listing pages or reading programs).
+     */
+    furnace_hmi_controller_library_t library;
+    uint32_t library_generation;
+    furnace_hmi_controller_library_t library_reading;
+    uint8_t library_step;
+    uint8_t library_total;
+    uint8_t library_next;
+    uint32_t library_request_id;
+    uint32_t library_sent_ms;
 } furnace_hmi_controller_client_t;
 
 /** Start a client: a new client session, no controller known, HELLO due at once. */
@@ -158,6 +181,16 @@ const furnace_hmi_controller_observation_t *furnace_hmi_controller_client_observ
 
 /** Changes whenever the observation changes, except status_age_ms alone. */
 uint32_t furnace_hmi_controller_client_generation(const furnace_hmi_controller_client_t *client);
+
+/** The HMI's copy of the controller's library (M21-7a); valid until the next poll. */
+const furnace_hmi_controller_library_t *furnace_hmi_controller_client_library(
+    const furnace_hmi_controller_client_t *client
+);
+
+/** Changes whenever the library copy changes. */
+uint32_t furnace_hmi_controller_client_library_generation(
+    const furnace_hmi_controller_client_t *client
+);
 
 #ifdef __cplusplus
 }

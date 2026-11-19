@@ -16,8 +16,7 @@ extern "C" {
 
 #define FURNACE_HMI_CONTROLLER_SESSION_ID_SIZE 16U
 #define FURNACE_HMI_CONTROLLER_MODEL_ID_CAPACITY 32U
-/** The controller's program_name field (wire format: 124 bytes of UTF-8). */
-#define FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY 124U
+/* FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY: controller_command.h. */
 /** The controller's fault table holds up to 27 entries (controller interface, FAULT_LIST). */
 #define FURNACE_HMI_CONTROLLER_MAX_FAULTS 27U
 /** status_age_ms before the first STATUS. */
@@ -72,6 +71,59 @@ typedef struct {
     bool continuable;
     bool continued;
 } furnace_hmi_controller_fault_t;
+
+/** Warning codes of one START_PROPOSAL (wire format). */
+#define FURNACE_HMI_CONTROLLER_MAX_PROPOSAL_WARNINGS 8U
+
+/** Where the program Start's proposal stands (M21-7a). */
+typedef enum {
+    FURNACE_HMI_PROPOSAL_NONE = 0,
+    /** A proposal awaits Confirm or Cancel; its fields are the newest revision. */
+    FURNACE_HMI_PROPOSAL_OPEN,
+    /** START_PROPOSAL_INVALIDATED, or STATUS showed it invalidated: invalidation_reason says why. */
+    FURNACE_HMI_PROPOSAL_INVALIDATED,
+    /** START_CANCELLED, or STATUS showed it cancelled. */
+    FURNACE_HMI_PROPOSAL_CANCELLED,
+    /** START_ACCEPTED, or STATUS showed it consumed: the run started. */
+    FURNACE_HMI_PROPOSAL_ACCEPTED,
+    /** A newer transaction or another controller session: it can no longer be confirmed. */
+    FURNACE_HMI_PROPOSAL_ENDED,
+    FURNACE_HMI_PROPOSAL_COUNT,
+} furnace_hmi_proposal_state_t;
+
+/** A stage a proposed Start would skip (START_PROPOSAL skipped_stages). */
+typedef struct {
+    uint8_t index;
+    uint8_t kind;
+    int32_t target_decicelsius;
+    uint32_t hold_minutes;
+} furnace_hmi_controller_skipped_stage_t;
+
+/**
+ * The controller's proposal for a program Start, with the program the Start
+ * named; codes as received. Only the controller's answer to the operator's
+ * START_REQUEST opens one.
+ */
+typedef struct {
+    furnace_hmi_proposal_state_t state;
+    uint32_t transaction_id;
+    uint32_t proposal_revision;
+    uint32_t program_id;
+    uint32_t program_revision;
+    int32_t measured_decicelsius;
+    uint8_t measured_validity;
+    uint8_t proposed_stage;
+    uint8_t skipped_count;
+    furnace_hmi_controller_skipped_stage_t skipped[FURNACE_HMI_CONTROLLER_MAX_STAGES];
+    uint32_t remaining_curing_s;
+    bool duration_ack_required;
+    uint32_t recommended_s;
+    uint32_t maximum_s;
+    uint8_t warnings_count;
+    uint8_t warnings[FURNACE_HMI_CONTROLLER_MAX_PROPOSAL_WARNINGS];
+    /** INVALIDATED: the controller's reason. */
+    uint8_t invalidation_reason;
+} furnace_hmi_controller_start_proposal_t;
 
 /**
  * What the HMI knows of the controller, as plain data (ADR-0003: no codec
@@ -162,6 +214,11 @@ typedef struct {
     uint8_t fan_feedback;
     uint8_t door_state;
     bool emergency_active;
+    /** The library's revision in the newest STATUS or SNAPSHOT_END (the mirror follows it). */
+    uint32_t library_revision;
+
+    /* The program Start's proposal (M21-7a). */
+    furnace_hmi_controller_start_proposal_t start_proposal;
 
     /* FAULT_LIST of the newest complete snapshot. */
     bool faults_valid;

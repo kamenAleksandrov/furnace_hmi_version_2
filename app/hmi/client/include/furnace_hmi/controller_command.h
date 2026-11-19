@@ -24,8 +24,30 @@ typedef enum {
     FURNACE_HMI_COMMAND_STOP,
     FURNACE_HMI_COMMAND_FAULT_ACKNOWLEDGE,
     FURNACE_HMI_COMMAND_FAULT_RECOVERY,
+    /* M21-7a: library changes (PROGRAM_SAVE, PROGRAM_DELETE) and the program Start transaction. */
+    FURNACE_HMI_COMMAND_PROGRAM_SAVE,
+    FURNACE_HMI_COMMAND_PROGRAM_DELETE,
+    FURNACE_HMI_COMMAND_PROGRAM_START,
+    FURNACE_HMI_COMMAND_START_CONFIRM,
+    FURNACE_HMI_COMMAND_START_CANCEL,
     FURNACE_HMI_COMMAND_COUNT,
 } furnace_hmi_command_kind_t;
+
+/** The controller's program name: UTF-8, at most 124 bytes (wire format). */
+#define FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY 124U
+/** Stages of one program on the wire (PROGRAM_DATA, PROGRAM_SAVE). */
+#define FURNACE_HMI_CONTROLLER_MAX_STAGES 18U
+/** The controller's stage kinds (controller interface: Program library). */
+#define FURNACE_HMI_CONTROLLER_STAGE_HEATING 1U
+#define FURNACE_HMI_CONTROLLER_STAGE_HOLD 2U
+
+/** One program stage as the controller holds it: Heating has a target and rate, Hold a duration. */
+typedef struct {
+    uint8_t kind;
+    int32_t target_decicelsius;
+    int32_t rate_decicelsius_per_min;
+    uint32_t duration_minutes;
+} furnace_hmi_controller_stage_t;
 
 /** One operator command as plain data (ADR-0003); fields beyond the kind's are ignored. */
 typedef struct {
@@ -40,6 +62,25 @@ typedef struct {
     /** Fault acknowledgement and recovery: the entry, as FAULT_LIST names it. */
     uint8_t fault_id;
     uint8_t source;
+    /**
+     * Save: the program (0 creates) and the revision it was edited from (0 when
+     * creating). Delete, program Start and Confirm: the program and the exact
+     * revision the operator saw.
+     */
+    uint32_t program_id;
+    uint32_t program_revision;
+    /** Save: the controller's estimate the operator acknowledged (0 none). */
+    uint32_t acknowledged_duration_s;
+    /** Save: the whole program, name NUL-terminated. */
+    char name[FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY + 1U];
+    uint8_t stage_count;
+    furnace_hmi_controller_stage_t stages[FURNACE_HMI_CONTROLLER_MAX_STAGES];
+    /** Confirm and cancel: the transaction; Confirm: exactly the proposal shown. */
+    uint32_t transaction_id;
+    uint32_t proposal_revision;
+    uint8_t proposed_stage;
+    /** Confirm: the duration the operator accepted, when the proposal requires it. */
+    uint32_t accepted_duration_s;
 } furnace_hmi_command_t;
 
 /** Where a command stands. Only the controller's result makes it accepted or rejected (API-03). */
@@ -55,6 +96,11 @@ typedef enum {
     FURNACE_HMI_COMMAND_REFUSED,
     /** The outcome is not known: the state comes from STATUS. unresolved_cause says why. */
     FURNACE_HMI_COMMAND_UNRESOLVED,
+    /**
+     * Program Start only: the controller answered with a proposal that awaits
+     * the operator's Confirm or Cancel (observation.start_proposal). Nothing heats.
+     */
+    FURNACE_HMI_COMMAND_PROPOSED,
     FURNACE_HMI_COMMAND_STATE_COUNT,
 } furnace_hmi_command_state_t;
 
@@ -72,6 +118,8 @@ typedef enum {
     FURNACE_HMI_COMMAND_UNRESOLVED_STOP,
     /** The HMI opened a new client session; a result goes only to the one that sent it. */
     FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED,
+    /** A library change answered UNRESOLVED: it may still take effect (the library is listed again). */
+    FURNACE_HMI_COMMAND_UNRESOLVED_BY_CONTROLLER,
     FURNACE_HMI_COMMAND_UNRESOLVED_COUNT,
 } furnace_hmi_command_unresolved_t;
 
@@ -102,7 +150,8 @@ typedef struct {
     furnace_hmi_command_unresolved_t unresolved_cause;
     /**
      * The controller's reason: RUN_COMMAND_* reason, COMMAND_REJECTED reason,
-     * FAULT_ACKNOWLEDGE_RESULT result, or FAULT_RECOVERY_RESULT reply.
+     * FAULT_ACKNOWLEDGE_RESULT result, FAULT_RECOVERY_RESULT reply,
+     * PROGRAM_SAVE_RESULT or PROGRAM_DELETE_RESULT result, or START_REJECTED reason.
      */
     uint8_t reason;
     /** RUN_COMMAND_*: pause-reason codes that block a Resume or Continue. */
@@ -113,6 +162,18 @@ typedef struct {
     bool fault_found;
     /** START_PREPARE_RESULT: the readiness when it was applied. */
     uint8_t store_readiness;
+    /** Save and delete results: the program, and a save's new revision when SAVED. */
+    uint32_t program_id;
+    uint32_t program_revision;
+    /** PROGRAM_SAVE_RESULT: the first validation error (core/program codes). */
+    uint8_t error_reason;
+    uint8_t error_field;
+    uint8_t error_stage;
+    /** PROGRAM_SAVE_RESULT: the planning estimate and its reference (0.1 °C). */
+    uint32_t curing_estimate_s;
+    int32_t planning_reference_decicelsius;
+    /** Program Start and Confirm: the transaction; START_ACCEPTED: the run is run_id. */
+    uint32_t transaction_id;
 } furnace_hmi_command_outcome_t;
 
 /** The latest command the HMI refused before sending; it never replaces a slot's outcome. */
