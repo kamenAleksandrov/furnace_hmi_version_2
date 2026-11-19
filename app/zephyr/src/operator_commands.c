@@ -2,12 +2,16 @@
 
 /* Operator screen requests as controller commands (Phase 21 M21-5b). */
 
+#include <string.h>
+
 #include "operator_commands.h"
 
 bool furnace_hmi_operator_command_for(const furnace_hmi_operator_request_t *request,
                                       furnace_hmi_command_t *command)
 {
-    *command = (furnace_hmi_command_t){.run_id = request->run_id};
+    /* In place, not a compound literal: no second program-sized temporary on the stack. */
+    (void)memset(command, 0, sizeof(*command));
+    command->run_id = request->run_id;
     switch (request->kind) {
     case FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE:
         command->kind = FURNACE_HMI_COMMAND_START_PREPARE;

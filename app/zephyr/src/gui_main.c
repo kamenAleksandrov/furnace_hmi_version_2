@@ -13,7 +13,7 @@
  * observation without waiting and maps it to the screens' status model. Every
  * value comes from the controller, the application links no simulator, and
  * the screens get no controller-owned content and no simulated answers: until
- * the controller provides them (M21-7), library, log and clock are shown as
+ * the controller provides them (M21-7b, M21-7c), library, log and clock are shown as
  * unavailable. Manual, Pause, Resume and Stop are commands to the controller
  * (M21-5b); other actions that would change controller state send nothing.
  */
@@ -105,7 +105,8 @@ int main(void)
         }
         /* The operator's requests go to the link thread; their outcomes come back as feedback. */
         while (furnace_hmi_operator_screens_take_request(&screens, &request)) {
-            furnace_hmi_command_t command;
+            /* Static: a command holds a whole program (M21-7a); only this context uses it. */
+            static furnace_hmi_command_t command;
             const uint32_t submission =
                 furnace_hmi_operator_command_for(&request, &command)
                     ? furnace_hmi_controller_link_submit(&command)

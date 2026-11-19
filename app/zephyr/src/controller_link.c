@@ -2,10 +2,11 @@
 
 /*
  * The controller link on Zephyr (Phase 21 M21-3). A thread of its own polls the
- * UART and the portable client, and publishes the observation to a single-slot
- * mailbox: the latest value, never a queue that could fall behind. Only the GUI
- * context reads the mailbox, without waiting, and only it touches LVGL
- * (ADR-0005). Nothing here waits on the controller.
+ * UART and the portable client, and publishes the observation, and since M21-7a
+ * the library copy, to single-slot mailboxes: the latest value, never a queue
+ * that could fall behind. Commands come from the GUI context through a two-slot
+ * mailbox (M21-5). Only the GUI context reads the mailboxes, without waiting,
+ * and only it touches LVGL (ADR-0005). Nothing here waits on the controller.
  */
 
 #include <zephyr/device.h>
@@ -34,6 +35,9 @@ static furnace_hmi_controller_client_t client;
 static K_MUTEX_DEFINE(mailbox_lock);
 static furnace_hmi_controller_observation_t mailbox;
 static uint32_t mailbox_sequence;
+/* The library copy (M21-7a): published only when it changes, under the same lock. */
+static furnace_hmi_controller_library_t library_mailbox;
+static uint32_t library_sequence;
 
 /* Commands from the GUI context to the link thread: one slot each for ordinary and Stop. */
 struct command_slot {
@@ -92,15 +96,27 @@ static void publish(const furnace_hmi_controller_observation_t *observation)
     (void)k_mutex_unlock(&mailbox_lock);
 }
 
+static void publish_library(const furnace_hmi_controller_library_t *library)
+{
+    (void)k_mutex_lock(&mailbox_lock, K_FOREVER);
+    library_mailbox = *library;
+    library_sequence++;
+    (void)k_mutex_unlock(&mailbox_lock);
+}
+
 /* Submit what the GUI context handed over; the client reports each outcome. */
 static void take_commands(void)
 {
-    struct command_slot taken[2];
+    /* Static: a command holds a whole program (M21-7a), too much for the thread's stack. */
+    static struct command_slot taken[2];
     k_spinlock_key_t key = k_spin_lock(&command_lock);
 
     for (size_t i = 0U; i < 2U; i++) {
-        taken[i] = command_slots[i];
-        command_slots[i].full = false;
+        taken[i].full = command_slots[i].full;
+        if (taken[i].full) {
+            taken[i] = command_slots[i];
+            command_slots[i].full = false;
+        }
     }
     k_spin_unlock(&command_lock, key);
     if (taken[1].full) {
@@ -120,15 +136,19 @@ static void take_commands(void)
     }
 }
 
-/* One line, key=value, for people and for tools/controller_link_demo.py. */
-static void trace(const furnace_hmi_controller_observation_t *o)
+/*
+ * One line, key=value, for people and for tools/controller_link_demo.py. library:
+ * state/revision/count/controller revision; proposal: state/transaction.
+ */
+static void trace(const furnace_hmi_controller_observation_t *o,
+                  const furnace_hmi_controller_library_t *l)
 {
     printk("hmi-link: link=%s availability=%s client=%08x session=%02x%02x%02x%02x "
            "changes=%u fw=%u boot=%u proto=%u.%u hello=%u status=%u temp=%d validity=%u "
            "age=%u measurement=%u qualified=%u run_state=%u run=%u inhibited=%u latched=%u "
            "unack=%u faults=%u outdated=%u fresh=%u ready=%u requests=%u request_state=%u "
            "gaps=%u regressions=%u incomplete=%u caps_rejected=%u dropped=%u "
-           "command=%u/%u/%u/%u stop=%u/%u/%u\n",
+           "command=%u/%u/%u/%u stop=%u/%u/%u library=%u/%u/%u/%u proposal=%u/%u\n",
            link_names[o->link], availability_names[o->availability],
            (unsigned int)o->client_session_id, o->session_id[0], o->session_id[1],
            o->session_id[2], o->session_id[3], (unsigned int)o->controller_session_changes,
@@ -144,7 +164,9 @@ static void trace(const furnace_hmi_controller_observation_t *o)
            (unsigned int)o->status_regressions, (unsigned int)o->snapshots_incomplete,
            (unsigned int)o->capabilities_rejected, (unsigned int)o->frames_dropped,
            o->command.kind, o->command.state, o->command.reason, o->command.unresolved_cause,
-           o->stop.state, o->stop.reason, o->stop.unresolved_cause);
+           o->stop.state, o->stop.reason, o->stop.unresolved_cause, l->state,
+           (unsigned int)l->library_revision, l->count, (unsigned int)o->library_revision,
+           o->start_proposal.state, (unsigned int)o->start_proposal.transaction_id);
 }
 
 static void link_main(void *p1, void *p2, void *p3)
@@ -155,6 +177,7 @@ static void link_main(void *p1, void *p2, void *p3)
         .id_context = NULL,
     };
     uint32_t published_generation;
+    uint32_t published_library;
     uint32_t last_publish;
     uint32_t last_trace;
     furnace_hmi_link_state_t traced_link = FURNACE_HMI_LINK_COUNT;
@@ -165,6 +188,7 @@ static void link_main(void *p1, void *p2, void *p3)
     (void)p3;
     furnace_hmi_controller_client_init(&client, &config, k_uptime_get_32());
     published_generation = furnace_hmi_controller_client_generation(&client) - 1U;
+    published_library = furnace_hmi_controller_client_library_generation(&client) - 1U;
     last_publish = k_uptime_get_32();
     last_trace = last_publish;
 
@@ -181,9 +205,13 @@ static void link_main(void *p1, void *p2, void *p3)
             published_generation = furnace_hmi_controller_client_generation(&client);
             last_publish = now;
         }
+        if (furnace_hmi_controller_client_library_generation(&client) != published_library) {
+            publish_library(furnace_hmi_controller_client_library(&client));
+            published_library = furnace_hmi_controller_client_library_generation(&client);
+        }
         if (o->link != traced_link || o->availability != traced_availability ||
             (uint32_t)(now - last_trace) >= TRACE_INTERVAL_MS) {
-            trace(o);
+            trace(o, furnace_hmi_controller_client_library(&client));
             traced_link = o->link;
             traced_availability = o->availability;
             last_trace = now;
@@ -213,6 +241,23 @@ bool furnace_hmi_controller_link_take(furnace_hmi_controller_observation_t *out,
     if (mailbox_sequence != *seen) {
         *out = mailbox;
         *seen = mailbox_sequence;
+        taken = true;
+    }
+    (void)k_mutex_unlock(&mailbox_lock);
+    return taken;
+}
+
+bool furnace_hmi_controller_link_take_library(furnace_hmi_controller_library_t *out,
+                                              uint32_t *seen)
+{
+    bool taken = false;
+
+    if (k_mutex_lock(&mailbox_lock, K_NO_WAIT) != 0) {
+        return false;
+    }
+    if (library_sequence != *seen) {
+        *out = library_mailbox;
+        *seen = library_sequence;
         taken = true;
     }
     (void)k_mutex_unlock(&mailbox_lock);

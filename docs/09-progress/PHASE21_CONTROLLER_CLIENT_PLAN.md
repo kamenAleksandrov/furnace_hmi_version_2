@@ -74,7 +74,7 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 | M21-4 | Merged into M21-3 | Owner decision 2026-11-10: the end-to-end link is part of M21-3 |
 | M21-5 | Run, Manual and fault workflows (WI-H03, WI-H04) | Each workflow runs against the controller; the same behavior in the web demo, simulated |
 | M21-6 | Controller 20d (firmware) | A controller-side plan with its open decisions for the product owner and the controller's reviewers (for example the health rules still proposed); the messages built test-first with the controller's verification; the HMI resynced to the new revision in lockstep, ADR-0007 checked against its reopen triggers, before M21-7. **2026-11-19:** firmware 20d in #56–#60 (merged) and drafts #63–#65; pin moved to `a96d138` with the codec byte-identical; ADR-0007 trigger not met (result values only, no layout change; STATUS) |
-| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo |
+| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b and M21-7c follow |
 | M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria |
 
 ### M21-2b design
@@ -113,6 +113,98 @@ agree with the controller's lifecycle; no state-changing command yet.
   - AWAITING_DECISION is paused, and named "Awaiting operator decision" (`awaiting_decision`);
     the decision itself is M21-5.
   - A finished run that still cools is shown as cooling, never as complete.
+
+### M21-7 design
+
+Started 2026-11-19 (owner: "start M21-7"; the M21-6 review points wait). The controller's 20d
+messages are in the pinned codec (`a96d138`); nothing in the wire format changes.
+
+Three steps, each its own draft pull request, stacked:
+
+1. **M21-7a, the library and the program Start in the client.** The portable client mirrors the
+   controller's library, sends saves, deletes and the program Start transaction, and reports
+   their outcomes. The Zephyr link thread publishes the mirror. No screen changes.
+2. **M21-7b, the screens (WI-H02, WI-H10).** Programs, the editors, quick launch and Program
+   Start use the controller's library on Zephyr; UTF-8 names; the web demo and the UI lab in
+   parity.
+3. **M21-7c, the Device log and health (WI-H12).** `HEALTH` and `EVENT_HISTORY_PAGE` in the
+   client, and the Device log and health view from them (ADR-0020); the web demo in parity.
+
+**M21-7a, the library mirror** (controller interface: Program library):
+- **When:** while the link is current, the client lists the library whenever the
+  `library_revision` of the newest `STATUS` or `SNAPSHOT_END` is newer than the revision it holds,
+  and after every new controller session. Revisions only increase within a controller session, and
+  status is coalesced, so a `STATUS` that trails a page never causes a listing. Reads change
+  nothing, so the client may send them by itself.
+- **An empty library** (total 0) is a complete listing (review M1).
+- **How:** `PROGRAM_LIST_REQUEST` pages of six from index 0, then `PROGRAM_READ_REQUEST` for each
+  program that is not damaged. A page with another `library_revision` than the first, or a read
+  that gives another revision or `NOT_FOUND`, means the library changed: the listing starts
+  again from index 0.
+- **What is shown:** only a complete listing, every program read, at one revision. Until a new
+  one is complete, the previous one stays, marked as updating. A new controller session
+  discards it.
+- **States:** unknown (nothing complete yet), current, unavailable (`STORAGE_UNAVAILABLE`, until
+  the revision or the session changes) and too large (more programs than the HMI holds, 12).
+  Damaged programs are listed, without stages, and cannot be started.
+- **Names:** the controller's UTF-8 bytes as received, with a flag when they are not well-formed
+  UTF-8 of at most 31 code points (WI-H10; the screens decide how to show them, M21-7b).
+- **Lost answers:** a step without an answer for `FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS` is asked
+  again under a new request ID. A link that stops being current stops the listing; it starts
+  again from index 0 once the link is current.
+- **Data path:** the mirror is plain data (ADR-0003) beside the observation, with its own
+  generation. The link thread publishes it only when it changes.
+
+**M21-7a, library changes and the Start** (the command rules of M21-5 apply unchanged):
+- **Save and delete** use the ordinary slot. The result is accepted for `SAVED` or `DELETED`.
+  `UNRESOLVED` (10) from the controller is reported as unresolved: the change may still take
+  effect. Any other result is rejected, with the controller's code and, for a save, the first
+  validation error and the estimate (`ACKNOWLEDGMENT_REQUIRED`).
+- **Retry timing:** the controller answers a change once its write has ended, or with
+  `UNRESOLVED` after its own deadline. The interface gives no number; the firmware's is two control
+  periods plus 10 s, about 10.2 s (`app/runtime/src/runtime.c`, `library_client_deadline`). The
+  client therefore waits
+  `FURNACE_HMI_CLIENT_LIBRARY_RETRY_MS` (12 s, provisional) before it sends a change again under
+  the same request ID. A retry sent earlier would find the change still being written and get
+  `DUPLICATE_REQUEST`.
+- **Program Start:** `START_REQUEST` names the program and the revision the operator saw. The
+  answer is `START_ACCEPTED` (the run started), `START_REJECTED` or `START_PROPOSAL`. A proposal
+  is reported as its own outcome, never as accepted: the controller has not heated.
+- **The proposal** is kept with its transaction until it ends. A newer revision replaces it.
+  It ends with `START_PROPOSAL_INVALIDATED` (with the reason), `START_CANCELLED`,
+  `START_ACCEPTED`, a session change, or a `STATUS` that shows the same transaction ended or a
+  newer transaction. A `STATUS` that shows no transaction or an older one is ignored, because
+  status is coalesced and can trail the proposal.
+- **Confirm and cancel:** `START_CONFIRM` names exactly the proposal revision shown, its stage
+  and, when the proposal requires a duration acknowledgement, the accepted duration.
+  `START_CANCEL` names the transaction.
+- **Refused Starts:** `STORE_NOT_READY` and every other refusal end the Start; nothing is re-sent
+  by itself (Start readiness, rule 3). `DUPLICATE_REQUEST`, as a `START_REJECTED` reason or a
+  service refusal, is unresolved, as for every command.
+- **After the proposal:** the command slot keeps `PROPOSED` until the next command; where the
+  proposal stands is `start_proposal.state`.
+- **No invisible transaction (review M2):** a proposal answering the latest Start of this client
+  session is shown also when that Start already became unresolved; the outcome stays unresolved.
+  `STATUS`'s start transaction (ID, revision, state, reason) is always observed, so M21-7b can show
+  and cancel a transaction whose proposal never arrived. The HMI never cancels one by itself: that
+  would be a new client behavior, for the owner (M21-7b).
+- **Listed again after a change (review M3):** after `SAVED`, `DELETED` or `UNRESOLVED` the library
+  is listed again once, also when the revision has not risen (the interface: "the client lists the
+  library again"). A refusal lists nothing.
+- **Names the codec refuses:** a page or program whose name is not strict UTF-8 fails to decode as
+  a whole frame (wire format §7.1), so that step is asked again after its timeout; `name_valid`
+  flags only a name over 31 code points. The controller validates every name it saves.
+- **A new client session** ends an open proposal (the controller invalidates it,
+  `CLIENT_SESSION_CHANGED`). An unavailable or too large library is held at the newest revision
+  seen, never below `STATUS`'s.
+- **Not yet decided here:** the polled UART of the Zephyr port loses bytes during a sleep on a real
+  UART, and library pages are about 1 KB. An interrupt-driven receive buffer is needed before the
+  library runs on a board (review M2; HW-BLOCK-006 sets the link). On the simulated link (a pty)
+  nothing is lost.
+
+**Verification:** client scenarios against the scripted controller (host and Zephyr), and
+workflows against firmware `link_pty` at the pinned revision: the library of the three
+delivered fixture programs, a save, a delete and a program Start with Stop.
 
 ### M21-5 design
 
