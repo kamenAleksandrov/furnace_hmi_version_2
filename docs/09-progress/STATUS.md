@@ -1,5 +1,16 @@
 # Project status
 
+**Fact (2026-11-19, AGENT-OPT-04; configuration/tooling/documentation only):**
+delegation ceiling replaces per-invocation model choice: subagents use the same
+or a weaker model than the session, at an effort no higher than the session's;
+Fable is never delegated; roles pin their model/effort (Claude and Codex,
+including the six HMI specialists at gpt-6.2-sol high; weaker models up to
+`high` effort; four concurrent subagents); a fail-closed Claude
+`PreToolUse` hook enforces it. [Policy](../agent-delegation.md) (byte-identical
+to the furnace copy, with `.agents/delegation/`),
+[record](../agent-client-compatibility.md). Specialist and human review gates
+are unchanged; no product behavior, phase or maturity changed.
+
 **Fact (2026-11-10, Phase 21 M21-1):** the controller's wire codec is copied
 into `app/hmi/protocol/wire` at controller revision `721f3cb` (ADR-0009), with a
 manifest of hashes and `tools/sync_controller_wire.py`. The controller's golden
