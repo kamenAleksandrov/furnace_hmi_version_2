@@ -18,7 +18,8 @@ Fable is never a delegation target; the owner selects it explicitly for a sessio
   gpt-6.2-sol < gpt-6.2-astra`. When the owner adopts newer versions, update the
   file; Claude aliases follow the latest version automatically.
 - **Session ceiling:** Claude reads the actual session model from the session
-  transcript and the effort from the hook input. When either cannot be read,
+  transcript (else from the model a `SessionStart` hook recorded) and the
+  effort from the hook input. When either cannot be read,
   the default ceiling applies: Opus (latest) at medium for Claude, gpt-6.2-astra
   at medium for Codex. The owner raises the effort in the session when needed.
 - **No implicit inheritance:** a spawn must name its model, or use a role that

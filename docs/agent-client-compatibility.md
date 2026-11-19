@@ -14,8 +14,9 @@ alias/effort within it. The project `PreToolUse` hook (`Agent|Task`, fail-closed
 `onFailure: block`, Claude Code 2.1.295+) denies stronger models, excluded
 models, missing models, effort above the limit and forks. Hook input carries the
 session effort but no model, so the hook reads the latest main-session assistant
-model from `transcript_path` (which may lag) and otherwise uses the default
-ceiling. The per-invocation effort parameter needs 2.1.292+. Do not set
+model from `transcript_path` (which may lag or be absent, for example with
+`--no-session-persistence`), else the model a `SessionStart` hook recorded for
+the session (reported only sometimes), and otherwise uses the default ceiling. The per-invocation effort parameter needs 2.1.292+. Do not set
 `CLAUDE_CODE_EFFORT_LEVEL` or `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`: they override
 per-role choices (the static check rejects them in project settings).
 
@@ -95,7 +96,17 @@ limits are summarized in the policy; no savings are claimed for this change.
 
 Checks: `delegation_ceiling.py check` and `tools/tests/test_delegation_ceiling.py`
 (decision rules, transcript model detection, fail-closed hook, usage report).
-The live hook check in a fresh Claude session is reported in the PR/handoff.
+Live check (2026-11-19, Windows Claude Code 2.1.300, claude.ai Pro auth, fresh
+`claude -p` session on Haiku at low effort in the HMI worktree, Agent and Read
+tools only): an explorer spawn requesting Sonnet was denied ("stronger than the
+session model 'haiku'", model read from the transcript, effort `low` from the
+hook input); the pinned explorer without parameters ran and returned, and its
+transcript shows `claude-haiku-5-5` (one call, 4 output tokens). A first attempt
+with `--no-session-persistence` had no transcript, fell back to the Opus default
+and allowed the Sonnet spawn; this led to the `SessionStart` record. In `-p`
+mode `SessionStart` reported no model, so a session without a transcript still
+falls back to the default ceiling. No Codex spawn test was run: Codex
+enforcement is by pinned files only.
 
 ## AGENT-OPT-03 scope and execution record (2026-10-28)
 

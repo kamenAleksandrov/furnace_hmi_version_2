@@ -9,8 +9,10 @@ Modes:
   JSON from stdin and denies a spawn whose model is stronger than the session's
   model, whose model is excluded, that names no model (it would inherit the
   session model), whose effort exceeds the allowed level, or that forks the
-  conversation. The session model is read from the session transcript; when it
-  cannot be read, ``default_session_model`` applies. The session effort comes
+  conversation. The session model is read from the session transcript, else
+  from the model a SessionStart hook recorded for the session (Git-ignored
+  ``.claude/delegation-sessions.json``; the client does not always report
+  one), else ``default_session_model`` applies. The session effort comes
   from the hook input; otherwise ``default_session_effort`` applies. Each
   decision is appended to ``.claude/delegation-log.jsonl`` (Git-ignored).
 * ``check``: static consistency check of the ceiling, the pinned Claude and
@@ -29,6 +31,8 @@ from pathlib import Path
 
 CONFIG_REL = Path(".agents/delegation/ceiling.json")
 LOG_REL = Path(".claude/delegation-log.jsonl")
+SESSIONS_REL = Path(".claude/delegation-sessions.json")
+MAX_SESSIONS = 50
 AGENT_TOOLS = ("Agent", "Task")
 TAIL_BYTES = 512 * 1024
 
@@ -84,6 +88,36 @@ def detect_session_model(transcript_path, order):
     return None
 
 
+def _load_sessions(root):
+    try:
+        data = json.loads((Path(root) / SESSIONS_REL).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def record_session_model(event, root):
+    """SessionStart: remember the session's model when the client reports it."""
+    session_id, model = event.get("session_id"), event.get("model")
+    if isinstance(model, dict):
+        model = model.get("id") or model.get("display_name")
+    if not session_id or not model:
+        return
+    sessions = _load_sessions(root)
+    sessions.pop(session_id, None)
+    sessions[session_id] = str(model)
+    keep = dict(list(sessions.items())[-MAX_SESSIONS:])
+    try:
+        (Path(root) / SESSIONS_REL).write_text(json.dumps(keep, indent=1) + "\n",
+                                               encoding="utf-8")
+    except OSError:
+        pass
+
+
+def recorded_session_model(event, root, order):
+    return model_alias(_load_sessions(root).get(event.get("session_id") or ""), order)
+
+
 def role_pins(root, name):
     """(model, effort) from .claude/agents/<name>.md frontmatter; None if unset."""
     path = Path(root) / ".claude" / "agents" / f"{name}.md"
@@ -117,9 +151,12 @@ def decide(event, root, cfg):
         return False, ("fork copies the whole conversation at the session model; spawn a "
                        "fresh project role with an explicit model instead"), record
 
-    session = detect_session_model(event.get("transcript_path"), order)
-    record["session_model_source"] = "transcript" if session else "default"
-    session = session or claude["default_session_model"]
+    session, source = detect_session_model(event.get("transcript_path"), order), "transcript"
+    if not session:
+        session, source = recorded_session_model(event, root, order), "session-start"
+    if not session:
+        session, source = claude["default_session_model"], "default"
+    record["session_model_source"] = source
     session_effort = ((event.get("effort") or {}).get("level")
                       or os.environ.get("CLAUDE_EFFORT")
                       or claude["default_session_effort"])
@@ -178,6 +215,9 @@ def deny_json(reason):
 def run_hook(stdin, stdout):
     try:
         event = json.loads(stdin.read() or "{}")
+        if event.get("hook_event_name") == "SessionStart":
+            record_session_model(event, repo_root())
+            return 0
         if event.get("tool_name") not in AGENT_TOOLS:
             return 0
         root = repo_root()
@@ -233,6 +273,11 @@ def check(root):
                h.get("onFailure") == "block" for h in hooks):
         errors.append(".claude/settings.json: PreToolUse Agent hook with onFailure=block "
                       "running delegation_ceiling.py is missing")
+    starts = [h for m in settings.get("hooks", {}).get("SessionStart", [])
+              for h in m.get("hooks", [])]
+    if not any("delegation_ceiling.py" in h.get("command", "") for h in starts):
+        errors.append(".claude/settings.json: SessionStart hook recording the session model "
+                      "is missing")
 
     codex = cfg["codex"]
     ctop = codex["order"].index(codex["default_session_model"])

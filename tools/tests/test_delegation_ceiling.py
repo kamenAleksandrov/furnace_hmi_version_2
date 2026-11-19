@@ -108,6 +108,22 @@ class DecideTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("explicit effort", reason)
 
+    def test_session_start_model_is_used_without_transcript(self):
+        dc.record_session_model({"session_id": "s1", "model": "claude-haiku-5-5"}, self.root)
+        event = {"tool_name": "Agent", "session_id": "s1", "effort": {"level": "low"},
+                 "tool_input": {"subagent_type": "explorer", "model": "sonnet"}}
+        ok, reason, rec = dc.decide(event, self.root, self.cfg)
+        self.assertFalse(ok)
+        self.assertIn("stronger", reason)
+        self.assertEqual(rec["session_model_source"], "session-start")
+
+    def test_transcript_takes_precedence_over_session_start(self):
+        dc.record_session_model({"session_id": "s1", "model": "claude-haiku-5-5"}, self.root)
+        event = {"tool_name": "Agent", "session_id": "s1", "effort": {"level": "medium"},
+                 "transcript_path": self.transcript("claude-opus-5-5"),
+                 "tool_input": {"subagent_type": "explorer", "model": "sonnet"}}
+        self.assertTrue(dc.decide(event, self.root, self.cfg)[0])
+
     def test_defaults_apply_without_transcript_or_effort(self):
         ok, _, rec = self.decide({"subagent_type": "explorer", "model": "opus",
                                   "effort": "high"}, model=None, effort=None)

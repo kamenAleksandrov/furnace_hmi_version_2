@@ -34,3 +34,4 @@ Thumbs.db
 
 # Local agent delegation decisions (AGENT-OPT-04)
 .claude/delegation-log.jsonl
+.claude/delegation-sessions.json
