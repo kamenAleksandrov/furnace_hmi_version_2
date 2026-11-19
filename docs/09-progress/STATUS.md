@@ -1,5 +1,16 @@
 # Project status
 
+**Fact (2026-11-19, AGENT-OPT-04; configuration/tooling/documentation only):**
+delegation ceiling replaces per-invocation model choice: subagents use the same
+or a weaker model than the session, at an effort no higher than the session's;
+Fable is never delegated; roles pin their model/effort (Claude and Codex,
+including the six HMI specialists at gpt-6.2-sol high; weaker models up to
+`high` effort; four concurrent subagents); a fail-closed Claude
+`PreToolUse` hook enforces it. [Policy](../agent-delegation.md) (byte-identical
+to the furnace copy, with `.agents/delegation/`),
+[record](../agent-client-compatibility.md). Specialist and human review gates
+are unchanged; no product behavior, phase or maturity changed.
+
 **Fact (2026-11-10, Phase 21 M21-2):** the HMI runs as a Zephyr application on
 `native_sim/native/64` in WSL: LVGL `85aa60d1` through Zephyr's SDL display
 opens a WSLg window with the shared state-availability screen. `qemu_x86`
