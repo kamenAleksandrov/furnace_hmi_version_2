@@ -188,6 +188,9 @@ typedef enum {
     FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE,
     FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY,
     FURNACE_HMI_OPERATOR_REQUEST_CONTINUE,
+    /* M21-7b, raised only without simulated answers: the controller's library. */
+    FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE,
+    FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE,
 } furnace_hmi_operator_request_kind_t;
 
 typedef struct {
@@ -206,6 +209,12 @@ typedef struct {
     /* FAULT_ACKNOWLEDGE and FAULT_RECOVERY: the controller's entry. */
     uint8_t fault_id;
     uint8_t source;
+    /* PROGRAM_SAVE (with `program_name` and `program`) and PROGRAM_DELETE: the
+     * controller's program (0 creates) and the revision the operator edited or
+     * saw; a save's acknowledged curing estimate (0 none). */
+    uint32_t program_id;
+    uint32_t program_revision;
+    uint32_t acknowledged_duration_s;
 } furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
@@ -570,6 +579,15 @@ struct furnace_hmi_operator_screens {
     uint8_t settings_candidate_date_format;
     /* Settings > Delete programs: the programs the confirmation named. */
     uint16_t settings_delete_pending;
+    /* M21-7b, the controller's library: the library change being answered (a
+     * save is sent again with the acknowledged estimate), and Settings > Delete
+     * programs deleting one program at a time, by controller ID (the library can
+     * change meanwhile): those still to send, and how many the controller deleted. */
+    furnace_hmi_operator_request_t library_request;
+    bool settings_deleting;
+    uint8_t settings_deleted;
+    uint8_t settings_delete_count;
+    uint32_t settings_delete_ids[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
     bool settings_saved_24_hour;
     bool settings_candidate_24_hour;
     /* Display preferences: furnace_hmi_theme_id_t and furnace_hmi_ui_language_t. */

@@ -61,6 +61,18 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
  */
 int furnace_hmi_operator_library_check(lv_display_t *display, const char **failure);
 
+/**
+ * Saves and deletes against a controller (Phase 21 M21-7b): Save sends the
+ * edited program with its ID and revision (a new one without), the draft stays
+ * open until the controller has answered and after any answer but SAVED; an
+ * invalid program's first error is named; a save needing acknowledgement asks
+ * and is sent again with the controller's estimate; an unresolved change is
+ * said to be unresolved; Delete names the revision shown; Settings > Delete
+ * programs deletes one at a time by ID. Same contract as
+ * furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_library_command_check(lv_display_t *display, const char **failure);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1187,3 +1187,209 @@ int furnace_hmi_operator_library_check(lv_display_t *display, const char **failu
     furnace_hmi_operator_screens_destroy(&screens);
     return result;
 }
+
+/* The label that reads text. */
+static lv_obj_t *label_with_text(lv_obj_t *object, const char *text)
+{
+    if (lv_obj_check_type(object, &lv_label_class) && strcmp(lv_label_get_text(object), text) == 0) {
+        return object;
+    }
+    const uint32_t count = lv_obj_get_child_count(object);
+    for (uint32_t index = 0U; index < count; ++index) {
+        lv_obj_t *found = label_with_text(lv_obj_get_child(object, (int32_t)index), text);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+/* The clickable card holding the label that reads text (Settings cards are not buttons). */
+static lv_obj_t *card_with_text(lv_obj_t *root, const char *text)
+{
+    lv_obj_t *object = label_with_text(root, text);
+    while (object != NULL && object != root && !lv_obj_has_flag(object, LV_OBJ_FLAG_CLICKABLE)) {
+        object = lv_obj_get_parent(object);
+    }
+    return object == root ? NULL : object;
+}
+
+/* M21-7b: saves and deletes go to the controller, and only its answer changes anything. */
+static bool modal_says(furnace_hmi_ui_string_id_t id)
+{
+    lv_refr_now(NULL);
+    return screens.modal != NULL && tree_contains(screens.modal, furnace_hmi_ui_string(id));
+}
+
+/* The ordinary slot's answer to submission, as the next observation carries it, with the
+ * error fields and estimate the test set before. */
+static bool library_answer(uint32_t submission, furnace_hmi_feedback_state_t outcome, uint8_t reason)
+{
+    const furnace_hmi_command_feedback_t details = state.command_feedback;
+
+    answer(&state.command_feedback, submission, outcome, reason);
+    state.command_feedback.error_field = details.error_field;
+    state.command_feedback.error_reason = details.error_reason;
+    state.command_feedback.error_stage = details.error_stage;
+    state.command_feedback.curing_estimate_s = details.curing_estimate_s;
+    return update();
+}
+
+static int library_command_checks(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+
+    (void)memset(&library, 0, sizeof(library));
+    library_program(0U, 7U, "Controller cure 7", 4U);
+    library_program(1U, 9U, "Second cure", 2U);
+    library.programs[0].revision = 3U;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 2U, false) ||
+        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
+        return failed(failure, "The library could not be shown.", 501);
+    }
+    click(button_with_text(screens.root, "Controller cure 7"));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!screens.program_editor_active || !next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 21U, &request) ||
+        request.program_id != 7U || request.program_revision != 3U || request.acknowledged_duration_s != 0U ||
+        strcmp(request.program_name, "Controller cure 7") != 0 || request.program.stage_count != 4U ||
+        request.program.stages[1].kind != FURNACE_HMI_OPERATOR_STAGE_HOLD || request.program.stages[1].minutes != 10) {
+        return failed(failure, "Save does not send the edited program with its ID and revision.", 502);
+    }
+    if (!modal_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_SENDING_TITLE) || !no_request()) {
+        return failed(failure, "A save being answered is not shown as sent, or sends more.", 503);
+    }
+
+    /* Refused as invalid: the first error is named, and the draft stays open. */
+    state.command_feedback.error_field = 6U;  /* target */
+    state.command_feedback.error_reason = 11U; /* not increasing */
+    state.command_feedback.error_stage = 2U;
+    if (!library_answer(21U, FURNACE_HMI_FEEDBACK_REJECTED, 1U) || !screens.program_editor_active ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_NOT_ACCEPTED) ||
+        !tree_contains(screens.modal, "Stage 3, Target: must be higher than the previous target.")) {
+        return failed(failure, "An invalid program is not explained, or the draft is closed.", 504);
+    }
+    click(first_button(screens.modal));
+
+    /* Longer than advised: saved only after the operator acknowledges the controller's estimate. */
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 22U, &request)) {
+        return failed(failure, "Save cannot be sent again after a refusal.", 505);
+    }
+    state.command_feedback.curing_estimate_s = 36000U;
+    if (!library_answer(22U, FURNACE_HMI_FEEDBACK_REJECTED, 9U) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_TITLE) || !tree_contains(screens.modal, "600 min") ||
+        !no_request()) {
+        return failed(failure, "A save needing acknowledgement does not ask for it, or sends by itself.", 506);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 23U, &request) ||
+        request.acknowledged_duration_s != 36000U || request.program_id != 7U) {
+        return failed(failure, "The acknowledged save does not carry the controller's estimate.", 507);
+    }
+    state.command_feedback.curing_estimate_s = 0U;
+    if (!library_answer(23U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.program_editor_active ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_SAVED)) {
+        return failed(failure, "A saved program does not close the editor on its details.", 508);
+    }
+    click(first_button(screens.modal));
+
+    /* Not known whether it was saved: said so, and the draft stays. */
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 24U, &request) ||
+        !library_answer(24U, FURNACE_HMI_FEEDBACK_UNRESOLVED, 0U) || !screens.program_editor_active ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNRESOLVED_DETAIL)) {
+        return failed(failure, "An unresolved save is not said to be unresolved, or the draft is closed.", 509);
+    }
+    click(first_button(screens.modal));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
+    if (screens.program_editor_active) {
+        return failed(failure, "The editor does not close.", 510);
+    }
+
+    /* A new program is sent without an ID. */
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
+        return failed(failure, "Programs could not be shown.", 511);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ADD_STAGE_ACTION)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 25U, &request) || request.program_id != 0U ||
+        request.program_revision != 0U || request.program.stage_count != 1U) {
+        return failed(failure, "A new program is not sent as new.", 512);
+    }
+    if (!library_answer(25U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.program_editor_active ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) {
+        return failed(failure, "A saved new program does not return to Programs.", 513);
+    }
+    click(first_button(screens.modal));
+
+    /* Delete: by ID and revision; refused, it stays; deleted, Programs is shown. */
+    click(button_with_text(screens.root, "Controller cure 7"));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 26U, &request) || request.program_id != 7U ||
+        request.program_revision != 3U) {
+        return failed(failure, "Delete does not name the program and revision shown.", 514);
+    }
+    if (!library_answer(26U, FURNACE_HMI_FEEDBACK_REJECTED, 3U) ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_3)) {
+        return failed(failure, "A refused delete is not explained, or leaves the program.", 515);
+    }
+    click(first_button(screens.modal));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 27U, &request) ||
+        !library_answer(27U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED)) {
+        return failed(failure, "A deleted program does not return to Programs.", 516);
+    }
+    click(first_button(screens.modal));
+
+    /* Settings > Delete programs: one at a time, by ID, while the library changes. */
+    screens.settings_tab = 3U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
+        return failed(failure, "Settings could not be shown.", 517);
+    }
+    click(card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_PROGRAMS)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_ALL));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 28U, &request) || request.program_id != 7U) {
+        return failed(failure, "Delete programs does not start with the first program.", 518);
+    }
+    /* The library is listed again before the answer: the second program moves to the first place. */
+    library.programs[0] = library.programs[1];
+    library.programs[0].revision = 4U;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 1U, false) ||
+        !library_answer(28U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) ||
+        !next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 29U, &request) || request.program_id != 9U ||
+        request.program_revision != 4U) {
+        return failed(failure, "Delete programs does not follow the next program by its ID.", 519);
+    }
+    char deleted[96];
+    (void)snprintf(deleted, sizeof(deleted),
+                   furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED_DETAIL_FORMAT), 2U);
+    if (!library_answer(29U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || !no_request() || screens.settings_deleting ||
+        !tree_contains(screens.root, deleted)) {
+        return failed(failure, "Delete programs does not report what the controller deleted.", 520);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_library_command_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 500);
+    }
+    settle();
+    const int result = library_command_checks(failure);
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}

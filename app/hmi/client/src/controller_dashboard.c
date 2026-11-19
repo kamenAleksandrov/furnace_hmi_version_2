@@ -243,6 +243,11 @@ static furnace_hmi_command_feedback_t feedback(const furnace_hmi_command_outcome
     case FURNACE_HMI_COMMAND_REJECTED:
         f.state = FURNACE_HMI_FEEDBACK_REJECTED;
         f.reason = outcome->reason;
+        /* A program save or delete: what the controller found (M21-7b). */
+        f.error_field = outcome->error_field;
+        f.error_reason = outcome->error_reason;
+        f.error_stage = outcome->error_stage;
+        f.curing_estimate_s = outcome->curing_estimate_s;
         break;
     case FURNACE_HMI_COMMAND_REFUSED:
         f.state = FURNACE_HMI_FEEDBACK_REFUSED;

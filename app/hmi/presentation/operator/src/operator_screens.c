@@ -196,6 +196,8 @@ typedef enum {
     OPERATOR_ACTION_FAULT_RECOVER,
     OPERATOR_ACTION_DECISION_CONTINUE,
     OPERATOR_ACTION_DECISION_STOP,
+    /* M21-7b: save again with the acknowledged curing estimate. */
+    OPERATOR_ACTION_SAVE_ACKNOWLEDGED,
 } operator_action_t;
 
 typedef struct {
@@ -8988,6 +8990,210 @@ static void show_command_problem(furnace_hmi_operator_screens_t *explorer, bool 
     (void)open_dialog(explorer, ui_string(title), detail, OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
 }
 
+/* --- The controller's library: saves and deletes (no simulated answers, M21-7b) --- */
+
+static size_t library_slot_of(const furnace_hmi_operator_program_t *programs, uint32_t id);
+
+/* PROGRAM_SAVE_RESULT and PROGRAM_DELETE_RESULT results. */
+#define LIBRARY_RESULT_INVALID 1U
+#define LIBRARY_RESULT_ACKNOWLEDGMENT_REQUIRED 9U
+
+/* A text from a table by code, or the code in `format`. */
+static const char *coded_text(const furnace_hmi_ui_string_id_t *table, size_t count, uint8_t code,
+                              furnace_hmi_ui_string_id_t format, char *buffer, size_t capacity)
+{
+    if (code < count && table[code] != 0) {
+        return ui_string(table[code]);
+    }
+    (void)snprintf(buffer, capacity, ui_string(format), (unsigned int)code);
+    return buffer;
+}
+
+/* Why the controller refused a library change; for an invalid program, its first error. */
+static const char *library_reason_text(const furnace_hmi_command_feedback_t *feedback, char *buffer,
+                                       size_t capacity)
+{
+    static const furnace_hmi_ui_string_id_t results[] = {
+        [2] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_2, [3] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_3,
+        [4] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_4, [5] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_5,
+        [6] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_6, [7] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_7,
+        [8] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_8,
+    };
+    /* core/program's validation codes (field and reason). */
+    static const furnace_hmi_ui_string_id_t fields[] = {
+        [3] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_3, [4] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_4,
+        [5] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_5, [6] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_6,
+        [7] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_7, [8] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_8,
+        [9] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_9,
+    };
+    static const furnace_hmi_ui_string_id_t reasons[] = {
+        [3] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_3, [4] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_4,
+        [6] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_6, [7] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_7,
+        [8] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_8, [9] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_9,
+        [10] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_10, [11] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_11,
+        [12] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_12, [13] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_13,
+        [14] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_14, [15] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_15,
+    };
+    if (feedback->reason != LIBRARY_RESULT_INVALID) {
+        return coded_text(results, sizeof(results) / sizeof(results[0]), feedback->reason,
+                          FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_CODE_FORMAT, buffer, capacity);
+    }
+    char field_buffer[32];
+    char reason_buffer[40];
+    const char *field = coded_text(fields, sizeof(fields) / sizeof(fields[0]), feedback->error_field,
+                                   FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_CODE_FORMAT, field_buffer,
+                                   sizeof(field_buffer));
+    const char *reason = coded_text(reasons, sizeof(reasons) / sizeof(reasons[0]), feedback->error_reason,
+                                    FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_CODE_FORMAT, reason_buffer,
+                                    sizeof(reason_buffer));
+    if (feedback->error_stage < FURNACE_HMI_OPERATOR_MAX_STAGES) {
+        (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_INVALID_STAGE_FORMAT),
+                       (unsigned int)feedback->error_stage + 1U, field, reason);
+    } else {
+        (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_INVALID_FORMAT), field,
+                       reason);
+    }
+    return buffer;
+}
+
+/* Send a library change; its answer arrives as the ordinary command's feedback. */
+static void send_library_change(furnace_hmi_operator_screens_t *explorer,
+                                const furnace_hmi_operator_request_t *change)
+{
+    const furnace_hmi_operator_request_t sent = *change;
+
+    if (explorer->command_awaiting) {
+        const furnace_hmi_command_feedback_t busy = {.state = FURNACE_HMI_FEEDBACK_NOT_SENT,
+                                                     .reason = FURNACE_HMI_NOT_SENT_BUSY};
+        explorer->settings_deleting = false;
+        show_command_problem(explorer, false, sent.kind, &busy);
+        return;
+    }
+    post_request(explorer, sent.kind);
+    if (explorer->request.kind != sent.kind) {
+        /* A Stop is being sent: nothing else goes out until it is answered. */
+        explorer->settings_deleting = false;
+        return;
+    }
+    explorer->library_request = sent;
+    explorer->library_request.run_id = explorer->request.run_id;
+    explorer->request = explorer->library_request;
+    (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_SENDING_TITLE),
+                      ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_SENDING_DETAIL), OPERATOR_ACTION_CLOSE_MODAL,
+                      NULL, OPERATOR_TONE_PRIMARY);
+}
+
+/* A delete of the program in `slot`, as the controller listed it. */
+static void library_delete_request(const furnace_hmi_operator_screens_t *explorer, size_t slot,
+                                   furnace_hmi_operator_request_t *change)
+{
+    (void)memset(change, 0, sizeof(*change));
+    change->kind = FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE;
+    change->program_id = explorer->programs[slot].id;
+    change->program_revision = explorer->programs[slot].revision;
+    copy_text_bounded(change->program_name, sizeof(change->program_name), program_name_text(explorer, slot));
+}
+
+/* Settings > Delete programs: the next one, or the result once none is left. */
+static void settings_delete_next(furnace_hmi_operator_screens_t *explorer)
+{
+    while (explorer->settings_delete_count > 0U) {
+        const uint32_t id = explorer->settings_delete_ids[--explorer->settings_delete_count];
+        const size_t slot = library_slot_of(explorer->programs, id);
+        furnace_hmi_operator_request_t change;
+
+        if (slot >= FURNACE_HMI_OPERATOR_MAX_PROGRAMS) {
+            continue; /* no longer in the library */
+        }
+        library_delete_request(explorer, slot, &change);
+        send_library_change(explorer, &change);
+        return;
+    }
+    explorer->settings_deleting = false;
+    char detail[96];
+    (void)snprintf(detail, sizeof(detail),
+                   ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED_DETAIL_FORMAT),
+                   (unsigned int)explorer->settings_deleted);
+    clear_modal(explorer);
+    (void)rebuild_page(explorer);
+    (void)settings_show_message(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED), detail);
+}
+
+/* The controller answered a save or a delete. Only SAVED and DELETED change what is shown, and
+ * only through the library it lists again; every other answer keeps the editor's draft. */
+static void library_change_done(furnace_hmi_operator_screens_t *explorer,
+                                furnace_hmi_operator_request_kind_t kind,
+                                const furnace_hmi_command_feedback_t *feedback)
+{
+    const char *name = explorer->library_request.program_name;
+    char detail[192];
+
+    if (feedback->state == FURNACE_HMI_FEEDBACK_ACCEPTED) {
+        if (kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE && explorer->settings_deleting) {
+            explorer->settings_deleted++;
+            settings_delete_next(explorer);
+            return;
+        }
+        clear_modal(explorer);
+        if (kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE) {
+            if (explorer->program_editor_active) {
+                /* A new program is in the library once it is listed again: Programs shows it. */
+                explorer->page = explorer->program_editor_new ? FURNACE_HMI_OPERATOR_PAGE_PROGRAMS
+                                                              : explorer->program_editor_return_page;
+                clear_staged_session(explorer);
+                explorer->program_stage_page = 0U;
+            }
+            log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_SAVED, name);
+            (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_SAVED_DETAIL_FORMAT),
+                           name);
+            (void)rebuild_page(explorer);
+            (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_SAVED), detail,
+                              OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+            return;
+        }
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_DELETED, name);
+        (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED_DETAIL_FORMAT),
+                       name);
+        if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL ||
+            explorer->page == FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES ||
+            explorer->page == FURNACE_HMI_OPERATOR_PAGE_PROGRAM_LOADING) {
+            explorer->page = FURNACE_HMI_OPERATOR_PAGE_PROGRAMS;
+        }
+        (void)rebuild_page(explorer);
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED), detail,
+                          OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    explorer->settings_deleting = false;
+    if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED && kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE &&
+        feedback->reason == LIBRARY_RESULT_ACKNOWLEDGMENT_REQUIRED && feedback->curing_estimate_s > 0U) {
+        /* Saved only with the operator's acknowledgement of exactly this estimate (PROG-11). */
+        char duration[32];
+        explorer->library_request.acknowledged_duration_s = feedback->curing_estimate_s;
+        (void)snprintf(duration, sizeof(duration), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_VALUE_FORMAT_MINUTES),
+                       (long)((feedback->curing_estimate_s + 59U) / 60U));
+        (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_FORMAT),
+                       duration);
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_TITLE), detail,
+                          OPERATOR_ACTION_SAVE_ACKNOWLEDGED,
+                          ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM), OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED) {
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_NOT_ACCEPTED),
+                          library_reason_text(feedback, detail, sizeof(detail)), OPERATOR_ACTION_CLOSE_MODAL, NULL,
+                          OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    if (feedback->state == FURNACE_HMI_FEEDBACK_UNRESOLVED) {
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE),
+                          ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNRESOLVED_DETAIL),
+                          OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    show_command_problem(explorer, false, kind, feedback);
+}
+
 /* The ordinary command's outcome arrived (or it could not be handed over). */
 static void ordinary_command_done(furnace_hmi_operator_screens_t *explorer,
                                   const furnace_hmi_command_feedback_t *feedback)
@@ -8995,6 +9201,11 @@ static void ordinary_command_done(furnace_hmi_operator_screens_t *explorer,
     const furnace_hmi_operator_request_kind_t kind = explorer->command_kind;
     explorer->command_awaiting = false;
     explorer->command_kind = FURNACE_HMI_OPERATOR_REQUEST_NONE;
+    if (kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE || kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE) {
+        library_change_done(explorer, kind, feedback);
+        flush_manual_retarget(explorer);
+        return;
+    }
     if (feedback->state != FURNACE_HMI_FEEDBACK_ACCEPTED) {
         if (kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET) {
             /* Not applied: the controller's target and rate are shown again; nothing is resent. */
@@ -9086,6 +9297,23 @@ static bool program_editor_error(const furnace_hmi_operator_screens_t *explorer,
     return false;
 }
 
+/* The program editor's draft as a program (stages only; no name or identity). */
+static void editor_program(const furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_program_t *program)
+{
+    (void)memset(program, 0, sizeof(*program));
+    program->present = true;
+    const size_t count = editor_stage_count(explorer);
+    program->stage_count = (uint8_t)(count > FURNACE_HMI_OPERATOR_MAX_STAGES ? FURNACE_HMI_OPERATOR_MAX_STAGES : count);
+    for (size_t index = 0U; index < program->stage_count; ++index) {
+        const operator_stage_fixture_t stage = program_stage(explorer, index);
+        const bool hold = fixture_stage_kind(&stage) == OPERATOR_DRAFT_STAGE_HOLD;
+        program->stages[index] = (furnace_hmi_operator_program_stage_t) {
+            hold ? FURNACE_HMI_OPERATOR_STAGE_HOLD : FURNACE_HMI_OPERATOR_STAGE_HEATING,
+            stage.target_c, hold ? 0 : stage.delta_c_per_minute, stage.duration_minutes
+        };
+    }
+}
+
 /* Save the program editor's draft into the library (web saveProgramEditor):
  * a new program takes a free slot, an edited one keeps its place. Opens the
  * saved program's details. */
@@ -9095,6 +9323,21 @@ static void commit_program_editor(furnace_hmi_operator_screens_t *explorer)
     if (program_editor_error(explorer, error, sizeof(error))) {
         (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_NOT_ACCEPTED), error,
                           OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    if (!explorer->simulated_responses) {
+        /* The controller's library: it validates and stores the program; the editor stays open
+         * with its draft until the controller has answered (M21-7b). */
+        furnace_hmi_operator_request_t change;
+        (void)memset(&change, 0, sizeof(change));
+        change.kind = FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE;
+        editor_program(explorer, &change.program);
+        copy_text_bounded(change.program_name, sizeof(change.program_name), explorer->program_editor_name);
+        if (!explorer->program_editor_new) {
+            change.program_id = selected_program_entry(explorer)->id;
+            change.program_revision = selected_program_entry(explorer)->revision;
+        }
+        send_library_change(explorer, &change);
         return;
     }
     size_t slot = explorer->selected_program;
@@ -9114,20 +9357,9 @@ static void commit_program_editor(furnace_hmi_operator_screens_t *explorer)
         }
     }
     furnace_hmi_operator_program_t saved;
-    memset(&saved, 0, sizeof(saved));
-    saved.present = true;
+    editor_program(explorer, &saved);
     saved.library = !explorer->program_editor_new && explorer->programs[slot].library;
     saved.name_string = saved.library ? explorer->programs[slot].name_string : 0U;
-    const size_t count = editor_stage_count(explorer);
-    saved.stage_count = (uint8_t)(count > FURNACE_HMI_OPERATOR_MAX_STAGES ? FURNACE_HMI_OPERATOR_MAX_STAGES : count);
-    for (size_t index = 0U; index < saved.stage_count; ++index) {
-        const operator_stage_fixture_t stage = program_stage(explorer, index);
-        const bool hold = fixture_stage_kind(&stage) == OPERATOR_DRAFT_STAGE_HOLD;
-        saved.stages[index] = (furnace_hmi_operator_program_stage_t) {
-            hold ? FURNACE_HMI_OPERATOR_STAGE_HOLD : FURNACE_HMI_OPERATOR_STAGE_HEATING,
-            stage.target_c, hold ? 0 : stage.delta_c_per_minute, stage.duration_minutes
-        };
-    }
     char name[FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
     copy_text_bounded(name, sizeof(name), explorer->program_editor_name);
     explorer->programs[slot] = saved;
@@ -9179,6 +9411,13 @@ static void delete_selected_program(furnace_hmi_operator_screens_t *explorer)
 {
     const uint8_t program = explorer->selected_program;
     if (!program_listed(explorer, program)) {
+        return;
+    }
+    if (!explorer->simulated_responses) {
+        /* The controller deletes it; the library it lists again no longer has it (M21-7b). */
+        furnace_hmi_operator_request_t change;
+        library_delete_request(explorer, program, &change);
+        send_library_change(explorer, &change);
         return;
     }
     char detail[96];
@@ -9596,6 +9835,11 @@ static bool action_connected(operator_action_t action)
     case OPERATOR_ACTION_PAUSE_PREVIEW:
     case OPERATOR_ACTION_RESUME_PREVIEW:
     case OPERATOR_ACTION_STOP_PREVIEW:
+    /* M21-7b: the controller's library. The stage editor's Save changes only the draft. */
+    case OPERATOR_ACTION_SHOW_SAVE:
+    case OPERATOR_ACTION_CONFIRM_SAVE_ALL:
+    case OPERATOR_ACTION_DELETE_REQUESTED:
+    case OPERATOR_ACTION_SETTINGS_DELETE_CONFIRM:
         return true;
     default:
         return false;
@@ -10082,6 +10326,20 @@ static void apply_action(
         (void)settings_open_delete_dialog(explorer);
         break;
     case OPERATOR_ACTION_SETTINGS_DELETE_CONFIRM: {
+        if (!explorer->simulated_responses) {
+            /* The controller deletes them one at a time, named by ID (M21-7b). */
+            explorer->settings_delete_count = 0U;
+            for (size_t slot = FURNACE_HMI_OPERATOR_MAX_PROGRAMS; slot-- > 0U;) {
+                if ((explorer->settings_delete_pending & (1U << slot)) != 0U && program_listed(explorer, slot)) {
+                    explorer->settings_delete_ids[explorer->settings_delete_count++] = explorer->programs[slot].id;
+                }
+            }
+            explorer->settings_delete_pending = 0U;
+            explorer->settings_deleted = 0U;
+            explorer->settings_deleting = true;
+            settings_delete_next(explorer);
+            break;
+        }
         /* The simulated controller accepts the deletion. */
         unsigned removed = 0U;
         for (size_t slot = 0U; slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS; ++slot) {
@@ -10621,6 +10879,14 @@ static void apply_action(
         break;
     case OPERATOR_ACTION_DELETE_REQUESTED:
         delete_selected_program(explorer);
+        break;
+    case OPERATOR_ACTION_SAVE_ACKNOWLEDGED:
+        /* The same save, with the estimate the controller asked the operator to acknowledge. */
+        if (!explorer->simulated_responses &&
+            explorer->library_request.kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE &&
+            explorer->library_request.acknowledged_duration_s > 0U) {
+            send_library_change(explorer, &explorer->library_request);
+        }
         break;
     }
 }

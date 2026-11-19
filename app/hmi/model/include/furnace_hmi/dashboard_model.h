@@ -148,6 +148,15 @@ typedef struct {
     uint32_t submission;
     furnace_hmi_feedback_state_t state;
     uint8_t reason;
+    /**
+     * A program save or delete the controller refused (M21-7b): its first
+     * validation error (the controller's field, reason and stage index; 0xFF no
+     * stage) and, for a save, the curing estimate to show (ACKNOWLEDGMENT_REQUIRED).
+     */
+    uint8_t error_field;
+    uint8_t error_reason;
+    uint8_t error_stage;
+    uint32_t curing_estimate_s;
 } furnace_hmi_command_feedback_t;
 
 /** How a fault entry may end, as the controller reports it (ADR-0018). */
