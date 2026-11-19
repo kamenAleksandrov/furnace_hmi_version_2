@@ -1,5 +1,10 @@
 # Roadmap
 
+## AGENT-OPT-04 (2026-11-19)
+
+Delegation ceiling under the [shared policy](../agent-delegation.md); product
+work order and maturity are unchanged.
+
 ## AGENT-OPT-03 (2026-10-28)
 
 Agent-efficiency maintenance under the [shared policy](../agent-delegation.md),
