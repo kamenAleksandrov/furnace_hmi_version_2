@@ -254,16 +254,15 @@ static void execution_keeps_running(void)
 
 static void long_name(void)
 {
-    current("a long UTF-8 name is cut at a character boundary");
+    current("a long UTF-8 name is kept whole (M21-7b: the controller's 124 bytes)");
     o.run_state = RUN_RUNNING;
     o.session_kind = SESSION_PROGRAM;
     for (size_t i = 0U; i + 2U <= 120U; i += 2U) {
         (void)memcpy(&o.program_name[i], "\xC3\xA9", 2U); /* "é" in UTF-8 */
     }
     map();
-    const size_t length = strlen(s.program_name);
-    EXPECT(length > 0U && length < FURNACE_HMI_PROGRAM_NAME_CAPACITY, "truncated");
-    EXPECT(length % 2U == 0U, "no half character");
+    EXPECT(strcmp(s.program_name, o.program_name) == 0, "whole");
+    _Static_assert(FURNACE_HMI_PROGRAM_NAME_CAPACITY >= sizeof(o.program_name), "every controller name fits");
 }
 
 /* A Manual session: the controller's target, rate and time left, and the run it is. */

@@ -13,7 +13,8 @@
 extern "C" {
 #endif
 
-#define FURNACE_HMI_PROGRAM_NAME_CAPACITY 40U
+/* A program name: 31 characters in at most 124 bytes of UTF-8 (the controller's), and a terminator. */
+#define FURNACE_HMI_PROGRAM_NAME_CAPACITY 125U
 #define FURNACE_HMI_STAGE_NAME_CAPACITY 32U
 #define FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS 32U
 

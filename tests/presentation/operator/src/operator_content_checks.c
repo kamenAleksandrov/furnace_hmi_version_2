@@ -1378,6 +1378,66 @@ static int library_command_checks(const char **failure)
     return 0;
 }
 
+
+/* M21-7b: names of 31 characters (PROG-09, REQ-FUN-020): whole in the editor and the save,
+ * however many bytes they take, and never longer from the keyboard. */
+static int name_checks(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+    char name[80];
+    size_t used = 0U;
+
+    for (int character = 0; character < 31; ++character) {
+        name[used++] = '\xD0'; /* U+0416, two bytes */
+        name[used++] = '\x96';
+    }
+    name[used] = '\0';
+    if (screens.modal != NULL) {
+        click(first_button(screens.modal)); /* the previous checks' last message */
+    }
+    (void)memset(&library, 0, sizeof(library));
+    library_program(0U, 20U, name, 2U);
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 1U, false)) {
+        return failed(failure, "The library could not be shown.", 701);
+    }
+    screens.selected_program = 0U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL)) {
+        return failed(failure, "The program could not be shown.", 702);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    if (!screens.program_editor_active || strcmp(screens.program_editor_name, name) != 0) {
+        return failed(failure, "A name of 31 two-byte characters is cut in the editor.", 703);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 41U, &request) ||
+        strcmp(request.program_name, name) != 0 || !library_answer(41U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U)) {
+        return failed(failure, "A name of 31 two-byte characters is cut in the save.", 704);
+    }
+    click(first_button(screens.modal));
+
+    /* The keyboard stops at 31 characters. */
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
+        return failed(failure, "Programs could not be shown.", 705);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_PROGRAM_NAME)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
+    lv_obj_t *key = NULL;
+    for (int press = 0; press < 32 && screens.modal != NULL; ++press) {
+        key = button_with_text(screens.modal, "1");
+        click(key);
+    }
+    if (key == NULL || screens.keyboard_length != 31U ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_MAXIMUM_LENGTH)) {
+        return failed(failure, "The keyboard takes more than 31 characters.", 706);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY));
+    if (screens.modal != NULL || strlen(screens.program_editor_name) != 31U) {
+        return failed(failure, "A name of 31 characters is not applied.", 707);
+    }
+    return 0;
+}
+
 int furnace_hmi_operator_library_command_check(lv_display_t *display, const char **failure)
 {
     lv_display_set_resolution(display, 800, 480);
@@ -1388,8 +1448,11 @@ int furnace_hmi_operator_library_command_check(lv_display_t *display, const char
         return failed(failure, "The operator screens could not be created.", 500);
     }
     settle();
-    const int result = library_command_checks(failure);
+    int result = library_command_checks(failure);
 
+    if (result == 0) {
+        result = name_checks(failure);
+    }
     furnace_hmi_operator_screens_destroy(&screens);
     return result;
 }

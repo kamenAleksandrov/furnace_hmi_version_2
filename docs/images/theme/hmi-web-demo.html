@@ -1662,20 +1662,20 @@ function openTouchKeyboard(kind,title,value,options,commit){
  if((demoRun&&demoRun.mode!=='manual')||document.querySelector('dialog[open]'))return;
  closeTouchKeyboard(false);touchKeyboard={kind,title,value:String(value??''),options,commit,shift:false,page:'letters',focus:document.activeElement};keyboardInert(true);drawTouchKeyboard();$('keyboard-input').focus();$('keyboard-input').select();updateKeyboardCaret();
 }
-function openTextKeyboard(title,value,commit){openTouchKeyboard('text',title,value,{maxLength:32},commit);}
+function openTextKeyboard(title,value,commit){openTouchKeyboard('text',title,value,{maxLength:31},commit);}
 function openNumericKeyboard(title,value,options,commit){openTouchKeyboard('number',title,String(value??'').replace('.',decimalSeparator()),options,commit);}
 // The numeric keypad types the language's decimal separator; validation reads the number in '.' form.
 const decimalSeparator=()=>t('UI_LAB_DECIMAL_SEPARATOR');
 const keypadNumber=text=>text.split(decimalSeparator()).join('.');
 function keyboardError(){
  const k=touchKeyboard,raw=$('keyboard-input').value,v=k.kind==='number'?keypadNumber(raw):raw;
- if(k.kind==='text'){if(!v.trim())return t('UI_LAB_KEYBOARD_ENTER_NAME');if(v.length>k.options.maxLength)return t('UI_LAB_KEYBOARD_MAXIMUM_CHARACTERS_FORMAT',k.options.maxLength);if(/[\u0000-\u001f\u007f]/.test(v))return t('UI_LAB_KEYBOARD_CONTROL_CHARACTERS');return '';}
+ if(k.kind==='text'){if(!v.trim())return t('UI_LAB_KEYBOARD_ENTER_NAME');if([...v].length>k.options.maxLength)return t('UI_LAB_KEYBOARD_MAXIMUM_CHARACTERS_FORMAT',k.options.maxLength);if(/[\u0000-\u001f\u007f]/.test(v))return t('UI_LAB_KEYBOARD_CONTROL_CHARACTERS');return '';}
  if(v.length>24)return t('UI_LAB_KEYBOARD_MAXIMUM_CHARACTERS_FORMAT',24);
  if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(v))return t('UI_LAB_KEYBOARD_COMPLETE_NUMBER');
  const n=Number(v),{min,max,step}=k.options;if(!Number.isFinite(n))return t('UI_LAB_KEYBOARD_FINITE_NUMBER');if(n<min||n>max)return t('UI_LAB_KEYBOARD_ALLOWED_RANGE_FORMAT',decimalText(min),decimalText(max));if(Math.abs((n-min)/step-Math.round((n-min)/step))>1e-7)return t('UI_LAB_KEYBOARD_INCREMENTS_FORMAT',decimalText(step));return '';
 }
 function updateKeyboardFeedback(){
- const k=touchKeyboard;if(!k)return;k.value=$('keyboard-input').value;const error=keyboardError();$('keyboard-hint').textContent=error||(k.kind==='text'?t('UI_LAB_KEYBOARD_APPLY_HINT'):t('UI_LAB_KEYBOARD_RANGE_TEXT_FORMAT',decimalText(k.options.min),decimalText(k.options.max),decimalText(k.options.step)));$('keyboard-hint').classList.toggle('error',!!error);$('keyboard-apply').disabled=!!error;$('keyboard-count').textContent=k.kind==='text'?t('UI_LAB_KEYBOARD_COUNT_FORMAT',k.value.length,k.options.maxLength):t('UI_LAB_KEYBOARD_NUMERIC_ENTRY');updateKeyboardCaret();
+ const k=touchKeyboard;if(!k)return;k.value=$('keyboard-input').value;const error=keyboardError();$('keyboard-hint').textContent=error||(k.kind==='text'?t('UI_LAB_KEYBOARD_APPLY_HINT'):t('UI_LAB_KEYBOARD_RANGE_TEXT_FORMAT',decimalText(k.options.min),decimalText(k.options.max),decimalText(k.options.step)));$('keyboard-hint').classList.toggle('error',!!error);$('keyboard-apply').disabled=!!error;$('keyboard-count').textContent=k.kind==='text'?t('UI_LAB_KEYBOARD_COUNT_FORMAT',[...k.value].length,k.options.maxLength):t('UI_LAB_KEYBOARD_NUMERIC_ENTRY');updateKeyboardCaret();
 }
 // Draw a clearly visible blinking insertion line; the native 1px caret is hidden and only shows while the field has focus.
 let caretMeasure;

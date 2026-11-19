@@ -53,7 +53,8 @@
 #define OPERATOR_KEY_MIN_HEIGHT 48
 /* Numeric keypad panel width: narrower, taller keys instead of wide slabs. */
 #define OPERATOR_NUMERIC_KEYPAD_WIDTH 460
-#define OPERATOR_KEYBOARD_TEXT_LIMIT 32U
+/* Names: the controller's 31 code points (PROG-09; REQ-FUN-020), counted by character. */
+#define OPERATOR_KEYBOARD_TEXT_LIMIT 31U
 #define OPERATOR_DIALOG_WIDTH 430
 #define OPERATOR_DIALOG_PADDING 25
 #define OPERATOR_DIALOG_GAP 14
@@ -2454,7 +2455,7 @@ static void keyboard_insert(
             : explorer->keyboard_anchor - explorer->keyboard_cursor) : 0U;
     const size_t selected_length = keyboard_utf8_character_count(
         explorer->keyboard_value + selection_start, selected_bytes);
-    const size_t max_length = explorer->keyboard_mode == OPERATOR_KEYBOARD_MODE_TEXT ? 32U : 24U;
+    const size_t max_length = explorer->keyboard_mode == OPERATOR_KEYBOARD_MODE_TEXT ? OPERATOR_KEYBOARD_TEXT_LIMIT : 24U;
     const size_t character_count = keyboard_utf8_character_count(text, length);
     const size_t existing_count = keyboard_utf8_character_count(
         explorer->keyboard_value, old_length);
