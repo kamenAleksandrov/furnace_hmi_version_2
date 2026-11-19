@@ -160,6 +160,16 @@ Pause, Resume, and Stop. The controller enforces a default six-hour selected
 deadline or an explicitly longer selection; adjusting target/rate does not
 extend it. A warning/extension affordance is HMI presentation, not enforcement.
 
+**Amended (product owner, 2026-11-11, Phase 21 M21-5b):** the HMI offers no
+session-length choice. Manual Start asks for the controller's longest Manual
+session (its configured maximum, initially 48 h); the controller still ends the
+session at that length. Start is offered only when the controller reports that
+it is ready to start. During a session target and rate changes are sent at
+once; taps while one is pending are merged and the newest is sent after the
+controller answers; after a refusal or an unresolved outcome nothing is sent
+again. A controller Manual session is shown on the Manual page,
+which it holds.
+
 ### Service-period preflight
 
 The Control CPU owns service-period counters, maintenance policy, proposed-run
@@ -209,7 +219,16 @@ sentence on what the controller did, and **Close**. The same dialog reports
   open "Faults/alarms" question and belong to the controller.
 - A Program run the controller ended with a fault stays on Running with the
   graph frozen at the fault; the fault title replaces the stage label (red),
-  Pause disappears and Stop becomes **Return Home**.
+  and Pause disappears. **Amended (product owner, 2026-11-11, Phase 21
+  M21-5b):** Stop stays, and Return Home is not offered: a faulted run stays
+  until the operator stops it, as the controller holds it.
+- **Amended (product owner, 2026-11-11, Phase 21 M21-5c):** the controller's
+  fault entries are listed in a Faults dialog, opened from a red "Faults (n)"
+  button on Running and Manual and from a banner on Home after the run. Each
+  entry offers Acknowledge, or Recover for an acknowledged latch the operator
+  may clear, as requests with the controller's answer; a protective trip is
+  reset at the protection device. A quality decision is a panel that cannot be
+  closed, with the fault, the controller's time left, Continue and Stop.
 - While the link is lost, Running shows the reading values as `-- stale`, the
   stage label reads Connection lost, and Pause and Stop are unavailable; nothing
   is replayed when the link returns.

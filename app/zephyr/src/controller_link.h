@@ -21,4 +21,13 @@ int furnace_hmi_controller_link_start(void);
  */
 bool furnace_hmi_controller_link_take(furnace_hmi_controller_observation_t *out, uint32_t *seen);
 
+/**
+ * Hand an operator command to the link thread, which submits it at its next
+ * poll (M21-5). Two slots, ordinary and Stop, so a waiting command never holds
+ * up a Stop. Never waits: returns the submission number (never 0) that the
+ * observation's command outcome or refusal will carry, or 0 when the slot still
+ * holds a command the link thread has not taken.
+ */
+uint32_t furnace_hmi_controller_link_submit(const furnace_hmi_command_t *command);
+
 #endif /* FURNACE_HMI_ZEPHYR_CONTROLLER_LINK_H */

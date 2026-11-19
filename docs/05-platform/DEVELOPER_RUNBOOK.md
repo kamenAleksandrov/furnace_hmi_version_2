@@ -334,6 +334,22 @@ per change of link state and once a second. Without the script, the HMI opens
 `/tmp/furnace-hmi-controller-link`, or the device given with
 `--controller_link_port=<path>` (for example a USB serial port).
 
+The operator workflows (Phase 21 M21-5) run against the same controller program, built with
+its scenario channel (furnace firmware PR #53 until it is merged). A headless test program
+drives the HMI's controller link and command mailbox; the controller's faults are injected
+through the scenario channel:
+
+```bash
+west build -p always -b native_sim -d ~/work/hmi-build/workflows <hmi>/tests/zephyr/controller_workflows
+python3 <hmi>/tools/controller_workflow_check.py \
+  --controller ~/work/hmi-build/controller/zephyr/zephyr.exe \
+  --workflows ~/work/hmi-build/workflows/zephyr/zephyr.exe
+```
+
+It prints each command's outcome and the Ztest result, and exits non-zero on a failure. The
+two programs run in real time (`CONFIG_NATIVE_SIM_SLOWDOWN_TO_REAL_TIME`), and both
+pseudo-terminals are set to raw mode.
+
 ## HMI fonts and icons
 
 The typeface (Tomorrow HMI, see app/hmi/presentation/fonts/README.md) and the icon set are shared by the web demo and the LVGL

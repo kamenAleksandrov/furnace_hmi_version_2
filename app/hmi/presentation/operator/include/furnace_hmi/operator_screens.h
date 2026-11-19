@@ -144,6 +144,15 @@ typedef enum {
     FURNACE_HMI_OPERATOR_REQUEST_STOP,
     /* Close a stopped, cooling or completed run (Return Home). */
     FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN,
+    /* Phase 21 M21-5b, raised only without simulated answers: start readiness
+     * when Manual opens, a Manual Start and a live Manual retarget. */
+    FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE,
+    FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START,
+    FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET,
+    /* M21-5c: a fault entry's acknowledgement and recovery, and the decision's Continue. */
+    FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE,
+    FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY,
+    FURNACE_HMI_OPERATOR_REQUEST_CONTINUE,
 } furnace_hmi_operator_request_kind_t;
 
 typedef struct {
@@ -151,6 +160,17 @@ typedef struct {
     /* START_PROGRAM only: the program as the operator confirmed it. */
     char program_name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
     furnace_hmi_operator_program_t program;
+    /* MANUAL_START and MANUAL_RETARGET: whole degrees and tenths of a degree
+     * per minute. MANUAL_START: the session length, the controller's longest
+     * (owner 2026-11-11: no length choice). The host adds the run. */
+    int32_t target_c;
+    int32_t rate_tenths_c_per_minute;
+    int32_t session_minutes;
+    /* Without simulated answers: the controller's run shown when the operator acted. */
+    uint32_t run_id;
+    /* FAULT_ACKNOWLEDGE and FAULT_RECOVERY: the controller's entry. */
+    uint8_t fault_id;
+    uint8_t source;
 } furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
@@ -301,10 +321,26 @@ bool furnace_hmi_operator_screens_show_service_warning(
 /** Delete the lab tree and reset the supplied storage. */
 void furnace_hmi_operator_screens_destroy(furnace_hmi_operator_screens_t *explorer);
 
-/** Take the operator's pending controller request, if any; false when none. */
+/**
+ * Take the operator's pending controller request, if any; false when none.
+ * An ordinary request comes before a Stop taken in the same pass, so a host
+ * that hands both over at once lets the Stop drop the other (M21-5a mailbox).
+ */
 bool furnace_hmi_operator_screens_take_request(
     furnace_hmi_operator_screens_t *explorer,
     furnace_hmi_operator_request_t *request
+);
+
+/**
+ * Without simulated answers: the number the host gave a request it took, which
+ * the command feedback in later observations carries; 0 when it could not hand
+ * it over (nothing sent). The screens wait for that feedback before they offer
+ * the next command of the same slot.
+ */
+void furnace_hmi_operator_screens_request_submitted(
+    furnace_hmi_operator_screens_t *explorer,
+    furnace_hmi_operator_request_kind_t kind,
+    uint32_t submission
 );
 
 /* The opaque storage is intentionally fixed-size so the host laboratory does
@@ -525,6 +561,39 @@ struct furnace_hmi_operator_screens {
     bool run_stopped;
     uint32_t stopped_program_id;
     furnace_hmi_operator_request_t request;
+    /* Commands to a controller (no simulated answers, M21-5b). Stop has its own
+     * slot. Each slot awaits the feedback for the number its last request was
+     * handed over as; until then it offers no other command. */
+    bool stop_requested;
+    uint32_t stop_run_id;
+    bool command_awaiting;
+    furnace_hmi_operator_request_kind_t command_kind;
+    uint32_t command_submission;
+    bool stop_awaiting;
+    uint32_t stop_submission;
+    /* A Manual target or rate the operator changed that is not sent yet. */
+    bool manual_retarget_wanted;
+    /* The ended Manual session the operator left (Exit or Start new). */
+    bool manual_left;
+    uint32_t manual_left_run_id;
+    /* M21-5c: the Faults dialog or the decision panel is the open modal; a
+     * command's answer shown in it; what it showed when built; the entry a
+     * fault command names; the decision countdown label. */
+    bool faults_open;
+    bool decision_open;
+    char modal_note[112];
+    uint32_t faults_signature;
+    uint8_t fault_target_id;
+    uint8_t fault_target_source;
+    lv_obj_t *decision_time_label;
+    /* The decision panel's buttons follow every observation (review H1); the fault it names. */
+    lv_obj_t *decision_continue_button;
+    lv_obj_t *decision_stop_button;
+    uint8_t decision_shown_fault;
+    /* An alert that arrived while the decision panel was open, shown when it closes (review M1). */
+    uint8_t pending_alert;
+    /* Manual's Faults button, made once with the page (review M2). */
+    lv_obj_t *manual_faults_button;
     /* Service records confirmed this session, newest first, before the
      * controller's earlier records in Service history. */
     furnace_hmi_operator_service_record_t service_records[FURNACE_HMI_OPERATOR_SERVICE_RECORDS];

@@ -52,6 +52,7 @@ if(CONFIG_LVGL)
   target_sources(app PRIVATE
     src/gui_main.c
     src/controller_link.c
+    src/operator_commands.c
     "${FURNACE_HMI_OPERATOR_DIR}/src/operator_screens.c"
     "${FURNACE_HMI_OPERATOR_DIR}/src/operator_theme.c"
     "${FURNACE_HMI_MARKER_DIR}/src/development_marker.c"

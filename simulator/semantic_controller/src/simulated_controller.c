@@ -49,6 +49,7 @@ const char *furnace_hmi_sim_scenario_name(furnace_hmi_sim_scenario_t scenario)
         [FURNACE_HMI_SIM_SCENARIO_HEATING_SLOW] = "heating-slow",
         [FURNACE_HMI_SIM_SCENARIO_SENSOR_FAULT] = "sensor-fault",
         [FURNACE_HMI_SIM_SCENARIO_POWER_LOSS] = "power-loss",
+        [FURNACE_HMI_SIM_SCENARIO_DECISION] = "decision",
     };
 
     if (scenario >= FURNACE_HMI_SIM_SCENARIO_COUNT) {
@@ -262,6 +263,107 @@ static void fill_current_common(furnace_hmi_dashboard_state_t *state)
     );
 }
 
+/* Controller fault IDs of the simulated faults (controller interface: Fault management). */
+#define SIM_FAULT_INHIBIT 6U
+#define SIM_FAULT_LAG 10U
+#define SIM_FAULT_TARGET_WAIT 11U
+#define SIM_FAULT_SENSOR_CHANNEL 3U
+#define SIM_FAULT_OVER_TEMPERATURE 16U
+
+/* The entry a scenario's fault raises, and the latched entries kept from earlier runs. */
+static void fill_fault_entries(furnace_hmi_simulator_t *simulator)
+{
+    furnace_hmi_dashboard_state_t *state = &simulator->state;
+    uint8_t fault_id = 0U;
+    switch (simulator->scenario) {
+    case FURNACE_HMI_SIM_SCENARIO_FAULT: fault_id = SIM_FAULT_INHIBIT; break;
+    case FURNACE_HMI_SIM_SCENARIO_OVER_TEMPERATURE: fault_id = SIM_FAULT_OVER_TEMPERATURE; break;
+    case FURNACE_HMI_SIM_SCENARIO_HEATING_SLOW: fault_id = SIM_FAULT_TARGET_WAIT; break;
+    case FURNACE_HMI_SIM_SCENARIO_SENSOR_FAULT: fault_id = SIM_FAULT_SENSOR_CHANNEL; break;
+    case FURNACE_HMI_SIM_SCENARIO_DECISION: fault_id = SIM_FAULT_LAG; break;
+    default: break;
+    }
+    state->faults_known = state->availability == FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
+    state->fault_count = 0U;
+    for (uint8_t index = 0U; state->faults_known && index < simulator->kept_fault_count; ++index) {
+        if (simulator->kept_faults[index].fault_id != fault_id) {
+            state->faults[state->fault_count++] = simulator->kept_faults[index];
+        }
+    }
+    if (state->faults_known && fault_id != 0U && state->fault_count < FURNACE_HMI_DASHBOARD_MAX_FAULTS) {
+        const bool decision = fault_id == SIM_FAULT_LAG;
+        state->faults[state->fault_count++] = (furnace_hmi_fault_entry_t) {
+            .fault_id = fault_id, .source = 0U, .active = true, .latched = !decision,
+            .acknowledged = false, .continuable = decision,
+            .recovery = decision ? FURNACE_HMI_FAULT_RECOVERY_RESUME : FURNACE_HMI_FAULT_RECOVERY_OPERATOR,
+        };
+    }
+    state->fault_total = state->fault_count;
+}
+
+static furnace_hmi_fault_entry_t *find_fault(furnace_hmi_simulator_t *simulator, uint8_t fault_id, uint8_t source)
+{
+    furnace_hmi_dashboard_state_t *state = &simulator->state;
+    for (uint8_t index = 0U; index < state->fault_count; ++index) {
+        if (state->faults[index].fault_id == fault_id && state->faults[index].source == source) {
+            return &state->faults[index];
+        }
+    }
+    return NULL;
+}
+
+bool furnace_hmi_simulator_fault_acknowledge(furnace_hmi_simulator_t *simulator, uint8_t fault_id, uint8_t source)
+{
+    furnace_hmi_fault_entry_t *entry = simulator == NULL ? NULL : find_fault(simulator, fault_id, source);
+    if (entry == NULL || entry->acknowledged) {
+        return false;
+    }
+    entry->acknowledged = true;
+    simulator->state.state_revision += 1U;
+    return true;
+}
+
+bool furnace_hmi_simulator_fault_recover(furnace_hmi_simulator_t *simulator, uint8_t fault_id, uint8_t source)
+{
+    furnace_hmi_fault_entry_t *entry = simulator == NULL ? NULL : find_fault(simulator, fault_id, source);
+    furnace_hmi_dashboard_state_t *state = simulator == NULL ? NULL : &simulator->state;
+    if (entry == NULL || !entry->latched || !entry->acknowledged || entry->active ||
+        state->mode != FURNACE_HMI_MACHINE_MODE_IDLE) {
+        return false; /* the controller would refuse: not acknowledged, active, or a run is active */
+    }
+    const size_t index = (size_t)(entry - state->faults);
+    memmove(&state->faults[index], &state->faults[index + 1U],
+            (state->fault_count - index - 1U) * sizeof(state->faults[0]));
+    state->fault_count -= 1U;
+    state->fault_total = state->fault_count;
+    simulator->kept_fault_count = 0U;
+    for (uint8_t kept = 0U; kept < state->fault_count; ++kept) {
+        simulator->kept_faults[simulator->kept_fault_count++] = state->faults[kept];
+    }
+    state->state_revision += 1U;
+    return true;
+}
+
+bool furnace_hmi_simulator_continue(furnace_hmi_simulator_t *simulator)
+{
+    if (simulator == NULL || !simulator->state.awaiting_decision) {
+        return false;
+    }
+    furnace_hmi_dashboard_state_t *state = &simulator->state;
+    state->awaiting_decision = false;
+    state->decision_fault_id = 0U;
+    state->decision_remaining_seconds.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
+    state->run_state = FURNACE_HMI_RUN_STATE_RUNNING;
+    for (uint8_t index = 0U; index < state->fault_count; ++index) {
+        if (state->faults[index].continuable) {
+            state->faults[index].acknowledged = true;
+            state->faults[index].active = false;
+        }
+    }
+    state->state_revision += 1U;
+    return true;
+}
+
 void furnace_hmi_simulator_set_scenario(
     furnace_hmi_simulator_t *simulator,
     furnace_hmi_sim_scenario_t scenario
@@ -472,9 +574,24 @@ void furnace_hmi_simulator_set_scenario(
         );
         break;
 
+    case FURNACE_HMI_SIM_SCENARIO_DECISION:
+        /* The ramp lags: a continuable quality fault holds the setpoint for two minutes. */
+        fill_current_common(&simulator->state);
+        simulator->state.run_state = FURNACE_HMI_RUN_STATE_PAUSED;
+        simulator->state.awaiting_decision = true;
+        simulator->state.decision_fault_id = SIM_FAULT_LAG;
+        simulator->state.decision_remaining_seconds = i32_value(
+            120,
+            FURNACE_HMI_VALUE_PROVENANCE_MEASURED,
+            FURNACE_HMI_VALUE_VALIDITY_CURRENT
+        );
+        fill_graph(&simulator->state, FURNACE_HMI_VALUE_VALIDITY_CURRENT);
+        break;
+
     case FURNACE_HMI_SIM_SCENARIO_COUNT:
         break;
     }
+    fill_fault_entries(simulator);
 }
 
 /* ---- Programs started on request ------------------------------------------
@@ -789,6 +906,14 @@ bool furnace_hmi_simulator_close_run(furnace_hmi_simulator_t *simulator)
     }
     const uint32_t revision = simulator->state.state_revision;
     const uint32_t next_program_id = simulator->next_program_id;
+    simulator->kept_fault_count = 0U;
+    for (uint8_t index = 0U; index < simulator->state.fault_count; ++index) {
+        if (simulator->state.faults[index].latched) {
+            furnace_hmi_fault_entry_t kept = simulator->state.faults[index];
+            kept.active = false;
+            simulator->kept_faults[simulator->kept_fault_count++] = kept;
+        }
+    }
     furnace_hmi_simulator_set_scenario(simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
     simulator->next_program_id = next_program_id;
     simulator->state.state_revision = revision + 1U;
@@ -803,6 +928,7 @@ void furnace_hmi_simulator_initialize(
     if (simulator == NULL) {
         return;
     }
+    simulator->kept_fault_count = 0U;
     memset(simulator, 0, sizeof(*simulator));
     furnace_hmi_simulator_set_scenario(simulator, scenario);
 }
@@ -818,6 +944,12 @@ void furnace_hmi_simulator_tick(
 
     simulator->virtual_elapsed_seconds += elapsed_seconds;
     furnace_hmi_dashboard_state_t *state = &simulator->state;
+    if (state->awaiting_decision) {
+        state->decision_remaining_seconds.value = state->decision_remaining_seconds.value > (int32_t)elapsed_seconds
+            ? state->decision_remaining_seconds.value - (int32_t)elapsed_seconds : 0;
+        state->state_revision += 1U;
+        return;
+    }
     if (simulator->program_run) {
         if (state->run_state != FURNACE_HMI_RUN_STATE_RUNNING) {
             return;

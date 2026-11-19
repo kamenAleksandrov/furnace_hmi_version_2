@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <furnace_hmi/controller_command.h>
 #include <furnace_hmi/dashboard_model.h>
 #include <furnace_hmi/hmi_state_availability.h>
 
@@ -63,6 +64,13 @@ typedef struct {
     bool condition_active;
     bool latched;
     bool acknowledged;
+    /** Recovery eligibility (controller interface: Fault management), as received. */
+    uint8_t recovery;
+    /** QUALITY 1, EQUIPMENT 2, SAFETY 3, OPERATIONAL 4; 0 none. */
+    uint8_t category;
+    /** The policy permits a Continue; this occurrence was continued. */
+    bool continuable;
+    bool continued;
 } furnace_hmi_controller_fault_t;
 
 /**
@@ -104,6 +112,8 @@ typedef struct {
     uint32_t status_interval_ms;
     uint32_t heartbeat_interval_ms;
     uint32_t link_silence_ms;
+    /** The longest Manual session; a Manual Start asks for it (owner 2026-11-11). */
+    uint32_t manual_max_minutes;
 
     /* The newest STATUS of this session. */
     bool status_valid;
@@ -127,12 +137,21 @@ typedef struct {
     /** The final cooling: NONE 0, ACTIVE 1, COMPLETE 2, ENDED 3 (controller interface). */
     uint8_t cooling;
     uint32_t cooling_s;
+    /** A Manual session: the requested target and rate, and the session time left. */
+    int32_t manual_target_decicelsius;
+    int32_t manual_rate_decicelsius_per_min;
+    uint32_t manual_remaining_s;
+    /** AWAITING_DECISION: the time left to decide. */
+    uint32_t decision_remaining_s;
     bool setpoint_valid;
     int32_t setpoint_decicelsius;
     bool heating_requested;
     bool heating_inhibited;
     uint8_t latched_class;
     uint32_t inhibit_ids;
+    /** Inhibiting quality faults a Continue may release (bit per fault ID). */
+    uint32_t continuable_ids;
+    bool resume_allowed;
     uint8_t unacknowledged_faults;
     bool session_fresh;
     uint8_t store_readiness;
@@ -159,6 +178,13 @@ typedef struct {
     furnace_hmi_request_state_t snapshot_request;
     uint32_t snapshot_request_id;
     uint8_t snapshot_reject_reason;
+
+    /* Operator commands (M21-5): the latest ordinary command, and the latest Stop. */
+    furnace_hmi_command_outcome_t command;
+    furnace_hmi_command_outcome_t stop;
+    /* The latest local refusal of each slot. */
+    furnace_hmi_command_refusal_t command_refusal;
+    furnace_hmi_command_refusal_t stop_refusal;
 
     /* Link counters; saturating. */
     uint32_t frames_received;

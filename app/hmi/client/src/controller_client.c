@@ -19,9 +19,16 @@
 #define REJECT_STALE_SESSION 2U
 #define REJECT_CLIENT_SESSION_MISMATCH 3U
 #define REJECT_DUPLICATE_REQUEST 4U
+#define REJECT_STOP_UNRESOLVED 13U
 #define CLIENT_KIND_HMI 1U
+/* FAULT_ACKNOWLEDGE_RESULT and FAULT_RECOVERY_RESULT codes (controller interface). */
+#define ACKNOWLEDGE_DONE 0U
+#define RECOVERY_RECOVERED 7U
 
 #define READ_CHUNK 64U
+
+static void unresolve(furnace_hmi_controller_client_t *c, bool stop,
+                      furnace_hmi_command_unresolved_t cause);
 
 static void saturating_increment(uint32_t *counter)
 {
@@ -70,6 +77,8 @@ static void send_out(furnace_hmi_controller_client_t *c)
 
 static void send_hello(furnace_hmi_controller_client_t *c)
 {
+    /* Re-opening the session ends the operator's intent; a Stop waits (M21-5 design; review F1). */
+    unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST);
     (void)memset(&c->out, 0, sizeof(c->out));
     c->out.type = FURNACE_WIRE_MSG_HELLO;
     c->out.u.hello.client_session_id = c->observation.client_session_id;
@@ -99,6 +108,9 @@ static void new_client_session(furnace_hmi_controller_client_t *c)
     c->next_request_id = 1U;
     c->capabilities_request_id = 0U;
     c->client_session_confirmed = false;
+    /* A result goes only to the client session that sent the command. */
+    unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED);
+    unresolve(c, true, FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED);
     changed(c);
 }
 
@@ -176,6 +188,378 @@ static void refresh(furnace_hmi_controller_client_t *c)
     }
 }
 
+/* ---- operator commands (M21-5; plan, M21-5 design) ---------------------------------------- */
+
+bool furnace_hmi_command_is_stop(furnace_hmi_command_kind_t kind)
+{
+    return kind == FURNACE_HMI_COMMAND_STOP;
+}
+
+static furnace_hmi_command_outcome_t *outcome_of(furnace_hmi_controller_client_t *c, bool stop)
+{
+    return stop ? &c->observation.stop : &c->observation.command;
+}
+
+static furnace_hmi_controller_client_delivery_t *delivery_of(furnace_hmi_controller_client_t *c,
+                                                             bool stop)
+{
+    return stop ? &c->stop_delivery : &c->command_delivery;
+}
+
+/* The command as its message, with the envelope of this request_id. */
+static bool encode_command(furnace_hmi_controller_client_t *c, const furnace_hmi_command_t *cmd,
+                           uint32_t request_id)
+{
+    struct furnace_wire_message *m = &c->out;
+    struct furnace_wire_envelope *env;
+
+    (void)memset(m, 0, sizeof(*m));
+    switch (cmd->kind) {
+    case FURNACE_HMI_COMMAND_START_PREPARE:
+        m->type = FURNACE_WIRE_MSG_START_PREPARE;
+        env = &m->u.start_prepare.envelope;
+        break;
+    case FURNACE_HMI_COMMAND_MANUAL_START:
+        m->type = FURNACE_WIRE_MSG_MANUAL_START;
+        env = &m->u.manual_start.envelope;
+        m->u.manual_start.target = cmd->target_decicelsius;
+        m->u.manual_start.rate = cmd->rate_decicelsius_per_min;
+        m->u.manual_start.session_minutes = cmd->session_minutes;
+        break;
+    case FURNACE_HMI_COMMAND_MANUAL_RETARGET:
+        m->type = FURNACE_WIRE_MSG_MANUAL_RETARGET;
+        env = &m->u.manual_retarget.envelope;
+        m->u.manual_retarget.run_id = cmd->run_id;
+        m->u.manual_retarget.target = cmd->target_decicelsius;
+        m->u.manual_retarget.rate = cmd->rate_decicelsius_per_min;
+        break;
+    case FURNACE_HMI_COMMAND_MANUAL_SET_LENGTH:
+        m->type = FURNACE_WIRE_MSG_MANUAL_SET_LENGTH;
+        env = &m->u.manual_set_length.envelope;
+        m->u.manual_set_length.run_id = cmd->run_id;
+        m->u.manual_set_length.session_minutes = cmd->session_minutes;
+        break;
+    case FURNACE_HMI_COMMAND_PAUSE:
+        m->type = FURNACE_WIRE_MSG_RUN_PAUSE;
+        env = &m->u.run_pause.envelope;
+        m->u.run_pause.run_id = cmd->run_id;
+        break;
+    case FURNACE_HMI_COMMAND_RESUME:
+        m->type = FURNACE_WIRE_MSG_RESUME_REQUEST;
+        env = &m->u.resume_request.envelope;
+        m->u.resume_request.run_id = cmd->run_id;
+        break;
+    case FURNACE_HMI_COMMAND_CONTINUE:
+        m->type = FURNACE_WIRE_MSG_RUN_CONTINUE;
+        env = &m->u.run_continue.envelope;
+        m->u.run_continue.run_id = cmd->run_id;
+        break;
+    case FURNACE_HMI_COMMAND_STOP:
+        m->type = FURNACE_WIRE_MSG_RUN_STOP;
+        env = &m->u.run_stop.envelope;
+        m->u.run_stop.run_id = cmd->run_id;
+        break;
+    case FURNACE_HMI_COMMAND_FAULT_ACKNOWLEDGE:
+        m->type = FURNACE_WIRE_MSG_FAULT_ACKNOWLEDGE;
+        env = &m->u.fault_acknowledge.envelope;
+        m->u.fault_acknowledge.fault_id = cmd->fault_id;
+        m->u.fault_acknowledge.source = cmd->source;
+        break;
+    case FURNACE_HMI_COMMAND_FAULT_RECOVERY:
+        m->type = FURNACE_WIRE_MSG_FAULT_RECOVERY_REQUEST;
+        env = &m->u.fault_recovery_request.envelope;
+        m->u.fault_recovery_request.fault_id = cmd->fault_id;
+        m->u.fault_recovery_request.source = cmd->source;
+        break;
+    case FURNACE_HMI_COMMAND_NONE:
+    case FURNACE_HMI_COMMAND_COUNT:
+    default:
+        return false;
+    }
+    (void)memcpy(env->session_id, c->observation.session_id, sizeof(env->session_id));
+    env->client_session_id = c->observation.client_session_id;
+    env->request_id = request_id;
+    return true;
+}
+
+/* Send a slot's command (again) under its request_id. */
+static void send_command(furnace_hmi_controller_client_t *c, bool stop)
+{
+    furnace_hmi_command_outcome_t *o = outcome_of(c, stop);
+    furnace_hmi_controller_client_delivery_t *d = delivery_of(c, stop);
+
+    if (encode_command(c, &d->command, o->request_id)) {
+        send_out(c);
+        d->last_sent_ms = c->now_ms;
+        o->attempts++;
+        changed(c);
+    }
+}
+
+static void unresolve(furnace_hmi_controller_client_t *c, bool stop,
+                      furnace_hmi_command_unresolved_t cause)
+{
+    furnace_hmi_command_outcome_t *o = outcome_of(c, stop);
+
+    if (o->state == FURNACE_HMI_COMMAND_PENDING) {
+        o->state = FURNACE_HMI_COMMAND_UNRESOLVED;
+        o->unresolved_cause = cause;
+        changed(c);
+    }
+}
+
+/*
+ * The pending command of this request_id and kind, if any. Results carry no
+ * client session, so the kind is checked too (review F7).
+ */
+static furnace_hmi_command_outcome_t *pending_command(furnace_hmi_controller_client_t *c,
+                                                      uint32_t request_id,
+                                                      furnace_hmi_command_kind_t kind)
+{
+    furnace_hmi_command_outcome_t *o = outcome_of(c, furnace_hmi_command_is_stop(kind));
+
+    if (kind != FURNACE_HMI_COMMAND_NONE && o->state == FURNACE_HMI_COMMAND_PENDING &&
+        o->request_id == request_id && o->kind == kind) {
+        return o;
+    }
+    return NULL;
+}
+
+/* RUN_COMMAND_* command codes (controller interface). */
+static furnace_hmi_command_kind_t kind_of_run_command(uint8_t command)
+{
+    switch (command) {
+    case 1U:
+        return FURNACE_HMI_COMMAND_PAUSE;
+    case 2U:
+        return FURNACE_HMI_COMMAND_RESUME;
+    case 3U:
+        return FURNACE_HMI_COMMAND_STOP;
+    case 4U:
+        return FURNACE_HMI_COMMAND_CONTINUE;
+    case 6U:
+        return FURNACE_HMI_COMMAND_MANUAL_START;
+    case 7U:
+        return FURNACE_HMI_COMMAND_MANUAL_RETARGET;
+    case 8U:
+        return FURNACE_HMI_COMMAND_MANUAL_SET_LENGTH;
+    default:
+        return FURNACE_HMI_COMMAND_NONE;
+    }
+}
+
+/* The command a COMMAND_REJECTED names by its message type. */
+static furnace_hmi_command_kind_t kind_of_message(uint16_t msg_type)
+{
+    switch (msg_type) {
+    case FURNACE_WIRE_MSG_START_PREPARE:
+        return FURNACE_HMI_COMMAND_START_PREPARE;
+    case FURNACE_WIRE_MSG_MANUAL_START:
+        return FURNACE_HMI_COMMAND_MANUAL_START;
+    case FURNACE_WIRE_MSG_MANUAL_RETARGET:
+        return FURNACE_HMI_COMMAND_MANUAL_RETARGET;
+    case FURNACE_WIRE_MSG_MANUAL_SET_LENGTH:
+        return FURNACE_HMI_COMMAND_MANUAL_SET_LENGTH;
+    case FURNACE_WIRE_MSG_RUN_PAUSE:
+        return FURNACE_HMI_COMMAND_PAUSE;
+    case FURNACE_WIRE_MSG_RESUME_REQUEST:
+        return FURNACE_HMI_COMMAND_RESUME;
+    case FURNACE_WIRE_MSG_RUN_CONTINUE:
+        return FURNACE_HMI_COMMAND_CONTINUE;
+    case FURNACE_WIRE_MSG_RUN_STOP:
+        return FURNACE_HMI_COMMAND_STOP;
+    case FURNACE_WIRE_MSG_FAULT_ACKNOWLEDGE:
+        return FURNACE_HMI_COMMAND_FAULT_ACKNOWLEDGE;
+    case FURNACE_WIRE_MSG_FAULT_RECOVERY_REQUEST:
+        return FURNACE_HMI_COMMAND_FAULT_RECOVERY;
+    default:
+        return FURNACE_HMI_COMMAND_NONE;
+    }
+}
+
+static void complete(furnace_hmi_controller_client_t *c, furnace_hmi_command_outcome_t *o,
+                     bool accepted, uint8_t reason)
+{
+    o->state = accepted ? FURNACE_HMI_COMMAND_ACCEPTED : FURNACE_HMI_COMMAND_REJECTED;
+    o->reason = reason;
+    c->client_session_confirmed = true;
+    changed(c);
+}
+
+static void on_run_command_result(furnace_hmi_controller_client_t *c, bool accepted,
+                                  uint32_t request_id, uint8_t command, uint8_t reason,
+                                  uint32_t blocking, uint32_t run_id)
+{
+    furnace_hmi_command_outcome_t *o =
+        pending_command(c, request_id, kind_of_run_command(command));
+
+    if (o != NULL) {
+        o->blocking_conditions = blocking;
+        o->run_id = run_id;
+        complete(c, o, accepted, reason);
+    }
+}
+
+static void on_fault_acknowledge_result(furnace_hmi_controller_client_t *c,
+                                        const struct furnace_wire_fault_acknowledge_result *r)
+{
+    furnace_hmi_command_outcome_t *o =
+        pending_command(c, r->request_id, FURNACE_HMI_COMMAND_FAULT_ACKNOWLEDGE);
+
+    if (o != NULL) {
+        complete(c, o, r->result == ACKNOWLEDGE_DONE, r->result);
+    }
+}
+
+static void on_fault_recovery_result(furnace_hmi_controller_client_t *c,
+                                     const struct furnace_wire_fault_recovery_result *r)
+{
+    furnace_hmi_command_outcome_t *o =
+        pending_command(c, r->request_id, FURNACE_HMI_COMMAND_FAULT_RECOVERY);
+
+    if (o != NULL) {
+        o->fault_found = r->found;
+        /* The reply means nothing when the entry was not found (interface): 0. */
+        complete(c, o, r->found && r->reply == RECOVERY_RECOVERED, r->found ? r->reply : 0U);
+    }
+}
+
+static void on_start_prepare_result(furnace_hmi_controller_client_t *c,
+                                    const struct furnace_wire_start_prepare_result *r)
+{
+    furnace_hmi_command_outcome_t *o =
+        pending_command(c, r->request_id, FURNACE_HMI_COMMAND_START_PREPARE);
+
+    if (o != NULL) {
+        o->store_readiness = r->store_readiness;
+        complete(c, o, true, 0U);
+    }
+}
+
+/*
+ * COMMAND_REJECTED of a pending command: refused by the service, except that a
+ * duplicate and STOP_UNRESOLVED leave the outcome unknown (controller interface).
+ * A Stop the service refused because this client is not connected stays
+ * pending: it is sent again after HELLO, under its request_id (review F3).
+ */
+static bool command_rejected(furnace_hmi_controller_client_t *c, uint32_t request_id,
+                             uint16_t msg_type, uint8_t reason)
+{
+    furnace_hmi_command_outcome_t *o = pending_command(c, request_id, kind_of_message(msg_type));
+
+    if (o == NULL) {
+        return false;
+    }
+    o->reason = reason;
+    if (furnace_hmi_command_is_stop(o->kind) &&
+        (reason == REJECT_NOT_CONNECTED || reason == REJECT_CLIENT_SESSION_MISMATCH)) {
+        return true;
+    }
+    if (reason == REJECT_DUPLICATE_REQUEST) {
+        o->state = FURNACE_HMI_COMMAND_UNRESOLVED;
+        o->unresolved_cause = FURNACE_HMI_COMMAND_UNRESOLVED_DUPLICATE;
+    } else if (reason == REJECT_STOP_UNRESOLVED) {
+        o->state = FURNACE_HMI_COMMAND_UNRESOLVED;
+        o->unresolved_cause = FURNACE_HMI_COMMAND_UNRESOLVED_STOP;
+    } else {
+        o->state = FURNACE_HMI_COMMAND_REFUSED;
+    }
+    changed(c);
+    return true;
+}
+
+/*
+ * An unanswered command is sent again under its request_id while the link is
+ * connected, until its attempts run out. A Stop is also sent again while the
+ * link synchronizes (HELLO_ACK has confirmed the session; review F4), and waits
+ * through a silent link for at most FURNACE_HMI_CLIENT_STOP_PATIENCE_MS.
+ */
+static void on_command_time(furnace_hmi_controller_client_t *c)
+{
+    const furnace_hmi_link_state_t link = c->observation.link;
+
+    for (int slot = 0; slot < 2; slot++) {
+        const bool stop = (slot == 1);
+        furnace_hmi_command_outcome_t *o = outcome_of(c, stop);
+        const uint32_t since = delivery_of(c, stop)->last_sent_ms;
+        const uint8_t attempts =
+            stop ? FURNACE_HMI_CLIENT_STOP_ATTEMPTS : FURNACE_HMI_CLIENT_COMMAND_ATTEMPTS;
+        const bool usable = (link == FURNACE_HMI_LINK_CONNECTED) ||
+                            (stop && link == FURNACE_HMI_LINK_SYNCHRONIZING);
+
+        if (o->state != FURNACE_HMI_COMMAND_PENDING) {
+            continue;
+        }
+        if (!usable) {
+            if (stop && elapsed(c->now_ms, since, FURNACE_HMI_CLIENT_STOP_PATIENCE_MS)) {
+                unresolve(c, stop, FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST);
+            }
+            continue;
+        }
+        if (!elapsed(c->now_ms, since, FURNACE_HMI_CLIENT_COMMAND_RETRY_MS)) {
+            continue;
+        }
+        if (o->attempts >= attempts) {
+            unresolve(c, stop, FURNACE_HMI_COMMAND_UNRESOLVED_NO_ANSWER);
+        } else {
+            send_command(c, stop);
+        }
+    }
+}
+
+static void record_refusal(furnace_hmi_controller_client_t *c, const furnace_hmi_command_t *command,
+                           uint32_t submission, furnace_hmi_command_local_t reason)
+{
+    furnace_hmi_command_refusal_t *r = furnace_hmi_command_is_stop(command->kind)
+                                           ? &c->observation.stop_refusal
+                                           : &c->observation.command_refusal;
+
+    r->submission = submission;
+    r->kind = command->kind;
+    r->reason = reason;
+    changed(c);
+}
+
+void furnace_hmi_controller_client_refuse(furnace_hmi_controller_client_t *client,
+                                          const furnace_hmi_command_t *command,
+                                          uint32_t submission, furnace_hmi_command_local_t reason)
+{
+    record_refusal(client, command, submission, reason);
+}
+
+furnace_hmi_command_local_t furnace_hmi_controller_client_submit(
+    furnace_hmi_controller_client_t *client, const furnace_hmi_command_t *command,
+    uint32_t submission)
+{
+    furnace_hmi_controller_client_t *c = client;
+    furnace_hmi_command_local_t refusal = FURNACE_HMI_COMMAND_LOCAL_NONE;
+    const bool stop = furnace_hmi_command_is_stop(command->kind);
+    furnace_hmi_command_outcome_t *o = outcome_of(c, stop);
+    uint32_t request_id = 0U;
+
+    if (command->kind <= FURNACE_HMI_COMMAND_NONE || command->kind >= FURNACE_HMI_COMMAND_COUNT) {
+        refusal = FURNACE_HMI_COMMAND_LOCAL_INVALID;
+    } else if (c->observation.link != FURNACE_HMI_LINK_CONNECTED) {
+        refusal = FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT;
+    } else if (o->state == FURNACE_HMI_COMMAND_PENDING) {
+        refusal = FURNACE_HMI_COMMAND_LOCAL_BUSY;
+    } else if (!take_request_id(c, &request_id)) {
+        refusal = FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT; /* a new client session is opening */
+    }
+    if (refusal != FURNACE_HMI_COMMAND_LOCAL_NONE) {
+        record_refusal(c, command, submission, refusal);
+        return refusal;
+    }
+    (void)memset(o, 0, sizeof(*o));
+    o->submission = submission;
+    o->kind = command->kind;
+    o->state = FURNACE_HMI_COMMAND_PENDING;
+    o->request_id = request_id;
+    delivery_of(c, stop)->command = *command;
+    send_command(c, stop);
+    return FURNACE_HMI_COMMAND_LOCAL_NONE;
+}
+
 /* ---- the controller session -------------------------------------------------------------- */
 
 static void discard_session_data(furnace_hmi_controller_client_t *c)
@@ -196,6 +580,9 @@ static void discard_session_data(furnace_hmi_controller_client_t *c)
     c->newest_fault_event_seen = 0U;
     c->pending_fault_pages_seen = false;
     c->reconnect_baseline_active = false;
+    /* Another controller session: a restart, which ends every run; no result will come. */
+    unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED);
+    unresolve(c, true, FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED);
     changed(c);
 }
 
@@ -252,6 +639,7 @@ static void on_hello_ack(furnace_hmi_controller_client_t *c, const struct furnac
     o->hello_result = ack->result;
     changed(c);
     if (ack->result != HELLO_OK) {
+        unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST);
         if (ack->result == HELLO_INVALID_CLIENT_SESSION) {
             new_client_session(c);
         } else {
@@ -265,6 +653,8 @@ static void on_hello_ack(furnace_hmi_controller_client_t *c, const struct furnac
         adopt_session(c, ack->session_id);
         return;
     }
+    /* The controller (re)opened the client's session: an ordinary command's intent ends (F1). */
+    unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST);
     /* The same controller session: it sends no snapshot to a repeated HELLO, so ask. */
     begin_synchronizing(c);
     if (!o->capabilities_valid) {
@@ -333,6 +723,7 @@ static void on_capabilities(furnace_hmi_controller_client_t *c,
     o->status_interval_ms = caps->status_interval_ms;
     o->heartbeat_interval_ms = caps->heartbeat_interval_ms;
     o->link_silence_ms = caps->link_silence_ms;
+    o->manual_max_minutes = caps->manual_max_minutes;
     o->capabilities_valid = true;
     changed(c);
 }
@@ -362,12 +753,18 @@ static void copy_status(furnace_hmi_controller_observation_t *o, const struct fu
     o->run_elapsed_s = s->run_status.run_elapsed_s;
     o->cooling = s->run_status.cooling;
     o->cooling_s = s->run_status.cooling_s;
+    o->manual_target_decicelsius = s->run_status.manual_target;
+    o->manual_rate_decicelsius_per_min = s->run_status.manual_rate;
+    o->manual_remaining_s = s->run_status.manual_remaining_s;
     o->setpoint_valid = s->run_status.setpoint_valid;
     o->setpoint_decicelsius = s->run_status.setpoint;
     o->heating_requested = s->run_status.heating_requested;
     o->heating_inhibited = s->fault_status.heating_inhibited;
     o->latched_class = s->fault_status.latched_class;
     o->inhibit_ids = s->fault_status.inhibit_ids;
+    o->continuable_ids = s->fault_status.continuable_ids;
+    o->resume_allowed = s->fault_status.resume_allowed;
+    o->decision_remaining_s = s->run_status.decision_remaining_s;
     o->unacknowledged_faults = s->fault_status.unacknowledged_count;
     o->session_fresh = s->controller.session_fresh;
     o->store_readiness = s->controller.store_readiness;
@@ -449,6 +846,10 @@ static void on_fault_list(furnace_hmi_controller_client_t *c,
         f->condition_active = e->condition_active;
         f->latched = e->latched;
         f->acknowledged = e->acknowledged;
+        f->recovery = e->recovery;
+        f->category = e->category;
+        f->continuable = e->continuable;
+        f->continued = e->continued;
     }
 }
 
@@ -541,8 +942,9 @@ static void on_command_rejected(furnace_hmi_controller_client_t *c,
     const bool snapshot = (o->snapshot_request == FURNACE_HMI_REQUEST_PENDING) &&
                           (r->request_id == o->snapshot_request_id);
     const bool capabilities = (r->request_id != 0U) && (r->request_id == c->capabilities_request_id);
+    const bool command = command_rejected(c, r->request_id, r->msg_type, r->reason);
 
-    if (!snapshot && !capabilities) {
+    if (!snapshot && !capabilities && !command) {
         return;
     }
     if (snapshot) {
@@ -600,8 +1002,31 @@ static void on_frame(furnace_hmi_controller_client_t *c, const struct furnace_wi
     case FURNACE_WIRE_MSG_COMMAND_REJECTED:
         on_command_rejected(c, &m->u.command_rejected);
         break;
+    case FURNACE_WIRE_MSG_RUN_COMMAND_ACCEPTED:
+        on_run_command_result(c, true, m->u.run_command_accepted.request_id,
+                              m->u.run_command_accepted.command,
+                              m->u.run_command_accepted.reason,
+                              m->u.run_command_accepted.blocking_conditions,
+                              m->u.run_command_accepted.run_id);
+        break;
+    case FURNACE_WIRE_MSG_RUN_COMMAND_REJECTED:
+        on_run_command_result(c, false, m->u.run_command_rejected.request_id,
+                              m->u.run_command_rejected.command,
+                              m->u.run_command_rejected.reason,
+                              m->u.run_command_rejected.blocking_conditions,
+                              m->u.run_command_rejected.run_id);
+        break;
+    case FURNACE_WIRE_MSG_FAULT_ACKNOWLEDGE_RESULT:
+        on_fault_acknowledge_result(c, &m->u.fault_acknowledge_result);
+        break;
+    case FURNACE_WIRE_MSG_FAULT_RECOVERY_RESULT:
+        on_fault_recovery_result(c, &m->u.fault_recovery_result);
+        break;
+    case FURNACE_WIRE_MSG_START_PREPARE_RESULT:
+        on_start_prepare_result(c, &m->u.start_prepare_result);
+        break;
     default:
-        break; /* SETTINGS, proposals and results: later milestones */
+        break; /* SETTINGS, start proposals and library replies: later milestones */
     }
 }
 
@@ -665,6 +1090,8 @@ static void on_time(furnace_hmi_controller_client_t *c)
         set_link(c, FURNACE_HMI_LINK_SILENT);
         c->reconnect_baseline_active = true;
         c->reconnect_baseline = o->status_sequence;
+        /* The operator's intent ends with the link; a Stop waits for it (M21-5 design). */
+        unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_LINK_LOST);
         send_hello(c);
         return;
     }
@@ -746,6 +1173,7 @@ void furnace_hmi_controller_client_poll(furnace_hmi_controller_client_t *client,
         }
     }
     on_time(client);
+    on_command_time(client);
     update_availability(client);
 }
 

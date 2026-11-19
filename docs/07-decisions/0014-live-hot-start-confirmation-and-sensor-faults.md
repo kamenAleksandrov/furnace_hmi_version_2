@@ -33,7 +33,7 @@ Mandated (product owner, 2026-10-16):
 - Telemetry or link loss is shown as such; Confirm is disabled while data is stale or unavailable. If the controller invalidates the proposal, or a configured fallback timeout applies, the HMI informs the operator with the reason and closes the confirmation; it never dismisses it silently or shows it as accepted (REQ-FUN-021).
 - Sensor faults arrive as structured controller events (channel, classification, consequence, required action) and are shown as localized warnings; degraded operation is shown distinctly from normal operation; acknowledging a warning never bypasses a fault, and a cleared fault never restarts heating (REQ-FUN-022).
 - A cooling-time estimate is optional and informational; when unreliable, "no reliable estimate" is shown (REQ-FUN-023).
-- Manual: the six-hour value in REQ-FUN-005 is the default session selection; the controller's configurable maximum (initially 48 h) bounds every selection.
+- Manual: the six-hour value in REQ-FUN-005 is the default session selection; the controller's configurable maximum (initially 48 h) bounds every selection. (Superseded 2026-11-11 by a product-owner decision recorded in REQ-FUN-005: the HMI offers no selection and asks for the controller's maximum.)
 
 ## Consequences
 

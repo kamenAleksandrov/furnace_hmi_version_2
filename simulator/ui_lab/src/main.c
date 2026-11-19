@@ -99,6 +99,19 @@ static bool pump_controller_requests(ui_lab_context_t *context)
     case FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN:
         (void)furnace_hmi_simulator_close_run(&context->simulator);
         break;
+    case FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE:
+        (void)furnace_hmi_simulator_fault_acknowledge(&context->simulator, request.fault_id, request.source);
+        break;
+    case FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY:
+        (void)furnace_hmi_simulator_fault_recover(&context->simulator, request.fault_id, request.source);
+        break;
+    case FURNACE_HMI_OPERATOR_REQUEST_CONTINUE:
+        (void)furnace_hmi_simulator_continue(&context->simulator);
+        break;
+    case FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE:
+    case FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START:
+    case FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET:
+        /* Raised only without simulated answers (the controller application). */
     case FURNACE_HMI_OPERATOR_REQUEST_NONE:
         break;
     }
@@ -1010,8 +1023,8 @@ static bool modal_shows(const ui_lab_context_t *context, furnace_hmi_ui_string_i
 }
 
 /* Controller alerts: each fault kind opens its alert over Running (Home for a
- * power interruption), Close only dismisses it, Return Home leaves the ended
- * run, and link loss/restoration raise their own alerts with commands disabled. */
+ * power interruption), Close only dismisses it, Stop ends the faulted run (owner
+ * 2026-11-11), and link loss/restoration raise their own alerts with commands disabled. */
 static int check_controller_alerts(ui_lab_context_t *context)
 {
     static const struct {
@@ -1037,11 +1050,23 @@ static int check_controller_alerts(ui_lab_context_t *context)
             return 3;
         }
         if (faults[i].page != FURNACE_HMI_OPERATOR_PAGE_RUNNING) { continue; }
-        /* The run has ended: the fault replaces the stage label, Pause is gone and Stop is Return Home. */
+        /* The Faults dialog lists the entry; Acknowledge is answered by the simulation (M21-5c). */
+        char faults_text[32];
+        (void)snprintf(faults_text, sizeof(faults_text), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT),
+                       (unsigned int)context->explorer.state->fault_total);
+        if (!tap_text(context, faults_text) || context->explorer.modal == NULL ||
+            !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE) || !pump_controller_requests(context) ||
+            !context->explorer.state->faults[0].acknowledged || !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) ||
+            context->explorer.modal != NULL) {
+            fprintf(stderr, "Faults dialog failed for %s\n", furnace_hmi_sim_scenario_name(faults[i].scenario));
+            return 3;
+        }
+        /* The fault replaces the stage label, Pause is gone, Stop stays and Return Home is not offered;
+         * Stop ends the run, and Home follows. */
         if (find_label(context->explorer.content, ui_string(faults[i].title)) == NULL ||
             find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PAUSE_PREVIEW)) != NULL ||
-            find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW)) != NULL ||
-            !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME) ||
+            find_button(context->explorer.root, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME)) != NULL ||
+            !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) || !pump_controller_requests(context) ||
             context->explorer.page != FURNACE_HMI_OPERATOR_PAGE_HOME) {
             fprintf(stderr, "Faulted Running did not end the run for %s\n", furnace_hmi_sim_scenario_name(faults[i].scenario));
             return 3;
@@ -1956,6 +1981,14 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         handle_timers(2U);
         /* Fault scenarios open with their alert; close it as an operator would. */
         if (context->explorer.alert_open != 0U && !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) { return 3; }
+        /* A decision is answered first: Continue, and the run goes on (M21-5c). */
+        if (scenario == FURNACE_HMI_SIM_SCENARIO_DECISION &&
+            (!context->explorer.decision_open || !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE) ||
+             !pump_controller_requests(context) || context->explorer.decision_open ||
+             context->explorer.state->run_state != FURNACE_HMI_RUN_STATE_RUNNING)) {
+            fprintf(stderr, "The decision was not answered\n");
+            return 3;
+        }
         if (context->explorer.page == FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
             if (furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_HOME)) { return 3; }
             int64_t domain = context->explorer.trajectory_domain_maximum_seconds;
@@ -1964,10 +1997,8 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
             furnace_hmi_simulator_tick(&context->simulator, 1);
             if (!furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) || context->explorer.content != content) { return 3; }
             if (!furnace_hmi_operator_screens_show_service_warning(&context->explorer)) { return 3; }
-            /* A run the controller ended offers Return Home where Stop was. */
-            const bool ended = context->explorer.state->run_state == FURNACE_HMI_RUN_STATE_FAULT;
-            lv_obj_t *stop = find_button(context->explorer.content, ui_string(ended ? FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME
-                                                                                    : FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
+            /* Stop stays reachable below the dialog, a faulted run included (owner 2026-11-11). */
+            lv_obj_t *stop = find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
             lv_area_t stop_area, overlay_area;
             if (!stop) { return 3; }
             lv_obj_get_coords(stop, &stop_area); lv_obj_get_coords(context->explorer.modal, &overlay_area);

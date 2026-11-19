@@ -114,6 +114,133 @@ agree with the controller's lifecycle; no state-changing command yet.
     the decision itself is M21-5.
   - A finished run that still cools is shown as cooling, never as complete.
 
+### M21-5 design
+
+Owner decisions 2026-11-11:
+- **Program Start moves to M21-7.** Protocol 0.16 cannot list programs (the library is 20d, M21-6),
+  so the HMI cannot name one without inventing it. M21-5 covers:
+  - Manual: Start, retarget, length, Stop;
+  - Pause, Resume, Stop and Continue;
+  - fault acknowledgement and recovery.
+
+  All of them can be exercised on a Manual session. Program Start stays gated on Zephyr.
+- **A faulted run follows the controller everywhere:**
+  - it stays on Running until the operator stops it;
+  - the UI lab and the web demo drop Return Home on a faulted run;
+  - the UX baseline is amended;
+  - HMI-FAULT-RETURN-HOME is resolved and recorded as a CFL entry in the furnace requirements
+    register.
+
+Three steps, each a commit series on one draft pull request, stacked on M21-2b:
+
+1. **M21-5a, commands in the client.** The portable client sends operator commands and reports
+   their outcomes; the Zephyr link thread takes them from the UI thread. No screen changes.
+2. **M21-5b, the screens.** Manual and Running send real commands and show the outcome. The
+   faulted-run change lands in the lab, the web demo and Zephyr.
+3. **M21-5c, faults.** Acknowledgement, recovery and the Continue/Stop decision (AWAITING_DECISION);
+   fault IDs mapped to the screens' alerts (HMI-FAULT-CATEGORY).
+
+**M21-5c, faults and the decision** (owner 2026-11-11: a Faults dialog; a decision panel that cannot be
+closed; HMI ADR-0018 and ADR-0019):
+- **Faults dialog:** opened from a red "Faults (n)" button on Running and Manual and a banner on
+  Home whenever the controller lists entries. Each entry shows its name (from its fault ID), active
+  or cleared, latched and acknowledged. An unacknowledged entry offers Acknowledge; an acknowledged
+  latched entry the operator may recover offers Recover; a protective trip says it is reset at the
+  protection device. Each is a request naming the entry by ID and source; the controller's answer
+  is shown in the dialog. The actions wait for a pending command, a Stop and a fresh list. The
+  dialog is redrawn only when what it shows changes, so a tap is not lost.
+- **Decision panel:** while the controller awaits a decision it covers Running or Manual and cannot
+  be closed: the fault, "the cure may be affected", the controller's time left (unknown when not
+  current) and Continue and Stop, which follow the link and the commands on every observation. It
+  closes when the controller leaves the decision; a fault alert that comes meanwhile is shown then.
+- **Alerts:** the adapter names the fault behind a faulted run and maps it to an alert kind only
+  where the kind is right; any other controller fault is alerted by its name.
+- **Parity:** the UI lab's simulation and the web demo raise an entry with each fault scenario,
+  keep latched entries after the run, answer Acknowledge, Recover and Continue, and have a decision
+  scenario.
+- **Against the real controller:** firmware #55 raises a continuable LAG with the scenario line
+  `offset`; the workflow check runs the decision with Continue.
+
+**Command rules** (controller interface: "Session, link and delivery", "Start readiness"):
+- **Outcomes:** a command is **accepted** or **rejected** only by the controller's result after it
+  was applied (API-03). Sent is never shown as done.
+- **Slots:** one ordinary command at a time, plus Stop in its own slot, so a pending command never
+  delays a Stop. A second ordinary command while one is pending is refused locally (`BUSY`); the
+  screen shows the pending one.
+- **Retries:** an unanswered command is sent again under the **same** `request_id`; the controller
+  returns its recorded result and runs nothing twice.
+  - An ordinary command is retried while the link stays current. Its outcome becomes
+    **unresolved** after the attempts run out, or when the link is re-opened in any way: the HMI's
+    silence, a HELLO the HMI sends (for example after a NOT_CONNECTED), any HELLO_ACK, or a change
+    of controller or client session. The operator's intent ends there (Start readiness, rule 4),
+    and the HMI never re-sends it by itself.
+  - Stop is retried while connected and while synchronizing to the same controller session (its
+    HELLO_ACK has confirmed the session), also after NOT_CONNECTED or CLIENT_SESSION_MISMATCH.
+    It ends unresolved when the controller or client session changes, its attempts run out, the
+    controller reports STOP_UNRESOLVED, or the link is unusable for
+    `FURNACE_HMI_CLIENT_STOP_PATIENCE_MS`. Another refusal by the service makes it refused.
+  - **Order:** a Stop handed over before an earlier command was sent drops that command, which is
+    reported as superseded: nothing the operator pressed before Stop goes out after it.
+  - Results carry no client session, so a result completes a command only when its request ID
+    and kind both match.
+  - A result arriving after its command became unresolved is ignored; the state comes from
+    STATUS.
+- **Unresolved:** `DUPLICATE_REQUEST` on a retry, `STOP_UNRESOLVED`, a session change and lost
+  answers are all reported as unresolved, never as accepted or rejected. The screens then show the
+  state from `STATUS`.
+- **Not sent:** while the link is not current, a command is refused locally (`NOT_CURRENT`) and
+  nothing is sent. Each slot keeps its own latest refusal.
+- **Start readiness:** `START_PREPARE` is sent when the operator opens a way to start (Manual).
+  Manual Start is enabled only when `store_readiness` is READY. A Start refused as `STORE_NOT_READY`
+  is not re-sent; the operator presses Start again.
+- **Codes:** the outcome keeps the controller's reason codes as received; their texts are the
+  screens' (M21-5b).
+
+**M21-5b, the screens** (owner 2026-11-11: no session-length choice; retarget taps merged):
+- **Only without simulated answers** (the Zephyr application). The UI lab and the web demo keep
+  their own simulation; the faulted-run change applies to all three.
+- **Requests:** the screens raise START_PREPARE, MANUAL_START, MANUAL_RETARGET, PAUSE, RESUME and
+  STOP; the host hands each over and tells the screens its submission number
+  (`furnace_hmi_operator_screens_request_submitted`, 0 when it could not). An ordinary request is
+  taken before a Stop of the same pass, so the mailbox lets the Stop drop it.
+- **Feedback:** the model carries the newest outcome of each slot (`command_feedback`,
+  `stop_feedback`: pending, accepted, rejected, refused, unresolved, not sent, with the reason).
+  A slot offers no second command until the outcome for its submission arrives. Every outcome other
+  than accepted opens a dialog with the screens' text for the controller's reason, except for
+  START_PREPARE, which is asked for in the background.
+- **Stop first:** a Stop tap is never lost behind another tap. While a Stop is handed over or
+  pending, no ordinary command goes out (START_PREPARE aside), a merged tap is dropped, and the
+  steppers and Pause are disabled.
+- **What the operator saw:** the Manual Pause button carries its meaning (Pause or Resume) from its
+  label; a tap is dropped when the state changed before it was handled. Every request names the
+  run shown when the operator acted.
+- **Manual:**
+  - opening Manual sends START_PREPARE; Start is enabled only when the controller reports READY and
+    its Manual maximum (CAPABILITIES `manual_max_minutes`) is known, and asks for that maximum;
+  - the session, its target and rate, pause and end follow STATUS (`session_kind` MANUAL,
+    `manual_target`, `manual_rate`); a controller Manual session holds the Manual page (the UX
+    baseline) instead of Running;
+  - a stepper change during a session is a retarget; taps while one is pending are merged and the
+    newest is sent after the answer; after a refusal or an unresolved outcome nothing is resent and
+    the controller's values are shown;
+  - a faulted session offers Stop only; while the controller awaits a decision, Pause and Resume are
+    not offered (the decision is M21-5c);
+  - a tap not sent when the session ends is dropped;
+  - Exit and Start new leave an ended session that still cools; that mark ends when the controller
+    leaves Manual, so a repeated run ID is a new session.
+- **Running:** Pause, Resume and Stop are requests; a faulted run keeps Stop and offers no Return
+  Home (owner 2026-11-11).
+
+**Threads (ADR-0005):** the UI thread never calls the client. It puts a command into a two-slot
+mailbox (ordinary, Stop) and gets a submission number; the link thread takes it at its next poll.
+The outcome, with that number, comes back in the observation.
+
+**Verification:**
+- client scenarios against the scripted controller (host and Zephyr);
+- a headless end-to-end program against the real controller (`tests/sim/link_pty` of the furnace
+  firmware). It runs each workflow and injects the controller's faults through its scenario channel
+  (firmware #53): a sensor fault, an interlock and a protective trip during a Manual run.
+
 ### M21-3 design
 
 Owner decision 2026-11-10: M21-3 comes first and connects the Zephyr HMI to the actual controller
@@ -240,6 +367,114 @@ commands and operator workflows stay in M21-5 and later.
 - **The codec is replaced only by a new sync** to a newer controller revision. The protocol version check (`HELLO`) refuses a mismatched controller rather than guessing.
 
 ## Progress
+
+- 2026-11-11, M21-5a (draft): **commands in the client** (M21-5 design above).
+  - **The client:** `furnace_hmi_controller_client_submit` and the outcomes in the observation
+    (`command`, `stop`, `command_refusal`); `controller_command.h` holds the plain-data types.
+  - **The link thread:** `furnace_hmi_controller_link_submit`, a two-slot mailbox; the link trace
+    shows both outcomes.
+  - **Against the real controller** (firmware #53, `tools/controller_workflow_check.py`; every
+    rejection reason asserted against the interface, acceptances by state):
+    - Manual: Start, retarget, length, Pause, Resume and Stop accepted; Resume after Stop
+      rejected (NOT_PAUSED);
+    - sensor fault (a not-finite reading): FAULTED, Pause rejected (FAULT_LATCHED), Stop,
+      acknowledgement and recovery of every latched entry;
+    - interlock: PAUSED with INHIBIT, nothing latched; Resume blocked while active
+      (RESUME_BLOCKED), accepted after; Continue rejected (NOT_AWAITING_DECISION);
+    - protective trip: FAULTED, latched class 4; recovery refused as
+      PROTECTIVE_RESET_EXTERNAL during and after the trip;
+    - Start then Stop handed over together: the Start is dropped as superseded, the Stop sent,
+      nothing runs.
+  - **Reviews** (AI agents in the HMI roles: embedded and protocol reviewer; error auditor with
+    software critic). No path heats without an operator action. Fixed test-first, each with a
+    mutation probe that the tests kill:
+    - an ordinary command survived a reconnect the controller saw first (High);
+    - a Stop could overtake an earlier, unsent command in the mailbox (High);
+    - a Stop refused as not connected was lost; a Stop could wait forever while synchronizing;
+      one refusal record served both slots (Medium);
+    - a client-session change was labelled a controller restart; results were matched by
+      request ID alone (Low);
+    - test strength: retry loops in the workflows now retry only the expected rejection; the
+      scenario channel has a deadline; the runner drains the controller's output and also
+      checks the exit code.
+
+    Kept as decided: a late result after unresolved is ignored. Also kept: a command submitted
+    between a new client session and its HELLO_ACK is refused by the controller.
+  - **Found:** a ztest build runs native_sim's clock freely unless
+    `CONFIG_NATIVE_SIM_SLOWDOWN_TO_REAL_TIME` is set, and every link timeout then expires at once.
+    The pseudo-terminals must be raw.
+  - **Evidence:** `host-msvc-core-debug` 15 of 15, `host-msvc-desktop-debug` and `host-debug`
+    (GCC) 18 of 18; Twister in WSL on both native_sim variants, 8 of 8 cases; Twister on
+    Windows, `qemu_x86`, 5 of 5; the M21-3 demonstration 10 of 10; the workflow check 5 of 5;
+    14 mutation probes (13 of the client, 1 of the mailbox through the workflow check), all
+    killed.
+
+- 2026-11-11, M21-5b (draft): **the screens** (M21-5b design above). Owner decisions 2026-11-11:
+  no Manual length choice (REQ-FUN-005 amended); retarget taps merged.
+  - **Screens:** Manual Start, retarget, Pause, Resume and Stop are requests on Zephyr; a
+    controller Manual session holds the Manual page; every outcome other than accepted is shown.
+  - **Model and adapter:** the run ID, the Manual values, start readiness, the Manual maximum and
+    the feedback of both slots, with the HMI's own not-sent reasons.
+  - **Zephyr:** `app/zephyr/src/operator_commands.c` maps a request to a command; `gui_main.c`
+    hands it to the mailbox and reports its submission number.
+  - **Faulted run:** Stop and no Return Home in the screens, the UI lab and the web demo; the UX
+    baseline is amended.
+  - **Reviews** (AI agents in the HMI roles). Fixed test-first, each with a mutation probe that
+    the tests kill:
+    - a Manual Pause tap could be sent as Resume when the controller paused the session before
+      the tap was handled (High);
+    - a merged retarget could go out after Stop; a Manual Stop tap could be lost behind another
+      tap (Medium-High);
+    - a merged tap outlived its session; a faulted session offered the steppers; Pause and Resume
+      were offered while awaiting a decision (Medium);
+    - requests now name the run shown; the left-session mark ends when the controller leaves
+      Manual; the not-sent reasons are the model's (Low);
+    - the UI lab's smoke test still expected Return Home on a faulted run, and the web demo showed
+      Return Home on a run stopped and then faulted.
+
+    Kept: the Running page ignores a Pause or Resume tap while a command is pending instead of
+    disabling the button (program runs cannot start before M21-7); a request the host cannot map
+    is reported as "busy" (unreachable).
+  - **Evidence:** `host-msvc-core-debug` 15 of 15; `host-msvc-desktop-debug` and `host-debug` (GCC)
+    18 of 18; the three UI lab presets 17 of 17 each; Twister in WSL on both native_sim variants,
+    12 of 12 executed cases; Twister on Windows, `qemu_x86`, 4 configurations built (none run on
+    Windows); the workflow check 5 of 5, with Manual started at the controller's maximum; the
+    M21-3 demonstration 10 of 10; the web demo smoke test; 33 mutation probes (19 of the first
+    implementation, 14 of the review fixes), all killed but one equivalent mutant (the flush's own
+    Stop check, which the earlier Stop checks make unreachable). UI lab captures against M21-5a:
+    only the four faulted-run captures change.
+- 2026-11-11, M21-5c (draft): **faults and the decision** (M21-5c design above). Owner decisions
+  2026-11-11: a Faults dialog; a decision panel that cannot be closed.
+  - **Client and model:** each fault entry's recovery, category and continuation; the decision's
+    time left and fault; the fault behind a faulted run and its alert kind (HMI-FAULT-CATEGORY).
+  - **Screens:** the Faults dialog with Acknowledge and Recover, the decision panel with Continue and
+    Stop, and their buttons on Running, Manual and Home. The Zephyr host maps the three commands.
+  - **Parity:** the UI lab's simulation and the web demo raise and answer the same entries and have a
+    decision scenario.
+  - **Against the real controller:** furnace firmware #55 (simulation only) brings the controller to
+    a decision with a continuable LAG; the workflow check runs it with Continue.
+  - **Reviews** (AI agents in the HMI roles). No path sends Continue, Resume or a recovery without an
+    operator tap. Fixed test-first, each with a mutation probe the tests kill:
+    - the decision panel's buttons kept their first state, so a brief link loss could leave the
+      operator without Stop (High);
+    - an alert lost as a decision ended; a stale countdown looked live; Manual's Faults button was
+      made anew on every observation; fault actions named a place in a changing list; the Faults
+      dialog closed on Running as the run moved; an unavailable list read as "no faults"; the alert
+      named the lowest inhibiting fault, with "target not reached" for lag and holdback (Medium);
+    - texts for Continue rejections and unknown recovery replies; no reply for an entry not found;
+      fault actions wait for a Stop and a fresh list; texts from the catalogue (Low).
+  - **Found while testing:** on a faulted Manual session each observation enabled and disabled the
+    steppers again, restarting their transitions; LVGL's heap grew from about 63 KB to 180 KB and the
+    Zephyr test ran out at 192 KiB. Fixed; the heap stays flat (peak 85 KB) and a test checks that
+    observations start no animations. A Stop tap now redraws an open Faults dialog at once.
+  - **Evidence:** `host-msvc-core-debug` 15 of 15; `host-msvc-desktop-debug` and `host-debug` (GCC)
+    18 of 18; the three UI lab presets 17 of 17 each; Twister in WSL, 14 of 14 executed cases;
+    Twister on Windows, `qemu_x86`, 4 configurations built (none run); the workflow check 6 of 6
+    against firmware #55; the M21-3 demonstration 10 of 10; the web demo smoke test; 26 mutation
+    probes (22 of the change, 3 of the client and adapter, 1 of the stepper fix), all killed but one
+    equivalent mutant (Recover can never be offered before Acknowledge). UI lab captures against
+    M21-5b: the four faulted-run captures change and the decision capture is new; manual-cooling
+    differs only in its known timing (HMI-CAPTURE-TIMING).
 
 - 2026-11-10, M21-2b (draft): **the operator screens are shared** (design above).
   - **Moved without change first:** all 279 lab captures (93 at 800x480, 800x640 and 1024x600)
