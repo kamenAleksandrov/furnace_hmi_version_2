@@ -2004,6 +2004,27 @@ static void library_unavailable(void)
     end();
 }
 
+/* Review M1: a library without programs is a complete listing, also after the last delete. */
+static void empty_library_is_current(void)
+{
+    size_t lists;
+
+    begin_library("empty library is current", 5U);
+    send_program_list(fx.last_list.envelope.request_id, 5U, 0U, 0U, 0U);
+    EXPECT(library()->state == FURNACE_HMI_LIBRARY_CURRENT && library()->count == 0U &&
+               library()->library_revision == 5U,
+           "current and empty");
+    lists = fx.lists_sent;
+    keep_current(4000U);
+    EXPECT(fx.lists_sent == lists, "not asked again");
+    fx.status_library_revision = 6U;
+    keep_current(200U);
+    send_program_list(fx.last_list.envelope.request_id, 6U, 1U, 0U, 0U);
+    EXPECT(library()->updating && fx.lists_sent == lists + 1U,
+           "an empty page of a library with programs is not complete");
+    end();
+}
+
 static void library_too_large(void)
 {
     begin_library("library too large", 5U);
@@ -2511,6 +2532,7 @@ int controller_client_tests_run(void)
     read_of_another_revision_restarts();
     damaged_programs_listed();
     library_unavailable();
+    empty_library_is_current();
     library_too_large();
     library_updating_keeps_the_previous();
     lost_library_answer_asked_again();

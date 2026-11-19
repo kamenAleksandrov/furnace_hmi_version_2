@@ -42,7 +42,8 @@ extern "C" {
 #define FURNACE_HMI_CLIENT_STOP_PATIENCE_MS 10000U
 /*
  * A library change (save, delete) is answered once its write ended, or UNRESOLVED
- * after the controller's deadline of at most 10 s; it is sent again only after
+ * after the controller's deadline (not in the interface; the firmware's is two
+ * control periods plus 10 s, about 10.2 s); it is sent again only after
  * this long, up to the attempts below. Provisional HMI values (plan, M21-7 design).
  */
 #define FURNACE_HMI_CLIENT_LIBRARY_RETRY_MS 12000U
@@ -70,7 +71,9 @@ typedef struct {
 /**
  * The HMI's client of the controller link (WI-H06): session, synchronization,
  * freshness and the snapshot request; since M21-5 the operator's commands,
- * which it sends only when submitted. Portable and single-threaded: one
+ * which it sends only when submitted; since M21-7a a copy of the controller's
+ * library, which it lists and reads by itself, and the program Start
+ * transaction with its proposal. Portable and single-threaded: one
  * execution context calls poll and submit; nothing blocks. A caller-owned,
  * statically allocated object.
  */

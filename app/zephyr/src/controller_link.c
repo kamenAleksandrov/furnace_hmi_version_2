@@ -2,10 +2,11 @@
 
 /*
  * The controller link on Zephyr (Phase 21 M21-3). A thread of its own polls the
- * UART and the portable client, and publishes the observation to a single-slot
- * mailbox: the latest value, never a queue that could fall behind. Only the GUI
- * context reads the mailbox, without waiting, and only it touches LVGL
- * (ADR-0005). Nothing here waits on the controller.
+ * UART and the portable client, and publishes the observation, and since M21-7a
+ * the library copy, to single-slot mailboxes: the latest value, never a queue
+ * that could fall behind. Commands come from the GUI context through a two-slot
+ * mailbox (M21-5). Only the GUI context reads the mailboxes, without waiting,
+ * and only it touches LVGL (ADR-0005). Nothing here waits on the controller.
  */
 
 #include <zephyr/device.h>
@@ -111,8 +112,11 @@ static void take_commands(void)
     k_spinlock_key_t key = k_spin_lock(&command_lock);
 
     for (size_t i = 0U; i < 2U; i++) {
-        taken[i] = command_slots[i];
-        command_slots[i].full = false;
+        taken[i].full = command_slots[i].full;
+        if (taken[i].full) {
+            taken[i] = command_slots[i];
+            command_slots[i].full = false;
+        }
     }
     k_spin_unlock(&command_lock, key);
     if (taken[1].full) {

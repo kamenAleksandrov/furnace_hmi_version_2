@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /*
- * SIMULATION ONLY (Phase 21 M21-5). The HMI's controller link, its link thread
- * and command mailbox included, against the real controller: the furnace
+ * SIMULATION ONLY (Phase 21 M21-5, M21-7a). The HMI's controller link, its link
+ * thread, command mailbox and library copy included, against the real controller: the furnace
  * firmware's tests/sim/link_pty program, started by
  * tools/controller_workflow_check.py. Each workflow submits operator commands as
  * a screen does and checks the controller's results and status; faults are the

@@ -39,6 +39,29 @@
 
 #define READ_CHUNK 64U
 
+/* The copies between the plain data and the codec assume these capacities (review L6). */
+_Static_assert(sizeof(((furnace_hmi_command_t *)0)->name) ==
+                   sizeof(((struct furnace_wire_program_save *)0)->name),
+               "a save's name is copied whole");
+_Static_assert(sizeof(((struct furnace_wire_library_entry *)0)->name) ==
+                   FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY + 1U,
+               "library names fit");
+_Static_assert(FURNACE_HMI_CONTROLLER_MAX_STAGES ==
+                   sizeof(((struct furnace_wire_program_data *)0)->stages) /
+                       sizeof(((struct furnace_wire_program_data *)0)->stages[0]),
+               "program stages match the wire");
+_Static_assert(FURNACE_HMI_CONTROLLER_MAX_STAGES ==
+                   sizeof(((struct furnace_wire_start_proposal *)0)->skipped_stages) /
+                       sizeof(((struct furnace_wire_start_proposal *)0)->skipped_stages[0]),
+               "skipped stages match the wire");
+_Static_assert(FURNACE_HMI_CONTROLLER_MAX_PROPOSAL_WARNINGS ==
+                   sizeof(((struct furnace_wire_start_proposal *)0)->warnings),
+               "proposal warnings match the wire");
+_Static_assert(FURNACE_HMI_CLIENT_LIBRARY_PAGE ==
+                   sizeof(((struct furnace_wire_program_list *)0)->entries) /
+                       sizeof(((struct furnace_wire_program_list *)0)->entries[0]),
+               "a list page as the wire holds it");
+
 /* Where the library mirror's reading stands (client.library_step). */
 #define LIBRARY_IDLE 0U
 #define LIBRARY_LISTING 1U
@@ -1434,6 +1457,10 @@ static void on_program_list(furnace_hmi_controller_client_t *c,
         library_restart(c);
         return;
     }
+    if (c->library_total == 0U && l->first_index == 0U && l->entries_count == 0U) {
+        library_read_next(c, 0U); /* a library without programs (review M1) */
+        return;
+    }
     if (l->first_index != c->library_next || l->entries_count == 0U ||
         l->entries_count > c->library_total - c->library_next) {
         return; /* not the page asked for: asked again after the timeout */
@@ -1498,8 +1525,8 @@ static void on_program_data(furnace_hmi_controller_client_t *c,
 }
 
 /*
- * While the link is current: list when the revision shown differs from the
- * controller's, ask again what went unanswered, and mark the listing shown as
+ * While the link is current: list when the controller's revision is newer than
+ * the one shown, ask again what went unanswered, and mark the listing shown as
  * updating. A link that is not current stops the reading (plan, M21-7 design).
  */
 static void library_time(furnace_hmi_controller_client_t *c)

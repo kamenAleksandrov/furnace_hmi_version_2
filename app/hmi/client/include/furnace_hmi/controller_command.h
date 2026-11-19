@@ -97,8 +97,10 @@ typedef enum {
     /** The outcome is not known: the state comes from STATUS. unresolved_cause says why. */
     FURNACE_HMI_COMMAND_UNRESOLVED,
     /**
-     * Program Start only: the controller answered with a proposal that awaits
-     * the operator's Confirm or Cancel (observation.start_proposal). Nothing heats.
+     * Program Start only: the controller answered with a proposal for the
+     * operator's Confirm or Cancel. Nothing heats. The slot keeps this state
+     * until the next command; where the proposal stands is
+     * observation.start_proposal.state.
      */
     FURNACE_HMI_COMMAND_PROPOSED,
     FURNACE_HMI_COMMAND_STATE_COUNT,
@@ -118,7 +120,7 @@ typedef enum {
     FURNACE_HMI_COMMAND_UNRESOLVED_STOP,
     /** The HMI opened a new client session; a result goes only to the one that sent it. */
     FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED,
-    /** A library change answered UNRESOLVED: it may still take effect (the library is listed again). */
+    /** A library change answered UNRESOLVED: it may still take effect (listed again if the revision rises). */
     FURNACE_HMI_COMMAND_UNRESOLVED_BY_CONTROLLER,
     FURNACE_HMI_COMMAND_UNRESOLVED_COUNT,
 } furnace_hmi_command_unresolved_t;

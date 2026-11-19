@@ -131,9 +131,12 @@ Three steps, each its own draft pull request, stacked:
    client, and the Device log and health view from them (ADR-0020); the web demo in parity.
 
 **M21-7a, the library mirror** (controller interface: Program library):
-- **When:** while the link is current, the client lists the library whenever the revision it
-  holds differs from the `library_revision` of the newest `STATUS` or `SNAPSHOT_END`, and after
-  every new controller session. Reads change nothing, so the client may send them by itself.
+- **When:** while the link is current, the client lists the library whenever the
+  `library_revision` of the newest `STATUS` or `SNAPSHOT_END` is newer than the revision it holds,
+  and after every new controller session. Revisions only increase within a controller session, and
+  status is coalesced, so a `STATUS` that trails a page never causes a listing. Reads change
+  nothing, so the client may send them by itself.
+- **An empty library** (total 0) is a complete listing (review M1).
 - **How:** `PROGRAM_LIST_REQUEST` pages of six from index 0, then `PROGRAM_READ_REQUEST` for each
   program that is not damaged. A page with another `library_revision` than the first, or a read
   that gives another revision or `NOT_FOUND`, means the library changed: the listing starts
@@ -158,7 +161,9 @@ Three steps, each its own draft pull request, stacked:
   effect. Any other result is rejected, with the controller's code and, for a save, the first
   validation error and the estimate (`ACKNOWLEDGMENT_REQUIRED`).
 - **Retry timing:** the controller answers a change once its write has ended, or with
-  `UNRESOLVED` after its own deadline of at most 10 s. The client therefore waits
+  `UNRESOLVED` after its own deadline. The interface gives no number; the firmware's is two control
+  periods plus 10 s, about 10.2 s (`app/runtime/src/runtime.c`, `library_client_deadline`). The
+  client therefore waits
   `FURNACE_HMI_CLIENT_LIBRARY_RETRY_MS` (12 s, provisional) before it sends a change again under
   the same request ID. A retry sent earlier would find the change still being written and get
   `DUPLICATE_REQUEST`.
@@ -174,7 +179,14 @@ Three steps, each its own draft pull request, stacked:
   and, when the proposal requires a duration acknowledgement, the accepted duration.
   `START_CANCEL` names the transaction.
 - **Refused Starts:** `STORE_NOT_READY` and every other refusal end the Start; nothing is re-sent
-  by itself (Start readiness, rule 3).
+  by itself (Start readiness, rule 3). `DUPLICATE_REQUEST`, as a `START_REJECTED` reason or a
+  service refusal, is unresolved, as for every command.
+- **After the proposal:** the command slot keeps `PROPOSED` until the next command; where the
+  proposal stands is `start_proposal.state`.
+- **Not yet decided here:** the polled UART of the Zephyr port loses bytes during a sleep on a real
+  UART, and library pages are about 1 KB. An interrupt-driven receive buffer is needed before the
+  library runs on a board (review M2; HW-BLOCK-006 sets the link). On the simulated link (a pty)
+  nothing is lost.
 
 **Verification:** client scenarios against the scripted controller (host and Zephyr), and
 workflows against firmware `link_pty` at the pinned revision: the library of the three
