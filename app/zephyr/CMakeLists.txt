@@ -54,6 +54,7 @@ if(CONFIG_LVGL)
     src/controller_link.c
     src/operator_commands.c
     src/operator_library.c
+    "${FURNACE_HMI_OPERATOR_DIR}/src/operator_diagnostics.c"
     "${FURNACE_HMI_OPERATOR_DIR}/src/operator_screens.c"
     "${FURNACE_HMI_OPERATOR_DIR}/src/operator_theme.c"
     "${FURNACE_HMI_MARKER_DIR}/src/development_marker.c"
@@ -62,6 +63,7 @@ if(CONFIG_LVGL)
     "${FURNACE_HMI_ICONS_DIR}/generated/support_qr.c"
     "${FURNACE_HMI_THEME_DIR}/generated/hmi_theme.c"
     "${FURNACE_HMI_CLIENT_DIR}/src/controller_client.c"
+    "${FURNACE_HMI_CLIENT_DIR}/src/controller_diagnostics.c"
     "${FURNACE_HMI_CLIENT_DIR}/src/controller_library.c"
     "${FURNACE_HMI_CLIENT_DIR}/src/controller_dashboard.c"
     "${FURNACE_HMI_WIRE_DIR}/src/crc32.c"

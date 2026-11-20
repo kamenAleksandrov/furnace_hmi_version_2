@@ -11,6 +11,8 @@
 
 #include <furnace_hmi/controller_client.h>
 
+#include "controller_diagnostics.h"
+
 /* HELLO_ACK results and COMMAND_REJECTED reasons (controller interface). */
 #define HELLO_OK 0U
 #define HELLO_VERSION_UNSUPPORTED 1U
@@ -61,6 +63,18 @@ _Static_assert(FURNACE_HMI_CLIENT_LIBRARY_PAGE ==
                    sizeof(((struct furnace_wire_program_list *)0)->entries) /
                        sizeof(((struct furnace_wire_program_list *)0)->entries[0]),
                "a list page as the wire holds it");
+_Static_assert(FURNACE_HMI_CONTROLLER_HEALTH_SUBSYSTEMS ==
+                   sizeof(((struct furnace_wire_health *)0)->subsystems) /
+                       sizeof(((struct furnace_wire_health *)0)->subsystems[0]),
+               "health subsystems as the wire holds them");
+_Static_assert(FURNACE_HMI_CONTROLLER_HISTORY_PAGE ==
+                   sizeof(((struct furnace_wire_event_history_page *)0)->entries) /
+                       sizeof(((struct furnace_wire_event_history_page *)0)->entries[0]),
+               "a history page as the wire holds it");
+_Static_assert(FURNACE_HMI_CONTROLLER_EVENT_PARAMS ==
+                   sizeof(((struct furnace_wire_history_entry *)0)->params) /
+                       sizeof(((struct furnace_wire_history_entry *)0)->params[0]),
+               "entry parameters as the wire holds them");
 
 /* Where the library mirror's reading stands (client.library_step). */
 #define LIBRARY_IDLE 0U
@@ -977,6 +991,7 @@ static void discard_session_data(furnace_hmi_controller_client_t *c)
     o->start_invalidation_reason = 0U;
     o->library_revision = 0U;
     library_discard(c);
+    furnace_hmi_diagnostics_discard(&c->diagnostics);
     changed(c);
 }
 
@@ -1345,9 +1360,11 @@ static void on_command_rejected(furnace_hmi_controller_client_t *c,
     const bool capabilities = (r->request_id != 0U) && (r->request_id == c->capabilities_request_id);
     /* A refused library read is asked again after its timeout, like a lost answer. */
     const bool library = (c->library_step != LIBRARY_IDLE) && (r->request_id == c->library_request_id);
+    /* Likewise a refused diagnostic read. */
+    const bool diagnostic = furnace_hmi_diagnostics_on_rejected(&c->diagnostics, r->request_id);
     const bool command = command_rejected(c, r->request_id, r->msg_type, r->reason);
 
-    if (!snapshot && !capabilities && !library && !command) {
+    if (!snapshot && !capabilities && !library && !diagnostic && !command) {
         return;
     }
     if (snapshot) {
@@ -1694,8 +1711,44 @@ static void on_frame(furnace_hmi_controller_client_t *c, const struct furnace_wi
     case FURNACE_WIRE_MSG_START_PROPOSAL_INVALIDATED:
         on_start_invalidated(c, &m->u.start_proposal_invalidated);
         break;
+    case FURNACE_WIRE_MSG_HEALTH:
+        if (is_current_session(c, m->u.health.session_id)) {
+            c->client_session_confirmed = true;
+            furnace_hmi_diagnostics_on_health(&c->diagnostics, &m->u.health, c->now_ms);
+        }
+        break;
+    case FURNACE_WIRE_MSG_EVENT_HISTORY_PAGE:
+        c->client_session_confirmed = true;
+        furnace_hmi_diagnostics_on_history_page(&c->diagnostics, &m->u.event_history_page,
+                                                c->now_ms);
+        break;
     default:
-        break; /* SETTINGS, estimates, health and history: later milestones */
+        break; /* SETTINGS and estimates: M21-7d */
+    }
+}
+
+/*
+ * The diagnostic reads that are due (M21-7c): health periodically, history
+ * pages while a read is in progress. At most one of each per poll.
+ */
+static void diagnostics_time(furnace_hmi_controller_client_t *c)
+{
+    const bool connected = (c->observation.link == FURNACE_HMI_LINK_CONNECTED);
+
+    for (int i = 0; i < 2; i++) {
+        struct furnace_wire_envelope *env;
+
+        if (!furnace_hmi_diagnostics_due(&c->diagnostics, c->now_ms, connected, &c->out)) {
+            return;
+        }
+        env = (c->out.type == FURNACE_WIRE_MSG_HEALTH_REQUEST)
+                  ? &c->out.u.health_request.envelope
+                  : &c->out.u.event_history_request.envelope;
+        if (!fill_envelope(c, env)) {
+            return; /* a new client session is opening; asked again once connected */
+        }
+        furnace_hmi_diagnostics_sent(&c->diagnostics, &c->out, env->request_id, c->now_ms);
+        send_out(c);
     }
 }
 
@@ -1844,7 +1897,35 @@ void furnace_hmi_controller_client_poll(furnace_hmi_controller_client_t *client,
     on_time(client);
     on_command_time(client);
     library_time(client);
+    diagnostics_time(client);
     update_availability(client);
+}
+
+bool furnace_hmi_controller_client_read_history(furnace_hmi_controller_client_t *client)
+{
+    if (client->observation.link != FURNACE_HMI_LINK_CONNECTED) {
+        return false;
+    }
+    furnace_hmi_diagnostics_request_history(&client->diagnostics);
+    return true;
+}
+
+const furnace_hmi_controller_health_t *furnace_hmi_controller_client_health(
+    const furnace_hmi_controller_client_t *client)
+{
+    return &client->diagnostics.health;
+}
+
+const furnace_hmi_controller_history_t *furnace_hmi_controller_client_history(
+    const furnace_hmi_controller_client_t *client)
+{
+    return &client->diagnostics.history;
+}
+
+uint32_t furnace_hmi_controller_client_diagnostics_generation(
+    const furnace_hmi_controller_client_t *client)
+{
+    return client->diagnostics.generation;
 }
 
 const furnace_hmi_controller_observation_t *furnace_hmi_controller_client_observation(

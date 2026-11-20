@@ -100,6 +100,20 @@ int furnace_hmi_operator_start_check(lv_display_t *display, const char **failure
  */
 int furnace_hmi_operator_library_review_check(lv_display_t *display, const char **failure);
 
+/*
+ * M21-7c: the controller's Device log and health. Opening the Device log asks
+ * once for the history; a history not read, being read, read, not current and
+ * a log unavailable are said; entries carry the controller's event, run, stage
+ * and fault texts, an unknown event its number; entries without a clock are
+ * grouped by controller start with the time since it; Alarms lists only
+ * alarms; Maintenance says the controller does not record it; an entry's
+ * details name its log; Refresh asks again. Health: not reported, the
+ * subsystems with unknown shown as unknown, the counts, uptime, starts and
+ * service hours, and stale when not current. Same contract as
+ * furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_diagnostics_check(lv_display_t *display, const char **failure);
+
 #ifdef __cplusplus
 }
 #endif

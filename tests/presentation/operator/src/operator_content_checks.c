@@ -1840,3 +1840,233 @@ int furnace_hmi_operator_library_review_check(lv_display_t *display, const char 
     furnace_hmi_operator_screens_destroy(&screens);
     return result;
 }
+
+/* ---- M21-7c: the controller's Device log and health ---------------------------------------- */
+
+static furnace_hmi_controller_health_t health_fixture;
+static furnace_hmi_controller_history_t history_fixture;
+
+/* Entry `index` of the history fixture, with up to four parameters. */
+static void history_entry(uint16_t index, uint8_t log, uint32_t boot, uint64_t mono_ms,
+                          uint16_t event, uint8_t severity, uint8_t category, uint8_t params,
+                          uint32_t p0, uint32_t p1, uint32_t p2, uint32_t p3)
+{
+    furnace_hmi_controller_history_entry_t *e = &history_fixture.entries[index];
+    const uint32_t values[4] = {p0, p1, p2, p3};
+
+    (void)memset(e, 0, sizeof(*e));
+    e->log = log;
+    e->log_sequence = 100U + index;
+    e->boot_id = boot;
+    e->mono_ms = mono_ms;
+    e->event_id = event;
+    e->severity = severity;
+    e->category = category;
+    e->param_count = params;
+    for (uint8_t i = 0U; i < params && i < 4U; ++i) {
+        e->param_types[i] = 6U;
+        e->param_values[i] = values[i];
+    }
+}
+
+static bool give_diagnostics(void)
+{
+    if (!furnace_hmi_operator_screens_set_diagnostics(&screens, &health_fixture, &history_fixture)) {
+        return false;
+    }
+    settle();
+    lv_refr_now(NULL);
+    return true;
+}
+
+static bool open_device_tab(furnace_hmi_ui_string_id_t tab)
+{
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_DEVICE)) {
+        return false;
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(tab)));
+    lv_refr_now(NULL);
+    return true;
+}
+
+/* The Device page's body, beside its category rail (whose names a filter may share). */
+static lv_obj_t *device_body(void)
+{
+    return lv_obj_get_child(screens.content, 1);
+}
+
+/* The Device log shows text on one of its pages; it is left on the first page. */
+static bool log_shows(const char *text)
+{
+    bool found = false;
+
+    for (uint8_t page = 0U; page < 4U && !found; ++page) {
+        screens.device_page = page;
+        found = give_diagnostics() && tree_contains(screens.root, text);
+    }
+    screens.device_page = 0U;
+    return give_diagnostics() && found;
+}
+
+/* "<format>" filled with one unsigned number, as the screens write it. */
+static const char *formatted(furnace_hmi_ui_string_id_t format, unsigned int value)
+{
+    static char text[96];
+
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(format), value);
+    return text;
+}
+
+static int diagnostics_checks(const char **failure)
+{
+    char text[128];
+
+    (void)memset(&health_fixture, 0, sizeof(health_fixture));
+    (void)memset(&history_fixture, 0, sizeof(history_fixture));
+    if (!give_diagnostics() || !open_device_tab(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_HEALTH)) {
+        return failed(failure, "The Device page has no Health category.", 900);
+    }
+    if (!page_says(FURNACE_HMI_UI_STRING_HEALTH_NOT_REPORTED)) {
+        return failed(failure, "Health not yet reported is not said to be.", 901);
+    }
+    if (furnace_hmi_operator_screens_take_history_read(&screens)) {
+        return failed(failure, "Health asks for a history read.", 902);
+    }
+    if (!open_device_tab(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LOG) ||
+        !furnace_hmi_operator_screens_take_history_read(&screens) ||
+        furnace_hmi_operator_screens_take_history_read(&screens)) {
+        return failed(failure, "Opening the Device log does not ask once for the controller's history.", 903);
+    }
+    if (!page_says(FURNACE_HMI_UI_STRING_CTRL_LOG_NOT_READ) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_UNAVAILABLE)) {
+        return failed(failure, "A history not read yet is not said to be.", 904);
+    }
+    history_fixture.reading = true;
+    if (!give_diagnostics() || !page_says(FURNACE_HMI_UI_STRING_CTRL_LOG_READING)) {
+        return failed(failure, "A history being read is not said to be.", 905);
+    }
+
+    /* Newest first: start 3 (a run and a fault), then start 2. */
+    history_fixture.state = FURNACE_HMI_HISTORY_READ;
+    history_fixture.reading = false;
+    history_fixture.count = 5U;
+    history_entry(0U, 2U, 3U, 3723000U, 11U, 0U, 3U, 4U, 1U, 0U, 0U, 12U);
+    history_entry(1U, 2U, 3U, 3000000U, 11U, 0U, 3U, 4U, 5U, 1U, 0U, 12U);
+    history_entry(2U, 1U, 3U, 2000000U, 12U, 2U, 4U, 4U, 1U, 0U, 1U, 1U);
+    history_entry(3U, 1U, 3U, 1000000U, 99U, 0U, 1U, 0U, 0U, 0U, 0U, 0U);
+    history_entry(4U, 1U, 2U, 5000U, 30U, 0U, 1U, 1U, 2U, 0U, 0U, 0U);
+    history_fixture.logs[0].state = FURNACE_HMI_HISTORY_LOG_READ;
+    history_fixture.logs[1].state = FURNACE_HMI_HISTORY_LOG_READ;
+    history_fixture.logs[2].state = FURNACE_HMI_HISTORY_LOG_UNAVAILABLE;
+    if (!give_diagnostics()) {
+        return failed(failure, "The history could not be shown.", 906);
+    }
+    if (!log_shows("Run 12: started") || !log_shows("Run 12, stage 2: target reached") ||
+        !log_shows(formatted(FURNACE_HMI_UI_STRING_CTRL_LOG_UNKNOWN_FORMAT, 99U)) ||
+        !log_shows(formatted(FURNACE_HMI_UI_STRING_CTRL_LOG_BOOT_FORMAT, 2U))) {
+        return failed(failure, "The controller's entries are not listed with their texts.", 907);
+    }
+    (void)snprintf(text, sizeof(text), "%s: %s", furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1),
+                   furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_FAULT_TRANSITION_1));
+    if (!log_shows(text)) {
+        return failed(failure, "A fault entry is not named by the fault and its transition.", 908);
+    }
+    if (!log_shows(formatted(FURNACE_HMI_UI_STRING_CTRL_LOG_START_HEADING_FORMAT, 3U)) ||
+        !log_shows(formatted(FURNACE_HMI_UI_STRING_CTRL_LOG_START_HEADING_FORMAT, 2U)) ||
+        !log_shows("+1:02:03")) {
+        return failed(failure, "Entries without a clock are not grouped by start with their time since it.", 909);
+    }
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_UNAVAILABLE_FORMAT),
+                   furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_NAME_3));
+    if (!tree_contains(screens.root, text)) {
+        return failed(failure, "An unavailable log is not said to be.", 910);
+    }
+    click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_ALARMS)));
+    lv_refr_now(NULL);
+    if (tree_contains(screens.root, "Run 12: started") ||
+        !tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1))) {
+        return failed(failure, "Alarms does not list only the alarms.", 911);
+    }
+    click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_MAINTENANCE)));
+    lv_refr_now(NULL);
+    if (!page_says(FURNACE_HMI_UI_STRING_CTRL_LOG_MAINTENANCE_NOT_RECORDED)) {
+        return failed(failure, "Maintenance does not say that the controller does not record it.", 912);
+    }
+    click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_ALL)));
+    lv_refr_now(NULL);
+    click(card_with_text(screens.root, "Run 12: started"));
+    if (screens.modal == NULL || !modal_contains(furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_NAME_2)) ||
+        !modal_contains("+1:02:03")) {
+        return failed(failure, "An entry's details do not name its log and time.", 913);
+    }
+    click(first_button(screens.modal));
+    history_fixture.interrupted = true;
+    if (!give_diagnostics() || !page_says(FURNACE_HMI_UI_STRING_CTRL_LOG_NOT_CURRENT)) {
+        return failed(failure, "A history not current is not said to be.", 914);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_REFRESH)));
+    if (!furnace_hmi_operator_screens_take_history_read(&screens)) {
+        return failed(failure, "Refresh does not ask for the history.", 915);
+    }
+
+    /* Health. */
+    health_fixture.valid = true;
+    health_fixture.current = true;
+    health_fixture.overall = FURNACE_HMI_HEALTH_WARNING;
+    health_fixture.uptime_ms = 3723000U;
+    health_fixture.boot_count = 7U;
+    health_fixture.subsystem_count = 3U;
+    health_fixture.subsystems[0] = (furnace_hmi_controller_subsystem_t){1U, FURNACE_HMI_HEALTH_WARNING, 3U};
+    health_fixture.subsystems[1] = (furnace_hmi_controller_subsystem_t){3U, FURNACE_HMI_HEALTH_UNKNOWN, 0U};
+    health_fixture.subsystems[2] = (furnace_hmi_controller_subsystem_t){10U, FURNACE_HMI_HEALTH_OK, 0U};
+    health_fixture.faults_active = 1U;
+    health_fixture.faults_latched = 2U;
+    health_fixture.faults_unacknowledged = 3U;
+    health_fixture.service_valid = true;
+    health_fixture.service_s = 7200U;
+    if (!give_diagnostics() || !open_device_tab(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_HEALTH) ||
+        !page_says(FURNACE_HMI_UI_STRING_HEALTH_TITLE)) {
+        return failed(failure, "Reported health is not shown.", 916);
+    }
+    if (!page_says(FURNACE_HMI_UI_STRING_HEALTH_SUBSYSTEM_1) || !page_says(FURNACE_HMI_UI_STRING_HEALTH_SUBSYSTEM_3) ||
+        !page_says(FURNACE_HMI_UI_STRING_HEALTH_SUBSYSTEM_10) || !page_says(FURNACE_HMI_UI_STRING_HEALTH_STATE_0) ||
+        !page_says(FURNACE_HMI_UI_STRING_HEALTH_STATE_2) ||
+        !tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_DETAIL_SKIPPED_FORMAT, 3U))) {
+        return failed(failure, "The subsystems are not shown with their states, unknown as unknown.", 917);
+    }
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_DETAIL_FORMAT), 2U, 3U);
+    if (!tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_FORMAT, 1U)) ||
+        !tree_contains(screens.root, text) || !tree_contains(screens.root, "7") ||
+        !tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_SERVICE_FORMAT, 2U))) {
+        return failed(failure, "The fault counts, starts or service hours are not shown.", 918);
+    }
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_HEALTH_UPTIME_FORMAT), 1U, 2U);
+    if (!tree_contains(screens.root, text) || page_says(FURNACE_HMI_UI_STRING_HEALTH_STALE)) {
+        return failed(failure, "The uptime is not shown, or current health is called stale.", 919);
+    }
+    health_fixture.current = false;
+    if (!give_diagnostics() || !page_says(FURNACE_HMI_UI_STRING_HEALTH_STALE)) {
+        return failed(failure, "Health that is not current is not said to be.", 920);
+    }
+    health_fixture.service_valid = false;
+    if (!give_diagnostics() || !page_says(FURNACE_HMI_UI_STRING_HEALTH_SERVICE_UNKNOWN)) {
+        return failed(failure, "Unknown service hours are shown as a number.", 921);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_diagnostics_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 899);
+    }
+    settle();
+    const int result = diagnostics_checks(failure);
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}

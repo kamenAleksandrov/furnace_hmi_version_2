@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include <furnace_hmi/dashboard_model.h>
+#include <furnace_hmi/diagnostics_model.h>
 #include <lvgl.h>
 
 #ifdef __cplusplus
@@ -385,6 +386,21 @@ bool furnace_hmi_operator_screens_show_service_warning(
 bool furnace_hmi_operator_screens_set_library(furnace_hmi_operator_screens_t *explorer,
                                               const furnace_hmi_operator_library_t *library);
 
+/**
+ * Show the controller's health and event history (M21-7c): the Device log and
+ * Health take them from now on. The data stays the caller's and must outlive
+ * the screens; call again whenever it changes. Call only from the GUI context.
+ */
+bool furnace_hmi_operator_screens_set_diagnostics(furnace_hmi_operator_screens_t *explorer,
+                                                  const furnace_hmi_controller_health_t *health,
+                                                  const furnace_hmi_controller_history_t *history);
+
+/**
+ * True once after the operator asked for the controller's history (the Device
+ * log opened or Refresh); the host then reads it (M21-7c).
+ */
+bool furnace_hmi_operator_screens_take_history_read(furnace_hmi_operator_screens_t *explorer);
+
 /** Delete the lab tree and reset the supplied storage. */
 void furnace_hmi_operator_screens_destroy(furnace_hmi_operator_screens_t *explorer);
 
@@ -701,6 +717,10 @@ struct furnace_hmi_operator_screens {
     furnace_hmi_operator_log_event_t log_events[FURNACE_HMI_OPERATOR_LOG_CAPACITY];
     uint16_t log_count;
     uint8_t log_filter;
+    /* M21-7c: the controller's health and history (set_diagnostics), and a read asked for. */
+    const furnace_hmi_controller_health_t *health;
+    const furnace_hmi_controller_history_t *history;
+    bool history_read_wanted;
 };
 
 #ifdef __cplusplus

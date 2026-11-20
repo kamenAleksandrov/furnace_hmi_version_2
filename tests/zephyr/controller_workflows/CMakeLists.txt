@@ -12,6 +12,7 @@ target_sources(app PRIVATE
   src/main.c
   "${FURNACE_HMI_ROOT}/app/zephyr/src/controller_link.c"
   "${FURNACE_HMI_ROOT}/app/hmi/client/src/controller_client.c"
+  "${FURNACE_HMI_ROOT}/app/hmi/client/src/controller_diagnostics.c"
   "${FURNACE_HMI_ROOT}/app/hmi/client/src/controller_library.c"
   "${FURNACE_HMI_ROOT}/app/hmi/model/src/dashboard_model.c"
   "${FURNACE_HMI_WIRE_DIR}/src/crc32.c"
