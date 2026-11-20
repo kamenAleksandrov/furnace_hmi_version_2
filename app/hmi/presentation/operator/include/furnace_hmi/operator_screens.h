@@ -721,6 +721,9 @@ struct furnace_hmi_operator_screens {
     const furnace_hmi_controller_health_t *health;
     const furnace_hmi_controller_history_t *history;
     bool history_read_wanted;
+    /* With simulated answers (the lab): the log above and a health report in the controller's form. */
+    furnace_hmi_controller_health_t simulated_health;
+    furnace_hmi_controller_history_t simulated_history;
 };
 
 #ifdef __cplusplus

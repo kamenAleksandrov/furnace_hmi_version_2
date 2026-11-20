@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 1047 of 1047 strings; missing entries are NULL and fall back to English. */
+/* en: 1049 of 1049 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -826,11 +826,13 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_HEALTH_UPTIME] = "Running for",
     [FURNACE_HMI_UI_STRING_HEALTH_UPTIME_FORMAT] = "%u h %02u min",
     [FURNACE_HMI_UI_STRING_HEALTH_STARTS] = "Controller starts",
-    [FURNACE_HMI_UI_STRING_HEALTH_RESET_UNKNOWN] = "Reset cause unknown",
-    [FURNACE_HMI_UI_STRING_HEALTH_RESET_FORMAT] = "Reset cause 0x%X",
+    [FURNACE_HMI_UI_STRING_HEALTH_RESET] = "Reset cause",
+    [FURNACE_HMI_UI_STRING_HEALTH_RESET_UNKNOWN] = "Not known",
+    [FURNACE_HMI_UI_STRING_HEALTH_RESET_FORMAT] = "0x%X",
     [FURNACE_HMI_UI_STRING_HEALTH_FAULTS] = "Faults",
     [FURNACE_HMI_UI_STRING_HEALTH_FAULTS_FORMAT] = "%u active",
     [FURNACE_HMI_UI_STRING_HEALTH_FAULTS_DETAIL_FORMAT] = "%u latched, %u unacknowledged",
+    [FURNACE_HMI_UI_STRING_HEALTH_FAULTS_LINE_FORMAT] = "%s: %s, %s",
     [FURNACE_HMI_UI_STRING_HEALTH_SERVICE] = "Service hours",
     [FURNACE_HMI_UI_STRING_HEALTH_SERVICE_FORMAT] = "%u h",
     [FURNACE_HMI_UI_STRING_HEALTH_SERVICE_UNKNOWN] = "Not known",
