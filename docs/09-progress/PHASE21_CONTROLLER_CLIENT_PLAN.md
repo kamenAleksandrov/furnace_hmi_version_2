@@ -439,6 +439,19 @@ diagnostics can already hold a wall clock (`furnace_diag_set_wall_clock`, the `W
 - **Owner questions:** is the time shown in UTC or in a local time zone the operator chooses on the
   display; may the time be set during a run; must the controller ask for the time after a restart.
 
+**Owner answers (2026-11-20):**
+- **Display:** UTC, unless offering every local time zone is practical. A full zone database with
+  summer-time rules is not, on this display, so the time is shown in UTC; a local zone is a later
+  option.
+- **During a run:** the operator cannot leave the Running view during a run, so the HMI cannot set
+  the time then. Remote (PLC) control while a run executes is open: it is to be thought through
+  and handled when that control is designed.
+- **After a restart:** a hardware clock is to be tried (HW-BLOCK-013). Without one the controller
+  does not ask the operator for the time at every start; the time stays unknown until someone sets
+  it.
+
+The design takes these answers. M21-7e follows M21-7d-2 and starts with the furnace plan.
+
 ### M21-5 design
 
 Owner decisions 2026-11-11:
