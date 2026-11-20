@@ -30,12 +30,17 @@ typedef enum {
 } furnace_hmi_operator_page_t;
 
 #define FURNACE_HMI_OPERATOR_MAX_PROGRAMS 12U
-#define FURNACE_HMI_OPERATOR_MAX_STAGES 8U
+/* The controller's program stage limit (wire 0.16, PROGRAM_SAVE: 18). */
+#define FURNACE_HMI_OPERATOR_MAX_STAGES 18U
+/* The editors' bounds: whole degrees, tenths of a degree per minute, minutes. */
+#define FURNACE_HMI_OPERATOR_PROGRAM_MAX_TEMPERATURE_C 180
+#define FURNACE_HMI_OPERATOR_PROGRAM_MAX_RATE_TENTHS 30
+#define FURNACE_HMI_OPERATOR_PROGRAM_MAX_STAGE_MINUTES 59999
 #define FURNACE_HMI_OPERATOR_MAX_QUICK_LAUNCH_ITEMS 3U
 #define FURNACE_HMI_OPERATOR_MAX_RECENT_PROGRAMS 6U
 #define FURNACE_HMI_OPERATOR_TRAJECTORY_GRID_HORIZONTAL_COUNT 5U
 #define FURNACE_HMI_OPERATOR_TRAJECTORY_GRID_VERTICAL_COUNT 7U
-#define FURNACE_HMI_OPERATOR_TRAJECTORY_STAGE_NODE_COUNT 8U
+#define FURNACE_HMI_OPERATOR_TRAJECTORY_STAGE_NODE_COUNT FURNACE_HMI_OPERATOR_MAX_STAGES
 #define FURNACE_HMI_OPERATOR_DEVICE_MAX_COMPONENTS 12U
 #define FURNACE_HMI_OPERATOR_DEVICE_MAX_TASKS 4U
 #define FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY 192U
@@ -46,7 +51,10 @@ typedef enum {
 #define FURNACE_HMI_OPERATOR_RUNNING_READING_COUNT 5U
 #define FURNACE_HMI_OPERATOR_DEVICE_ID_CAPACITY 40U
 #define FURNACE_HMI_OPERATOR_NAME_CAPACITY 33U
-#define FURNACE_HMI_OPERATOR_KEYBOARD_VALUE_CAPACITY 64U
+/* A program name as the controller holds it: UTF-8, at most 124 bytes, and a terminator. */
+#define FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY 125U
+/* A program name of 31 characters may take 124 bytes (the controller's capacity). */
+#define FURNACE_HMI_OPERATOR_KEYBOARD_VALUE_CAPACITY FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY
 #define FURNACE_HMI_OPERATOR_KEYBOARD_BUTTON_COUNT 64U
 #define FURNACE_HMI_OPERATOR_SERVICE_RECORDS 8U
 #define FURNACE_HMI_OPERATOR_LOG_CAPACITY 160U
@@ -121,17 +129,48 @@ typedef struct {
     int32_t minutes;
 } furnace_hmi_operator_program_stage_t;
 
-/* A program as the controller's library holds it for this session. Library
- * programs take their name from the string catalogue (`name_string`); a
- * program the operator created or renamed carries its own name in
- * `program_name_overrides`. Nothing here persists. */
+/* A program as the controller's library holds it for this session. The UI
+ * lab's delivered programs take their name from the string catalogue
+ * (`name_string`); a program the operator created or renamed there carries its
+ * own name in `program_name_overrides`. A controller's program (M21-7b) carries
+ * the controller's name in `name` and its identity in `id` and `revision`.
+ * Nothing here persists. */
 typedef struct {
     bool present;
     bool library;
     uint16_t name_string;
     uint8_t stage_count;
     furnace_hmi_operator_program_stage_t stages[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    /* The controller's program: its ID and revision (0 for the UI lab's programs). */
+    uint32_t id;
+    uint32_t revision;
+    /* The controller could not read it: listed, never opened, started or edited. */
+    bool damaged;
+    /* A value the screens cannot show exactly (a target in tenths of a degree, a
+     * rate or duration outside the editors' range): shown, startable, not editable. */
+    bool inexact;
+    /* The controller's planning estimate of the curing (0: none). When present it is the
+     * duration shown, never one derived from an assumed start temperature (PROG-14). */
+    uint32_t curing_estimate_s;
+    char name[FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
 } furnace_hmi_operator_program_t;
+
+/* Where the controller's library stands (M21-7b). */
+typedef enum {
+    FURNACE_HMI_OPERATOR_LIBRARY_LOADING = 0,
+    FURNACE_HMI_OPERATOR_LIBRARY_CURRENT,
+    FURNACE_HMI_OPERATOR_LIBRARY_UNAVAILABLE,
+    FURNACE_HMI_OPERATOR_LIBRARY_TOO_LARGE,
+} furnace_hmi_operator_library_state_t;
+
+/* The controller's library as the host gives it to the screens: only a complete
+ * listing (CURRENT) has programs; `updating` while a newer one is being read. */
+typedef struct {
+    furnace_hmi_operator_library_state_t state;
+    bool updating;
+    uint8_t count;
+    furnace_hmi_operator_program_t programs[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
+} furnace_hmi_operator_library_t;
 
 /* An operator request for the controller. The explorer only asks; the host
  * hands the request to the controller (here the simulator) and the result
@@ -153,12 +192,18 @@ typedef enum {
     FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE,
     FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY,
     FURNACE_HMI_OPERATOR_REQUEST_CONTINUE,
+    /* M21-7b, raised only without simulated answers: the controller's library. */
+    FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE,
+    FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE,
+    /* M21-7b: Confirm or Cancel of the controller's start transaction (START_PROGRAM opens it). */
+    FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM,
+    FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL,
 } furnace_hmi_operator_request_kind_t;
 
 typedef struct {
     furnace_hmi_operator_request_kind_t kind;
     /* START_PROGRAM only: the program as the operator confirmed it. */
-    char program_name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
+    char program_name[FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
     furnace_hmi_operator_program_t program;
     /* MANUAL_START and MANUAL_RETARGET: whole degrees and tenths of a degree
      * per minute. MANUAL_START: the session length, the controller's longest
@@ -171,6 +216,19 @@ typedef struct {
     /* FAULT_ACKNOWLEDGE and FAULT_RECOVERY: the controller's entry. */
     uint8_t fault_id;
     uint8_t source;
+    /* PROGRAM_SAVE (with `program_name` and `program`) and PROGRAM_DELETE: the
+     * controller's program (0 creates) and the revision the operator edited or
+     * saw; a save's acknowledged curing estimate (0 none). */
+    uint32_t program_id;
+    uint32_t program_revision;
+    uint32_t acknowledged_duration_s;
+    /* Without simulated answers, START_PROGRAM names `program_id` and `program_revision`.
+     * START_CONFIRM: exactly the proposal shown (transaction, revision, stage, program) and,
+     * when it requires one, the accepted duration. START_CANCEL: the transaction. */
+    uint32_t transaction_id;
+    uint32_t proposal_revision;
+    uint8_t proposed_stage;
+    uint32_t accepted_duration_s;
 } furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
@@ -317,6 +375,15 @@ bool furnace_hmi_operator_screens_navigate(
 bool furnace_hmi_operator_screens_show_service_warning(
     furnace_hmi_operator_screens_t *explorer
 );
+
+/**
+ * Replace the program library with the controller's (M21-7b; the Zephyr
+ * application). Favourites, recent programs and the open program follow their
+ * controller IDs; a program that is gone closes its pages. Call only from the
+ * GUI context.
+ */
+bool furnace_hmi_operator_screens_set_library(furnace_hmi_operator_screens_t *explorer,
+                                              const furnace_hmi_operator_library_t *library);
 
 /** Delete the lab tree and reset the supplied storage. */
 void furnace_hmi_operator_screens_destroy(furnace_hmi_operator_screens_t *explorer);
@@ -469,7 +536,7 @@ struct furnace_hmi_operator_screens {
     int32_t stage_starts[FURNACE_HMI_OPERATOR_MAX_STAGES];
     furnace_hmi_operator_stage_set_t stage_backup;
     furnace_hmi_operator_stage_set_t stage_baseline;
-    char program_editor_name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
+    char program_editor_name[FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
     int pending_action;
     int pending_action_value;
     bool action_pending;
@@ -504,7 +571,7 @@ struct furnace_hmi_operator_screens {
     size_t keyboard_length;
     size_t keyboard_cursor;
     size_t keyboard_anchor;
-    char program_name_overrides[FURNACE_HMI_OPERATOR_MAX_PROGRAMS][FURNACE_HMI_OPERATOR_NAME_CAPACITY];
+    char program_name_overrides[FURNACE_HMI_OPERATOR_MAX_PROGRAMS][FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
     char staged_names[FURNACE_HMI_OPERATOR_MAX_STAGES][FURNACE_HMI_OPERATOR_NAME_CAPACITY];
     bool staged_name_valid[FURNACE_HMI_OPERATOR_MAX_STAGES];
     uint8_t settings_tab;
@@ -526,6 +593,34 @@ struct furnace_hmi_operator_screens {
     uint8_t settings_candidate_date_format;
     /* Settings > Delete programs: the programs the confirmation named. */
     uint16_t settings_delete_pending;
+    /* M21-7b, the controller's library: the library change being answered (a
+     * save is sent again with the acknowledged estimate), and Settings > Delete
+     * programs deleting one program at a time, by controller ID (the library can
+     * change meanwhile): those still to send, and how many the controller deleted. */
+    furnace_hmi_operator_request_t library_request;
+    bool settings_deleting;
+    uint8_t settings_deleted;
+    uint8_t settings_delete_count;
+    uint32_t settings_delete_ids[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
+    /* M21-7b, a program Start on a controller (`library_request` holds the latest
+     * Start, Confirm or Cancel too): the proposal panel is the open modal, with the
+     * transaction and revision it shows; the notice of a controller transaction this
+     * display has no proposal for, shown once per transaction. */
+    /* M21-7b review: the program the open editor was made from, frozen (its stages, ID and base
+     * revision; a listing that changes meanwhile changes nothing in the draft); the editor
+     * session a save belongs to; the last complete listing, which favourites, recent programs
+     * and the selection are followed from; the name of the latest Start. */
+    furnace_hmi_operator_program_t editor_base;
+    bool editor_base_valid;
+    uint32_t editor_session;
+    uint32_t save_editor_session;
+    furnace_hmi_operator_program_t library_last[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
+    char start_name[FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
+    bool proposal_open;
+    uint32_t proposal_shown_transaction;
+    uint32_t proposal_shown_revision;
+    bool start_waiting_open;
+    uint32_t start_waiting_shown;
     bool settings_saved_24_hour;
     bool settings_candidate_24_hour;
     /* Display preferences: furnace_hmi_theme_id_t and furnace_hmi_ui_language_t. */
@@ -539,6 +634,10 @@ struct furnace_hmi_operator_screens {
     furnace_hmi_operator_device_catalogue_t device_catalogue;
     /* Which controller-owned content the host supplied (furnace_hmi_operator_content_t). */
     bool library_known;
+    /* Set by furnace_hmi_operator_screens_set_library: the controller's library. */
+    bool library_from_controller;
+    furnace_hmi_operator_library_state_t library_state;
+    bool library_updating;
     bool clock_known;
     bool log_known;
     bool limits_known;

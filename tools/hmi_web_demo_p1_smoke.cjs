@@ -329,6 +329,8 @@ const PRESENTATION_CHOICE = `(()=>{
     assert.strictEqual(await evaluate('demoSpeed + \'|\' + document.querySelector(\'#demo-speed [aria-pressed="true"]\').dataset.value'), '60|60');
     await evaluate('document.getElementById(\'try-text-keyboard\').click()');
     assert.strictEqual(await evaluate('!document.getElementById(\'touch-keyboard\').hidden'), true);
+    /* Names: the controller's 31 characters, counted by character (M21-7b, LVGL parity). */
+    assert.strictEqual(await evaluate('document.getElementById(\'keyboard-input\').maxLength'), 31);
     assert.strictEqual(await evaluate('document.querySelectorAll(\'#touch-keyboard .keyboard-row\')[0].textContent'), '1234567890');
     assert.strictEqual(await evaluate('document.querySelectorAll(\'#touch-keyboard .keyboard-row\').length'), 4);
     assert.strictEqual(await evaluate('[...document.querySelectorAll(\'#touch-keyboard button\')].some(key => key.textContent === \'#+=\' || key.textContent === \'Symbols\')'), false);

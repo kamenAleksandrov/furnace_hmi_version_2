@@ -243,6 +243,11 @@ static furnace_hmi_command_feedback_t feedback(const furnace_hmi_command_outcome
     case FURNACE_HMI_COMMAND_REJECTED:
         f.state = FURNACE_HMI_FEEDBACK_REJECTED;
         f.reason = outcome->reason;
+        /* A program save or delete: what the controller found (M21-7b). */
+        f.error_field = outcome->error_field;
+        f.error_reason = outcome->error_reason;
+        f.error_stage = outcome->error_stage;
+        f.curing_estimate_s = outcome->curing_estimate_s;
         break;
     case FURNACE_HMI_COMMAND_REFUSED:
         f.state = FURNACE_HMI_FEEDBACK_REFUSED;
@@ -252,11 +257,68 @@ static furnace_hmi_command_feedback_t feedback(const furnace_hmi_command_outcome
         f.state = FURNACE_HMI_FEEDBACK_UNRESOLVED;
         f.reason = (uint8_t)outcome->unresolved_cause;
         break;
+    case FURNACE_HMI_COMMAND_PROPOSED:
+        /* A program Start awaiting confirmation (M21-7b): final for the Start, never accepted. */
+        f.state = FURNACE_HMI_FEEDBACK_PROPOSED;
+        break;
     default:
         f.submission = 0U;
         break;
     }
     return f;
+}
+
+/* STATUS start state: a transaction awaiting Confirm or Cancel. */
+#define START_STATE_PENDING 2U
+
+_Static_assert(FURNACE_HMI_DASHBOARD_MAX_SKIPPED_STAGES >= FURNACE_HMI_CONTROLLER_MAX_STAGES,
+               "every skipped stage is shown");
+_Static_assert(FURNACE_HMI_DASHBOARD_MAX_START_WARNINGS >= FURNACE_HMI_CONTROLLER_MAX_PROPOSAL_WARNINGS,
+               "every warning is shown");
+
+/* The proposal for this display's Start, in the screens' terms. */
+static void start_proposal(const furnace_hmi_controller_start_proposal_t *p, furnace_hmi_start_proposal_view_t *v)
+{
+    static const furnace_hmi_start_proposal_state_t states[FURNACE_HMI_PROPOSAL_COUNT] = {
+        [FURNACE_HMI_PROPOSAL_NONE] = FURNACE_HMI_START_PROPOSAL_NONE,
+        [FURNACE_HMI_PROPOSAL_OPEN] = FURNACE_HMI_START_PROPOSAL_OPEN,
+        [FURNACE_HMI_PROPOSAL_INVALIDATED] = FURNACE_HMI_START_PROPOSAL_INVALIDATED,
+        [FURNACE_HMI_PROPOSAL_CANCELLED] = FURNACE_HMI_START_PROPOSAL_CANCELLED,
+        [FURNACE_HMI_PROPOSAL_ACCEPTED] = FURNACE_HMI_START_PROPOSAL_ACCEPTED,
+        [FURNACE_HMI_PROPOSAL_ENDED] = FURNACE_HMI_START_PROPOSAL_ENDED,
+    };
+
+    v->state = p->state < FURNACE_HMI_PROPOSAL_COUNT ? states[p->state] : FURNACE_HMI_START_PROPOSAL_ENDED;
+    if (v->state == FURNACE_HMI_START_PROPOSAL_NONE) {
+        return;
+    }
+    v->transaction_id = p->transaction_id;
+    v->proposal_revision = p->proposal_revision;
+    v->program_id = p->program_id;
+    v->program_revision = p->program_revision;
+    v->measured_valid = p->measured_validity == FURNACE_HMI_CONTROLLER_MEASURED_VALID;
+    v->measured_decicelsius = p->measured_decicelsius;
+    v->proposed_stage = p->proposed_stage;
+    v->skipped_count = p->skipped_count <= FURNACE_HMI_CONTROLLER_MAX_STAGES
+                           ? p->skipped_count
+                           : (uint8_t)FURNACE_HMI_CONTROLLER_MAX_STAGES;
+    for (uint8_t i = 0U; i < v->skipped_count; i++) {
+        v->skipped[i].index = p->skipped[i].index;
+        v->skipped[i].hold = p->skipped[i].kind == FURNACE_HMI_CONTROLLER_STAGE_HOLD;
+        v->skipped[i].target_decicelsius = p->skipped[i].target_decicelsius;
+        v->skipped[i].hold_minutes = p->skipped[i].hold_minutes;
+    }
+    v->remaining_curing_s = p->remaining_curing_s;
+    v->duration_ack_required = p->duration_ack_required;
+    v->recommended_s = p->recommended_s;
+    v->maximum_s = p->maximum_s;
+    v->warnings_count = p->warnings_count <= FURNACE_HMI_CONTROLLER_MAX_PROPOSAL_WARNINGS
+                            ? p->warnings_count
+                            : (uint8_t)FURNACE_HMI_CONTROLLER_MAX_PROPOSAL_WARNINGS;
+    for (uint8_t i = 0U; i < v->warnings_count; i++) {
+        v->warnings[i] = p->warnings[i];
+    }
+    v->invalidation_reason = p->invalidation_reason;
 }
 
 void furnace_hmi_controller_dashboard_state(const furnace_hmi_controller_observation_t *o,
@@ -270,8 +332,14 @@ void furnace_hmi_controller_dashboard_state(const furnace_hmi_controller_observa
     /* An outcome matters most when the link is lost: always passed on. */
     s->command_feedback = feedback(&o->command, &o->command_refusal);
     s->stop_feedback = feedback(&o->stop, &o->stop_refusal);
+    /* The client ends the proposal itself when the session or transaction ends. */
+    start_proposal(&o->start_proposal, &s->start_proposal);
     if (!o->status_valid || o->availability == FURNACE_HMI_STATE_AVAILABILITY_UNAVAILABLE) {
         return;
+    }
+    if (o->start_state == START_STATE_PENDING && o->start_transaction_id != 0U) {
+        s->start_pending_transaction_id = o->start_transaction_id;
+        s->start_pending_revision = o->start_proposal_revision;
     }
     validity = (o->availability == FURNACE_HMI_STATE_AVAILABILITY_CURRENT)
                    ? FURNACE_HMI_VALUE_VALIDITY_CURRENT

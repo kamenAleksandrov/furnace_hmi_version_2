@@ -53,6 +53,7 @@ if(CONFIG_LVGL)
     src/gui_main.c
     src/controller_link.c
     src/operator_commands.c
+    src/operator_library.c
     "${FURNACE_HMI_OPERATOR_DIR}/src/operator_screens.c"
     "${FURNACE_HMI_OPERATOR_DIR}/src/operator_theme.c"
     "${FURNACE_HMI_MARKER_DIR}/src/development_marker.c"
