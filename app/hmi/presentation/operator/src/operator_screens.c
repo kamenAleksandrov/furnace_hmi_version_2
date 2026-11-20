@@ -6913,6 +6913,7 @@ static bool device_build_controller_log(furnace_hmi_operator_screens_t *explorer
 
 #define SIMULATED_BOOT 42U
 #define SIMULATED_UPTIME_MS UINT64_C(12300000)
+#define SIMULATED_SERVICE_S (128U * 3600U)
 
 static bool simulated_run_start(uint8_t type)
 {
@@ -7018,10 +7019,8 @@ static void simulate_health(furnace_hmi_operator_screens_t *explorer)
     if (state != NULL && state->faults_known) {
         health->faults_active = state->fault_count;
     }
-    if (state != NULL && state->service_time_hours.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT) {
-        health->service_valid = true;
-        health->service_s = (uint32_t)(state->service_time_hours.value > 0 ? state->service_time_hours.value : 0) * 3600U;
-    }
+    health->service_valid = true;
+    health->service_s = SIMULATED_SERVICE_S;
 }
 
 /* With simulated answers, the Device log and Health show the lab's simulation. */

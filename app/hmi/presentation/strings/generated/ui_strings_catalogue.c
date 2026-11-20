@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 1049 of 1049 strings; missing entries are NULL and fall back to English. */
+/* en: 1034 of 1034 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -841,24 +841,9 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_HEALTH_DETAIL_FLAGS_FORMAT] = "Detail 0x%X",
     [FURNACE_HMI_UI_STRING_HEALTH_NOT_REPORTED] = "The controller has not reported its health yet.",
     [FURNACE_HMI_UI_STRING_HEALTH_STALE] = "Last reported, not current. The controller keeps recording.",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_STARTED_FORMAT] = "Program started: %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_COMPLETED_FORMAT] = "Program completed: %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_STOPPED_FORMAT] = "Program stopped by the operator: %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_PAUSED_FORMAT] = "Program paused: %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_RESUMED_FORMAT] = "Program resumed: %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_SAVED_FORMAT] = "Program saved: %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_DELETED_FORMAT] = "Program deleted: %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_MANUAL_STARTED] = "Manual heating started",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_MANUAL_STOPPED] = "Manual heating stopped",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_ALARM_FORMAT] = "%s: %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_MAINTENANCE_DONE_FORMAT] = "Maintenance done: %s / %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_SERVICE_DUE_FORMAT] = "Service due: %s / %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_DISPLAY_STARTED] = "Display started",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_SETTINGS_SAVED] = "Display settings saved",
     [FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_TODAY_FORMAT] = "%s (today)",
     [FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_YESTERDAY_FORMAT] = "%s (yesterday)",
     [FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_AGO_FORMAT] = "%s (%u days ago)",
-    [FURNACE_HMI_UI_STRING_UI_LAB_LOG_EVENT_DETAIL_FORMAT] = "%s at %s. Recorded by: %s.",
     [FURNACE_HMI_UI_STRING_UI_LAB_LOG_EVENT_COUNT_FORMAT] = "%u events%s",
     [FURNACE_HMI_UI_STRING_UI_LAB_MOVE_CURSOR_LEFT] = "Move cursor left",
     [FURNACE_HMI_UI_STRING_UI_LAB_MOVE_CURSOR_RIGHT] = "Move cursor right",

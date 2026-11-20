@@ -58,7 +58,7 @@ const THEME_PROBE = `(()=>{
   editor:"switchMain('programs');openProgram(0);openProgramEditor(0)",stage:"switchMain('programs');openProgram(0);openProgramEditor(0);openStageEditor(1)",
   loading:'loadDemoProgram(0)',graph:"beginDemoRun(0,60);runView='graph';render()",split:"beginDemoRun(0,60);runView='split';render()",furnace:"beginDemoRun(0,60);runView='furnace';render()",
   fault:"playScenario('overtemperature');window.clearInterval(scenarioPlayer.timer);for(let i=0;i<70;i++)stepScenario();render()",
-  manual:"mainPage='manual';render()",overview:"switchMain('device','overview')",log:"switchMain('device','log')",maintenance:"switchMain('device','maintenance')",history:"switchMain('device','history')",info:"switchMain('device','info')",
+  manual:"mainPage='manual';render()",overview:"switchMain('device','overview')",log:"switchMain('device','log')",maintenance:"switchMain('device','maintenance')",history:"switchMain('device','history')",info:"switchMain('device','info')",health:"switchMain('device','health')",
   display:"switchMain('settings');tab='display';render()",time:"switchMain('settings');tab='time';render();openClockDialog()",system:"switchMain('settings');tab='system';render();resetScopes()",
   connections:"demoFixtures.connection='enabled';switchMain('settings');tab='connections';render()",text:'render();previewTextKeyboard()',numeric:'render();previewNumericKeyboard()'};
  apply(true);
@@ -88,7 +88,7 @@ const PSEUDO_PROBE = `(()=>{
   loading:'loadDemoProgram(0)',graph:"beginDemoRun(0,60);runView='graph';render()",split:"beginDemoRun(0,60);runView='split';render()",furnace:"beginDemoRun(0,60);runView='furnace';render()",
   fault:"playScenario('overtemperature');window.clearInterval(scenarioPlayer.timer);for(let i=0;i<70;i++)stepScenario();render()",
   link:"playScenario('link-lost');window.clearInterval(scenarioPlayer.timer);for(let i=0;i<60;i++)stepScenario();render()",
-  manual:"mainPage='manual';render()",overview:"switchMain('device','overview')",log:"switchMain('device','log')",maintenance:"switchMain('device','maintenance')",history:"switchMain('device','history')",info:"switchMain('device','info')",
+  manual:"mainPage='manual';render()",overview:"switchMain('device','overview')",log:"switchMain('device','log')",maintenance:"switchMain('device','maintenance')",history:"switchMain('device','history')",info:"switchMain('device','info')",health:"switchMain('device','health')",
   display:"switchMain('settings');tab='display';render()",dim:"switchMain('settings');tab='display';render();[...document.querySelectorAll('#content button.card')][0].click()",time:"switchMain('settings');tab='time';render();openClockDialog()",
   system:"switchMain('settings');tab='system';render();resetScopes()",connections:"demoFixtures.connection='enabled';switchMain('settings');tab='connections';render()",
   text:'render();previewTextKeyboard()',numeric:'render();previewNumericKeyboard()'};
@@ -445,19 +445,29 @@ const PRESENTATION_CHOICE = `(()=>{
     assert.strictEqual(await evaluate('mainPage+\'|\'+(programEditor===null)'), 'programs|true');
 
     await evaluate('mainPage=\'device\';deviceTab=\'log\';render()');
-    // Device log: one month of controller events, newest first, filter tabs, date headings with their age,
-    // pages that fit the screen; this session's events (display start, the run, maintenance) are on top.
+    // Device log (M21-7c): the controller's history, newest first, filter tabs, date headings with their age,
+    // pages that fit the screen. The simulated month and this session's events are shown as a controller
+    // records them: runs by ID and link changes; no library change, maintenance or display setting.
     assert.strictEqual(await evaluate('[...document.querySelectorAll(".log-toolbar button")].map(b=>b.textContent).join("|")'), 'All|Programs|Alarms|Maintenance|System');
     assert.strictEqual(await evaluate('(()=>{const now=wallMinutes(clockNow()),oldest=deviceLog[deviceLog.length-1].at;return deviceLog.length>40&&now-oldest<30*1440&&deviceLog.every((e,i)=>i===0||e.at<=deviceLog[i-1].at)&&deviceLog.some(e=>e.type==="program-completed")&&deviceLog.some(e=>e.type==="alarm")})()'), true);
     assert.strictEqual(await evaluate('(()=>{const l=document.querySelector(".log-list"),first=l.firstElementChild;return first.classList.contains("log-day")&&/\\(today\\)/.test(first.textContent)&&l.scrollHeight<=l.clientHeight+1&&l.querySelectorAll(".log-row").length>=3})()'), true);
     assert.strictEqual(await evaluate('["display-started","program-saved","program-deleted","maintenance-done"].every(type=>deviceLog.some(e=>e.type===type&&e.at>=wallMinutes(clockNow())-60))'), true);
-    assert.strictEqual(await evaluate('deviceLog.filter(e=>e.at>=wallMinutes(clockNow())-60).map(logText).filter(text=>/Customer cure A|Air filter/.test(text)).reverse().join("|")'), 'Program saved: Customer cure A|Program started: Customer cure A|Program stopped by the operator: Customer cure A|Program started: Customer cure A|Program stopped by the operator: Customer cure A|Program deleted: Customer cure A|Maintenance done: Air filter / Inspect filter');
-    assert.strictEqual(await evaluate('document.querySelector(".log-row .log-text").textContent === logText(deviceLog[0])'), true);
+    const recent = await evaluate('simulateHistory().filter(x=>x.at>=wallMinutes(clockNow())-60).map(historyText).join("|")');
+    assert.ok(recent.split('|').every(s => /^(Operator display (connected|link lost)|Run \d+: (started|stopped|completed|paused|resumed|stopped by a fault))$/.test(s)) &&
+              recent.split('|').filter(s => /^Run \d+: started$/.test(s)).length >= 2, recent);
+    assert.strictEqual(await evaluate('document.querySelector(".log-row .log-text").textContent === historyText(simulateHistory()[0])'), true);
     await evaluate('[...document.querySelectorAll(".log-toolbar button")].find(b=>b.textContent==="Alarms").click()');
-    assert.strictEqual(await evaluate('[...document.querySelectorAll(".log-row .log-text")].every(e=>/^(Over-temperature|Target not reached|Door opened|Temperature sensor fault|Power interrupted): Epoxy system [123]$/.test(e.textContent))&&document.querySelectorAll(".log-row").length>0'), true);
+    assert.strictEqual(await evaluate('[...document.querySelectorAll(".log-row .log-text")].every(e=>/^Run \\d+: stopped by a fault$/.test(e.textContent))&&document.querySelectorAll(".log-row").length>0'), true);
+    await evaluate('[...document.querySelectorAll(".log-toolbar button")].find(b=>b.textContent==="Maintenance").click()');
+    assert.strictEqual(await evaluate('document.querySelector(".log-list").textContent'), 'The controller does not record maintenance yet.');
     await evaluate('logFilter="all";devicePage=0;render();document.querySelector(".log-row").click()');
-    assert.match(await evaluate('document.getElementById("message-text").textContent'), /^\d+ \w+ \d{4} at .+\. Recorded by: Control CPU\.$/);
+    assert.match(await evaluate('document.getElementById("message-text").textContent'), /^\d+ \w+ \d{4} .+\n\n(Critical|General) log, entry \d+\nController start 42, \+\d+:\d\d:\d\d after start\n(Information|Warning|Error)\nEvent (11|15), parameters: [\d:, ]+$/);
     await evaluate('document.getElementById("message").close()');
+    // Health (M21-7c): as the controller reports it; the health thread is unknown, so the whole is too.
+    await evaluate('deviceTab=\'health\';render()');
+    assert.strictEqual(await evaluate('(()=>{const c=document.getElementById("content"),rows=[...c.querySelectorAll(".health-row")];return c.querySelector("h2").textContent+"|"+rows.length+"|"+rows[2].textContent+"|"+(c.scrollHeight<=c.clientHeight)})()'), 'Controller health: Unknown|10|Health threadUnknownDetail 0x0|true');
+    assert.strictEqual(await evaluate('[...document.querySelectorAll("#content .health-facts .card")].map(c=>c.textContent).join("|")'), 'Running for3 h 25 min|Controller starts42|Reset causeNot known|Service hours128 h');
+    await evaluate('deviceTab=\'log\';render()');
     // Stale: paged card tabs mark it in the footer, so the cards and the pager still fit.
     assert.strictEqual(await evaluate('(()=>{demoFixtures.device=\'stale\';const ok=[\'maintenance\',\'history\'].every(t=>{deviceTab=t;render();const c=document.getElementById(\'content\');return c.scrollHeight<=c.clientHeight&&/Last known/.test(c.querySelector(\'.device-footer\').textContent)});deviceTab=\'info\';render();const info=!/Stale|Controller link/.test(document.getElementById(\'content\').textContent);deviceTab=\'overview\';render();const banner=/Last known snapshot/.test(document.getElementById(\'content\').textContent);demoFixtures.device=\'current\';deviceTab=\'log\';render();return ok&&info&&banner})()'), true);
     // Device cards: Overview six cards; Maintenance lists every task worst first, six per page; Info five cards (no Controller link).
