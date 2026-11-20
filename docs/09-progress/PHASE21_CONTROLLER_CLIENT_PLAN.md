@@ -74,7 +74,7 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 | M21-4 | Merged into M21-3 | Owner decision 2026-11-10: the end-to-end link is part of M21-3 |
 | M21-5 | Run, Manual and fault workflows (WI-H03, WI-H04) | Each workflow runs against the controller; the same behavior in the web demo, simulated |
 | M21-6 | Controller 20d (firmware) | A controller-side plan with its open decisions for the product owner and the controller's reviewers (for example the health rules still proposed); the messages built test-first with the controller's verification; the HMI resynced to the new revision in lockstep, ADR-0007 checked against its reopen triggers, before M21-7. **2026-11-19:** firmware 20d in #56–#60 (merged) and drafts #63–#65; pin moved to `a96d138` with the codec byte-identical; ADR-0007 trigger not met (result values only, no layout change; STATUS) |
-| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b and M21-7c follow |
+| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b (screens) in draft, stacked on it; M21-7c follows |
 | M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria |
 
 ### M21-2b design
@@ -197,14 +197,46 @@ Three steps, each its own draft pull request, stacked:
 - **A new client session** ends an open proposal (the controller invalidates it,
   `CLIENT_SESSION_CHANGED`). An unavailable or too large library is held at the newest revision
   seen, never below `STATUS`'s.
-- **Not yet decided here:** the polled UART of the Zephyr port loses bytes during a sleep on a real
-  UART, and library pages are about 1 KB. An interrupt-driven receive buffer is needed before the
-  library runs on a board (review M2; HW-BLOCK-006 sets the link). On the simulated link (a pty)
-  nothing is lost.
+- **The receive buffer (done in M21-7b):** the polled UART of the Zephyr port would lose bytes of
+  ~1 KB library pages during a sleep on a real UART. Since M21-7b the receive interrupt fills a
+  4 KB ring (`controller_link.c`); the board's UART, line and rate stay HW-BLOCK-006.
 
 **Verification:** client scenarios against the scripted controller (host and Zephyr), and
 workflows against firmware `link_pty` at the pinned revision: the library of the three
 delivered fixture programs, a save, a delete and a program Start with Stop.
+
+### M21-7b, the screens
+
+Started 2026-11-19 (owner: "proceed with M21-7b", the two open 7a choices to be finished in it).
+One draft pull request, four steps and the review fixes:
+1. **The library on the screens.** `furnace_hmi_operator_screens_set_library` replaces the
+   library whenever the controller's changes; Programs says when it is being read, unavailable
+   or too large, and marks a listing being read again as updating. Programs carry the
+   controller's ID, revision, UTF-8 name and planning estimate (the duration shown, PROG-14). A
+   damaged program is listed and never opened. A program with a value the editors cannot show
+   exactly (a target in tenths of a degree, a rate or Hold outside their range) is listed and
+   startable, never edited: nothing is rounded into a save. 18 stages, nine to a stage page,
+   in both presentations and the simulator (owner question: the screens had eight).
+2. **Saves and deletes.** The editor holds the program it was made from and saves with its ID
+   and base revision; the controller's answer decides: SAVED closes the editor, an invalid
+   program names the controller's first error, ACKNOWLEDGMENT_REQUIRED asks and saves again with
+   the controller's estimate, UNRESOLVED says it is not known. Settings > Delete programs
+   deletes the programs its dialog named, one at a time by ID.
+3. **Program Start.** Start names the program and revision shown. The controller's proposal opens
+   a panel that is only confirmed or cancelled: the measured temperature, the start stage, every
+   skipped stage, the estimate, a duration to accept and the warnings; Confirm is off without a
+   valid temperature and names exactly the proposal drawn. **Owner question (a transaction
+   without a proposal on this display), as recommended 2026-11-19:** it is pointed out once,
+   and again when a Start is refused because of it, with Cancel and Keep; the HMI never cancels
+   by itself, and does not offer Confirm for a proposal the operator has not seen.
+4. **Names** of 31 characters in up to 124 bytes in the keyboard, the editor, the request and
+   the running program's name; the web demo counts by character.
+
+**Not in M21-7b, recorded:** the labs (UI lab and web demo) still answer every Start, save and
+delete at once: no proposal, acknowledgement, refusal, inexact or waiting view (TRACEABILITY,
+REQ-FUN-018 to -023). The font has no Cyrillic glyphs (ADR-0012), so a Cyrillic name is held
+and sent whole but not drawn. The editors' own bounds (180 C, 3.0 C/min) are not yet the
+controller's limits (CTRL-LIMITS). The program graph still draws a ramp from 25 C.
 
 ### M21-5 design
 

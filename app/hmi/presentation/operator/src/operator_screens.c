@@ -11981,7 +11981,7 @@ bool furnace_hmi_operator_screens_set_library(furnace_hmi_operator_screens_t *ex
      * they follow their IDs from it, also across a listing that is not complete (review M5). */
     const furnace_hmi_operator_program_t *before = explorer->library_last;
     const furnace_hmi_operator_program_t *was = &before[explorer->selected_program % FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
-    const uint32_t selected_id = (editing && explorer->editor_base_valid) ? explorer->editor_base.id : was->id;
+    const uint32_t selected_id = was->id;
     const uint32_t selected_revision = was->revision;
     const uint32_t running_id =
         before[explorer->running_program % FURNACE_HMI_OPERATOR_MAX_PROGRAMS].id;
