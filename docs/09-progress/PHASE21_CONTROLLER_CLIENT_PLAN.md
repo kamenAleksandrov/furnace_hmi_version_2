@@ -74,7 +74,7 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 | M21-4 | Merged into M21-3 | Owner decision 2026-11-10: the end-to-end link is part of M21-3 |
 | M21-5 | Run, Manual and fault workflows (WI-H03, WI-H04) | Each workflow runs against the controller; the same behavior in the web demo, simulated |
 | M21-6 | Controller 20d (firmware) | A controller-side plan with its open decisions for the product owner and the controller's reviewers (for example the health rules still proposed); the messages built test-first with the controller's verification; the HMI resynced to the new revision in lockstep, ADR-0007 checked against its reopen triggers, before M21-7. **2026-11-19:** firmware 20d in #56–#60 (merged) and drafts #63–#65; pin moved to `a96d138` with the codec byte-identical; ADR-0007 trigger not met (result values only, no layout change; STATUS) |
-| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b (screens) in draft, stacked on it; **2026-11-20:** M21-7c (Device log and health) started, stacked on M21-7b; M21-7d (the controller's limits and the planning reference) added |
+| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b (screens) in draft, stacked on it; **2026-11-20:** M21-7c (Device log and health) in draft, stacked on M21-7b; M21-7d (the controller's limits and the planning reference) added |
 | M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria |
 
 ### M21-2b design
@@ -301,6 +301,29 @@ Started 2026-11-20 (owner: "begin M21-7c"). Furnace WI-H12, ADR-0020, controller
    screens' content checks, the lab captures, the web smoke test, and a workflow against
    firmware `link_pty` (#66): the controller start, a Manual or program run and a fault appear
    in the Device log, and the health is reported.
+
+**Done (2026-11-20, draft):** as above, with these choices made in the work:
+- Health is the sixth Device category, after Device info (the lab's capture numbers stay).
+- The Device log draws only the controller's form. The labs map their simulated events to what a
+  controller records, so they lose program names, library changes, maintenance and display
+  settings, as the controller does (CTRL-EVENT-NAMES, CTRL-MAINTENANCE). Their health is
+  simulated as the controller reports it: the health thread is never judged, so the whole is never
+  OK.
+- Review fixes (three AI reviews in the HMI roles, not the required human reviews): a page is asked
+  again only after 12 s, beyond the controller's 10 s read deadline; a log unanswered five times is
+  given up as failed; a read asked while the link is down starts once it is current; an unknown
+  severity is named by its number; a stale report is drawn neutral and claims nothing about
+  recording; older entries left out by the window are said; texts of `RUN_FAULTED` and the stage
+  deviation corrected.
+
+**Not in M21-7c, recorded:** filters by time, run or severity, export, occurrence counts and active
+versus historical faults (ADR-0020, Phase 25); recording schedules (WI-I09). The labs' health
+simulates no latched or unacknowledged fault counts (shown as 0).
+
+**Questions for the owner (M21-7c review):**
+- Should a faulted run also appear under Programs, not only under Alarms?
+- The controller's `wall_ms`: UTC or local? Today and Yesterday are judged on the display's clock.
+- Does an `ADJUSTED` wall clock need to look different from a valid one?
 
 **Proposed in M21-7c, the owner may change:** the 5 s health period; reading the logs on
 request instead of following new entries; the complete-window rule; Health as its own Device
