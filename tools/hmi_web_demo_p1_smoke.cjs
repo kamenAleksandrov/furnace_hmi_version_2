@@ -267,6 +267,45 @@ const PRESENTATION_CHOICE = `(()=>{
     await waitFor('!controller.pending && document.getElementById("message").open');
     assert.strictEqual(await evaluate('programCatalogue[' + created + '].deleted && !visiblePrograms().some(p => p.id === ' + created + ') && !demoRecent.includes(' + created + ') && document.getElementById("message-title").textContent'), 'Program deleted');
     await evaluate('document.getElementById("message").close();mainPage="home";render()');
+    // The simulated controller answers a Start as the controller does (M21-7d-2). Stopped at 70 min in the 90 C Hold,
+    // Start again is proposed at the Hold (stage 2) with the skipped ramp named; the panel does not close by itself,
+    // Cancel start ends it and the stopped run keeps cooling, Confirm start runs from the Hold. The demo clock is held
+    // so the furnace does not cool between the steps (below 90 C the first ramp would start at once).
+    const messageText = 'document.getElementById("message-text").textContent';
+    await evaluate('demoFrozen=true;beginDemoRun(2,70);stopDemo()');
+    await evaluate('[...document.querySelectorAll(".run-controls>button")].find(b=>b.textContent==="Start again").click()');
+    await waitFor('!controller.pending && document.getElementById("message").open');
+    assert.strictEqual(await evaluate('document.getElementById("message-title").textContent'), 'Start Epoxy system 3?');
+    assert.strictEqual(await evaluate(messageText), 'The furnace is at 90.0 °C. The run starts at stage 2.Skipped: stage 1, Heating to 90.0 °C.' +
+      'Curing takes about 405 min by the controller\'s estimate.The treatment will be incomplete.');
+    assert.strictEqual(await evaluate('(()=>{const m=document.getElementById("message");m.dispatchEvent(new Event("cancel",{cancelable:true}));return m.open})()'), true);
+    await evaluate('[...document.querySelectorAll("#message-actions button")].find(b=>b.textContent==="Cancel start").click()');
+    assert.strictEqual(await evaluate('!document.getElementById("message").open&&startProposal===null&&demoRun.stopped&&demoRun.phase==="cooling"'), true);
+    await evaluate('[...document.querySelectorAll(".run-controls>button")].find(b=>b.textContent==="Start again").click()');
+    await waitFor('!controller.pending && document.getElementById("message").open');
+    await evaluate('[...document.querySelectorAll("#message-actions button")].find(b=>b.textContent==="Confirm start").click()');
+    await waitFor('!controller.pending && !!demoRun && !demoRun.stopped && demoRun.phase === "curing"');
+    assert.strictEqual(await evaluate('demoRun.program.stages.length+"|"+demoRun.program.stages[0].kind+"|"+demoRun.program.startC+"|"+demoRun.elapsed'), '5|Hold|90|0');
+    // Stopped in the 180 C Hold: no stage of the first program can start, refused with the controller's reason.
+    await evaluate('stopDemo();beginDemoRun(2,400);stopDemo()');
+    assert.strictEqual(await evaluate('answerStart(0)'), false);
+    assert.strictEqual(await evaluate('document.getElementById("message-title").textContent+"|"+' + messageText), 'Start not accepted|No stage of the program can start at the present temperature.');
+    await evaluate('document.getElementById("message").close();demoFrozen=false;advanceDemo(3000);leaveFaultedRun();demoFrozen=true');
+    // The labs' 12 h advisory duration: a longer program is saved only with Save anyway (Cancel saves nothing), and
+    // its Start asks to accept the duration.
+    await evaluate('window.savedProgram=structuredClone(programCatalogue[0]);mainPage="programs";programRoute="detail";selectedProgram=0;render();openProgramEditor(0);programEditor.stages[3].minutes=780;saveProgramEditor()');
+    assert.strictEqual(await evaluate('document.getElementById("message-title").textContent+"|"+' + messageText), 'Longer than advised|The controller estimates the curing at 1024 min, longer than its advisory duration. Save it anyway?');
+    await evaluate('[...document.querySelectorAll("#message-actions button")].find(b=>b.textContent==="Cancel").click()');
+    assert.strictEqual(await evaluate('!document.getElementById("message").open&&programCatalogue[0].stages[3].minutes!==780&&!!programEditor'), true);
+    await evaluate('saveProgramEditor();[...document.querySelectorAll("#message-actions button")].find(b=>b.textContent==="Save anyway").click()');
+    await waitFor('!controller.pending && programCatalogue[0].stages[3].minutes === 780');
+    await evaluate('selectedProgram=0;startDemo()');
+    await waitFor('!controller.pending && document.getElementById("message").open');
+    assert.match(await evaluate(messageText), /longer than the recommended 720 min \(at most 2880 min\)\. Confirming accepts 1020 min\.$/);
+    await evaluate('[...document.querySelectorAll("#message-actions button")].find(b=>b.textContent==="Confirm start").click()');
+    await waitFor('!controller.pending && !!demoRun && demoRun.phase === "curing"');
+    await evaluate('stopDemo();demoFrozen=false;advanceDemo(3000);leaveFaultedRun();programCatalogue[0]=savedProgram;mainPage="home";render()');
+    assert.strictEqual(await evaluate('demoRun===null&&mainPage==="home"'), true);
     // Maintenance: a task card opens its details with a corner X (closes, nothing else) and Maintenance done,
     // which the controller records: the task starts a new interval, its last baseline is today, and the record
     // leads Service history and Last service.

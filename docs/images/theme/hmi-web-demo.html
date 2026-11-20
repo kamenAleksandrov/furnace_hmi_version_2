@@ -868,14 +868,15 @@ $('message').addEventListener('close',()=>{if(!$('message').open)$('message-body
 const demoFixtures={program:'full',device:'current',connection:'disabled',restartAssessment:'ok',restartResult:'accepted'};
 // The simulated controller's limits (furnace firmware fixture profile A: test fixtures, not product values). Temperatures
 // are whole degrees C, rates tenths of a degree per minute, durations minutes; the planning reference is tenths of a
-// degree (230 = 23.0 C, settable 50..400 by the operator, M21-7d).
+// degree (230 = 23.0 C, settable 50..400 by the operator, M21-7d). The advisory duration of 12 h is the labs' own
+// (M21-7d-2; the firmware's link_pty has none): a longer estimate asks for the acknowledgement at a save and a Start.
 const initial={rate:3,temperature:200,duration:720,brightness:80,dim:0,motion:'Off',view:'Split',format:'24-hour',dateFormat:'text',theme:HMI_THEMES[0].id,language:HMI_LANGUAGES[0].tag};
 let mainPage='home',deviceTab='overview',deviceFilter='all',devicePage=0,selectedComponent=null;
 let programEditor=null,programLoadOrigin='home',manualDraft={target:120,rate:2},manualRun=null,manualStatusNotice='';
-const controller={session:1,pending:null,light:false,events:[],requestId:0,phase:'idle',limits:{minTemperature:20,maxTemperature:180,minRateTenths:1,maxRateTenths:30,maxCuringMinutes:2880,maxStages:18,holdAllowed:true,planningReference:{value:230,min:50,max:400}}};
+const controller={session:1,pending:null,light:false,events:[],requestId:0,phase:'idle',limits:{minTemperature:20,maxTemperature:180,minRateTenths:1,maxRateTenths:30,maxCuringMinutes:2880,recommendedMinutes:720,maxStages:18,holdAllowed:true,planningReference:{value:230,min:50,max:400}}};
 // Session log entries hold string ids (source, event, result) and are translated when shown.
 function controllerEvent(source,event,result='UI_LAB_EVENT_CONFIRMED'){const now=new Date();controller.events.unshift({time:clockTime(now.getHours(),now.getMinutes(),candidate.format==='12-hour'),source,event,result});controller.events=controller.events.slice(0,24);}
-function controllerRequest(event,apply){const requestId=++controller.requestId;controller.pending=event;controllerEvent('UI_LAB_SOURCE_HMI',event,'UI_LAB_EVENT_REQUESTED');render();window.setTimeout(()=>{if(requestId!==controller.requestId)return;controller.pending=null;apply();controllerEvent('UI_LAB_DEVICE_CONTROL_CPU',event,'UI_LAB_EVENT_ACCEPTED');render();},180);}
+function controllerRequest(event,apply){const requestId=++controller.requestId;controller.pending=event;controllerEvent('UI_LAB_SOURCE_HMI',event,'UI_LAB_EVENT_REQUESTED');render();window.setTimeout(()=>{if(requestId!==controller.requestId)return;controller.pending=null;if(apply()!==false)controllerEvent('UI_LAB_DEVICE_CONTROL_CPU',event,'UI_LAB_EVENT_ACCEPTED');render();},180);}
 function controllerLimits(){return controller.limits;}
 // The planning reference in whole degrees: the start of every ramp the editors, graphs and previews estimate (M21-7d).
 const planningStartC=()=>Math.round(controllerLimits().planningReference.value/10);
@@ -1385,8 +1386,13 @@ function programEditorErrors(){if(!programEditor)return [t('UI_LAB_PROGRAM_ERROR
 // The controller's library holds at most PROGRAM_CAPACITY programs (LVGL FURNACE_HMI_UI_LAB_MAX_PROGRAMS), hidden library ones included.
 const PROGRAM_CAPACITY=12;
 // Save: a new program is added for the session, an edited one keeps its place (and library origin); its details open.
-function saveProgramEditor(){const errors=programEditorErrors();if(errors.length){tell('UI_LAB_PROGRAM_NOT_ACCEPTED',errors[0]);return;}const draft=structuredClone(programEditor);
+// `acknowledged`: the estimate the operator accepted in the advisory question (a click passes an event: none).
+function saveProgramEditor(acknowledged){const errors=programEditorErrors();if(errors.length){tell('UI_LAB_PROGRAM_NOT_ACCEPTED',errors[0]);return;}const draft=structuredClone(programEditor);
  if(draft.id===null&&programCatalogue.filter(p=>!p.deleted).length>=PROGRAM_CAPACITY){tell('UI_LAB_PROGRAM_NOT_ACCEPTED','UI_LAB_PROGRAM_LIBRARY_FULL');return;}
+ // The simulated controller, as the controller (PROG-11, M21-7d-2): above the advisory duration it saves only an
+ // acknowledged estimate, exactly that one; Cancel saves nothing.
+ const estimate=curingEstimateSeconds(draft.stages),advisory=controllerLimits().recommendedMinutes;
+ if(advisory&&estimate>advisory*60&&acknowledged!==estimate){$('message-title').textContent=t('UI_LAB_SAVE_ACKNOWLEDGE_TITLE');$('message-text').textContent=t('UI_LAB_SAVE_ACKNOWLEDGE_FORMAT',secondsAsMinutes(estimate));const cancel=button('UI_LAB_CANCEL',()=>$('message').close(),'cancel-action');$('message-actions').replaceChildren(cancel,button('UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM',()=>{$('message').close();saveProgramEditor(estimate);},'primary'));$('message').showModal();cancel.focus();return;}
  controllerRequest('UI_LAB_SAVE_PROGRAM',()=>{const existing=draft.id===null?null:programCatalogue[draft.id],program=normalizeProgram({id:existing?existing.id:programCatalogue.length,name:draft.name.trim(),library:!!(existing&&existing.library),stages:draft.stages});programCatalogue[program.id]=program;controllerEvent('UI_LAB_DEVICE_CONTROL_CPU','UI_LAB_EVENT_PROGRAM_SAVED','UI_LAB_EVENT_CONFIRMED');logEvent('program-saved',{name:program.name});const origin=programEditor?programEditor.origin:'programs';programEditor=null;selectedProgram=program.id;programStagePage=0;mainPage=origin==='programs'?'programs':'home';programRoute=origin==='programs'?'detail':'library';render();});}
 // Delete: the controller removes the program; it leaves the library, Favourites and Recent programs.
 function removeProgram(id){const p=programCatalogue[id];if(!p||p.deleted)return;p.deleted=true;logEvent('program-deleted',{name:p.name});programFavourites.delete(id);const at=demoRecent.indexOf(id);if(at>=0)demoRecent.splice(at,1);if(selectedProgram===id)programRoute='library';programPage=0;}
@@ -1414,7 +1420,7 @@ function programGraph(parent,p){
  const running=mainPage==='running';
  const graph=node('div',undefined,'program-graph');const caption=node('div',undefined,'program-graph-label');caption.append(node('span',t('UI_LAB_GRAPH_TEMPERATURE_AXIS')),node('span',t(running?'UI_LAB_GRAPH_PLANNED_MEASURED':'DASHBOARD_PLANNED')));graph.append(caption);
  const svg=graphElement('svg',{role:'img','aria-label':t('UI_LAB_GRAPH_ARIA_FORMAT',p.name)});
- const points=[{minutes:0,target:planningStartC()}];let time=0;for(const stage of p.stages){time+=stage.minutes;points.push({minutes:time,target:stage.target});}const coolingMinutes=Number.isFinite(p.coolingMinutes)?p.coolingMinutes:coolingEstimateMinutes(p);
+ const points=[{minutes:0,target:programStartC(p)}];let time=0;for(const stage of p.stages){time+=stage.minutes;points.push({minutes:time,target:stage.target});}const coolingMinutes=Number.isFinite(p.coolingMinutes)?p.coolingMinutes:coolingEstimateMinutes(p);
  // Show only the start of automatic cooling (at most a quarter of the curing time) so the curing stages keep most of the width.
  // A run already cooling widens the window just enough to include the cooling time elapsed so far.
  const cap=coolingWindowMinutes(p),cooled=running&&demoRun&&demoRun.coolingElapsed?Math.ceil(demoRun.coolingElapsed):0,shownCooling=running&&runCoolingFull&&cooled>cap?cooled:cap,coolingFrom=points[points.length-1].target,plannedCooling=Math.min(shownCooling,coolingMinutes);
@@ -1586,23 +1592,76 @@ function renderLoading(){
  // Start sits under the facts, not where Load program was, so a double tap on Load cannot start the program.
  const columns=node('div',undefined,'program-detail-columns program-quarters loading-columns');programGraph(columns,p);const facts=node('div',undefined,'program-facts');appendProgramFacts(facts,p);const start=button(controller.pending?'UI_LAB_REQUESTING':'UI_LAB_START_PROGRAM',()=>startDemo(),'primary loading-start');start.disabled=!!controller.pending||p.stages.some(s=>!Number.isFinite(s.minutes)||s.minutes<=0);columns.append(facts,start);c.append(columns);
 }
-function startDemo(elapsed=0){
+function startDemo(){
  if(stageSession||demoRun||controller.pending)return;const p=programCatalogue[selectedProgram];if(p.stages.some(s=>!Number.isFinite(s.minutes)||s.minutes<=0))return;
- controllerRequest('UI_LAB_START_PROGRAM',()=>beginDemoRun(selectedProgram,elapsed));
+ controllerRequest('UI_LAB_START_PROGRAM',()=>answerStart(selectedProgram));
 }
-function beginDemoRun(id,elapsed=0){
- const p=programCatalogue[id];selectedProgram=id;runCoolingFull=false;demoFault=null;
- demoRun={mode:'program',program:structuredClone(p),elapsed:Math.max(0,Math.min(elapsed,p.minutes)),paused:false,phase:elapsed>=p.minutes?'cooling':'curing',coolingElapsed:0,coolingTemperature:demoMeasured(p,p.minutes),coolingRemaining:p.coolingMinutes,profile:null};
+// SIMULATION ONLY (M21-7d-2): the simulated controller answers a program Start as the controller does (furnace
+// core/run start selection and start transaction), so the demo shows the controller's Start dialogs. The run starts at
+// the first stage the measured temperature allows (a Heating stage below its target, a Hold within 5.0 C of its target:
+// fixture profile A); the estimate runs from there. The first stage within the advisory duration starts at once; a later
+// stage, or a longer estimate, is proposed for Confirm or Cancel; otherwise the controller's reason refuses it. The
+// proposal is not re-evaluated while it is open. Temperatures in tenths; codes are the controller's.
+const START_HOLD_TOLERANCE=50;
+let startProposal=null,startTransactions=0,proposalGuard=false;
+function secondsAsMinutes(seconds){return t('UI_LAB_VALUE_FORMAT_MINUTES',Math.ceil(seconds/60));}
+// The furnace temperature the simulated controller measures (whole degrees, as the UI lab), or null when not valid.
+function demoFurnaceTenths(){if(['stale','unavailable'].includes(fixture())||demoLinkLost)return null;const run=demoRun;const c=run&&run.mode==='program'&&(run.phase==='cooling'||run.phase==='complete')?run.coolingTemperature:24;return Math.round(c)*10;}
+function startEvaluation(p,measured){
+ if(measured===null)return {reason:23};
+ let holdTarget=0,stage=-1;
+ for(let i=0;i<p.stages.length&&stage<0;i++){const s=p.stages[i];if(s.kind==='Hold'){if(Math.abs(measured-holdTarget)<=START_HOLD_TOLERANCE)stage=i;}else{holdTarget=s.target*10;if(measured<holdTarget)stage=i;}}
+ if(stage<0)return {reason:27};
+ let from=measured,seconds=0;
+ p.stages.forEach((s,i)=>{if(s.kind==='Hold'){if(i>=stage)seconds+=s.minutes*60;return;}const target=s.target*10;if(i===stage)from=measured;if(i>=stage&&target>from&&s.rateTenths>0)seconds+=Math.floor(((target-from)*60+s.rateTenths-1)/s.rateTenths);from=target;});
+ const limits=controllerLimits(),maximum=limits.maxCuringMinutes*60,recommended=limits.recommendedMinutes?limits.recommendedMinutes*60:maximum;
+ if(seconds>maximum)return {reason:28};
+ let target=0;const skipped=p.stages.slice(0,stage).map((s,index)=>{if(s.kind!=='Hold')target=s.target*10;return {index,hold:s.kind==='Hold',target,minutes:s.kind==='Hold'?s.minutes:0};});
+ const warnings=[];if(stage>0)warnings.push(1);if(skipped.some(s=>s.hold))warnings.push(2);
+ return {stage,measured,remaining:seconds,ack:seconds>recommended,recommended,maximum,skipped,warnings};}
+// The answer to a Start: false unless the run started (the session log then says accepted).
+function answerStart(id){const answer=startEvaluation(programCatalogue[id],demoFurnaceTenths());
+ if(answer.reason){tell('UI_LAB_START_REJECTED_TITLE','UI_LAB_START_REASON_'+answer.reason);return false;}
+ if(answer.stage===0&&!answer.ack){startProgramAt(id,answer);return true;}
+ startProposal={id,transaction:++startTransactions,...answer};showProposal();return false;}
+function startProgramAt(id,answer){demoRun=null;manualRun=null;beginDemoRun(id,0,answer.stage?answer:null);}
+// The proposal panel, as on the controller: only Confirm start or Cancel start end it.
+function showProposal(){
+ const s=startProposal,dialog=$('message');if(touchKeyboard)closeTouchKeyboard(false);if(dialog.open)dialog.close();
+ if(!proposalGuard){dialog.addEventListener('cancel',e=>{if(startProposal)e.preventDefault();});proposalGuard=true;}
+ dialog.classList.remove('alert-dialog','alert-fault','alert-link','alert-ok');delete dialog.dataset.alert;
+ $('message-title').textContent=t('UI_LAB_START_PROPOSAL_TITLE_FORMAT',programCatalogue[s.id].name);
+ const lines=[node('p',t('UI_LAB_START_PROPOSAL_MEASURED_FORMAT',tenthsText(s.measured),s.stage+1))];
+ if(s.skipped.length)lines.push(node('p',t('UI_LAB_START_PROPOSAL_SKIPPED_FORMAT',s.skipped.map(k=>k.hold?t('UI_LAB_START_SKIPPED_HOLD_FORMAT',k.index+1,k.minutes):t('UI_LAB_START_SKIPPED_HEATING_FORMAT',k.index+1,tenthsText(k.target))).join(t('UI_LAB_LIST_SEPARATOR'))),'warning'));
+ lines.push(node('p',t('UI_LAB_START_PROPOSAL_CURING_FORMAT',secondsAsMinutes(s.remaining))));
+ if(s.ack)lines.push(node('p',t('UI_LAB_START_PROPOSAL_DURATION_FORMAT',secondsAsMinutes(s.recommended),secondsAsMinutes(s.maximum),secondsAsMinutes(s.remaining)),'warning'));
+ for(const w of s.warnings)lines.push(node('p',t('UI_LAB_START_WARNING_'+w),'warning'));
+ $('message-text').replaceChildren(...lines);
+ $('message-actions').replaceChildren(button('UI_LAB_START_CANCEL',cancelProposal,'danger'),button('UI_LAB_START_CONFIRM',confirmProposal,'primary'));dialog.showModal();}
+function cancelProposal(){startProposal=null;$('message').close();render();}
+// Confirm names exactly the proposal shown (and accepts its estimate when it asks): the run starts at its stage.
+function confirmProposal(){const s=startProposal;if(!s||controller.pending)return;startProposal=null;$('message').close();controllerRequest('UI_LAB_START_PROGRAM',()=>{startProgramAt(s.id,s);return true;});}
+// A Start at a later stage of a hot furnace: the stages before it are left out; a Heating stage there ramps from the
+// measured temperature (whole minutes, at least one), a Hold there holds at its target.
+function hotProgram(p,start){const stages=structuredClone(p.stages.slice(start.stage));let held=0;p.stages.slice(0,start.stage).forEach(s=>{if(s.kind!=='Hold')held=s.target;});const first=stages[0];
+ if(first.kind!=='Hold'&&first.rateTenths>0)first.minutes=Math.max(1,Math.ceil(Math.floor(((first.target*10-start.measured)*60+first.rateTenths-1)/first.rateTenths)/60));
+ return normalizeProgram({...structuredClone(p),stages,startC:first.kind==='Hold'?held:Math.floor(start.measured/10)});}
+// Where a run's plan starts: the measured temperature of a hot start, else the planning reference.
+function programStartC(p){return Number.isFinite(p.startC)?p.startC:planningStartC();}
+function beginDemoRun(id,elapsed=0,start=null){
+ const p=start?hotProgram(programCatalogue[id],start):structuredClone(programCatalogue[id]);selectedProgram=id;runCoolingFull=false;demoFault=null;
+ demoRun={mode:'program',program:p,elapsed:Math.max(0,Math.min(elapsed,p.minutes)),paused:false,phase:elapsed>=p.minutes?'cooling':'curing',coolingElapsed:0,coolingTemperature:0,coolingRemaining:p.coolingMinutes,profile:null};
+ demoRun.coolingTemperature=demoMeasured(p,p.minutes);
  demoRun.coolingHistory=[{t:0,v:demoRun.coolingTemperature}];runView=saved.view.toLowerCase()==='furnace'?'furnace':saved.view.toLowerCase();
  demoRecent.splice(0,demoRecent.length,id,...demoRecent.filter(x=>x!==id).slice(0,7));controller.phase=demoRun.phase;mainPage='running';logEvent('program-started',{name:p.name});updateExpoControls();
 }
-function plannedAt(p,t){let elapsed=0,start=planningStartC();for(const s of p.stages){if(t<=elapsed+s.minutes)return start+(s.target-start)*Math.max(0,(t-elapsed)/s.minutes);elapsed+=s.minutes;start=s.target;}return start;}
+function plannedAt(p,t){let elapsed=0,start=programStartC(p);for(const s of p.stages){if(t<=elapsed+s.minutes)return start+(s.target-start)*Math.max(0,(t-elapsed)/s.minutes);elapsed+=s.minutes;start=s.target;}return start;}
 // Simulated chamber reading of a healthy furnace: a controller (think PID)
 // tracking the plan. Where the rate changes at a stage corner it lags, then
 // overshoots slightly and settles; a small ripple remains. The error stays
 // within 0.5 °C. Scenario profiles add the larger deviations of a fault.
 function trackingError(p,t){let error=0,elapsed=0,rate=0;
- for(const s of p.stages){const next=(s.target-(elapsed?plannedAt(p,elapsed):planningStartC()))/s.minutes,dt=t-elapsed;
+ for(const s of p.stages){const next=(s.target-(elapsed?plannedAt(p,elapsed):programStartC(p)))/s.minutes,dt=t-elapsed;
   if(dt>0&&dt<40)error-=(next-rate)*0.16*Math.exp(-dt/4)*Math.cos(dt*2*Math.PI/9);rate=next;elapsed+=s.minutes;}
  return Math.max(-0.5,Math.min(0.5,error+0.08*Math.sin(t*0.9)));}
 function demoMeasured(p,t){return plannedAt(p,t)+trackingError(p,t)+(demoRun&&demoRun.program===p&&demoRun.profile?demoRun.profile(t):0);}
@@ -1619,13 +1678,13 @@ function advanceManualCooling(run,minutes){for(let i=0;i<minutes&&run.temperatur
 // Leave a cooling Manual session: Exit to Home, or Start new on the Manual page with the same target and rate.
 function leaveManualCooling(next){const run=demoRun;if(!run||run.mode!=='manual')return;if(next==='new')manualDraft={target:run.target,rate:run.rate};demoRun=null;manualRun=null;runNotice=false;controller.phase='idle';manualStatusNotice='';mainPage=next==='new'?'manual':'home';render();updateExpoControls();}
 // The plan up to `minutes`: a stage running at that moment ends there (a ramp at the temperature it had reached).
-function cutProgram(p,minutes){const stages=[];let elapsed=0,start=planningStartC();for(const stage of p.stages){if(elapsed>=minutes)break;const take=Math.min(stage.minutes,minutes-elapsed),copy={...stage,minutes:take};if(take<stage.minutes&&stage.kind==='Heating')copy.target=Math.round(start+(stage.target-start)*take/stage.minutes);stages.push(copy);elapsed+=take;start=stage.kind==='Heating'?stage.target:start;}
+function cutProgram(p,minutes){const stages=[];let elapsed=0,start=programStartC(p);for(const stage of p.stages){if(elapsed>=minutes)break;const take=Math.min(stage.minutes,minutes-elapsed),copy={...stage,minutes:take};if(take<stage.minutes&&stage.kind==='Heating')copy.target=Math.round(start+(stage.target-start)*take/stage.minutes);stages.push(copy);elapsed+=take;start=stage.kind==='Heating'?stage.target:start;}
  return normalizeProgram({...p,stages,maximum:Math.max(30,...stages.map(stage=>stage.target))});}
 // Program Stop: the run is cut where it stands and cools automatically on Running; Start again or Return Home ends it.
 function stopProgramRun(run){controllerEvent('UI_LAB_SOURCE_HMI','UI_LAB_EVENT_STOP','UI_LAB_EVENT_REQUESTED');controllerEvent('UI_LAB_DEVICE_CONTROL_CPU','UI_LAB_EVENT_PROGRAM_STOPPED','UI_LAB_EVENT_CONFIRMED');logEvent('program-stopped',{name:run.program.name});
  run.stopped=true;run.paused=false;if(run.phase==='curing'){const temperature=demoMeasured(run.program,run.elapsed);run.program=cutProgram(run.program,Math.max(1,Math.floor(run.elapsed)));run.elapsed=run.program.minutes;enterCooling(run);run.coolingTemperature=temperature;run.coolingHistory=[{t:0,v:temperature}];run.coolingRemaining=Math.max(0,Math.ceil((temperature-30)/Math.max(.4,temperature/180)));}
  $('message').close();render();updateExpoControls();}
-function startProgramAgain(){const run=demoRun;if(!run||!run.stopped||controller.pending||!programListed(run.program.id))return;controllerRequest('UI_LAB_START_PROGRAM',()=>{demoRun=null;manualRun=null;beginDemoRun(run.program.id,0);});}
+function startProgramAgain(){const run=demoRun;if(!run||!run.stopped||controller.pending||!programListed(run.program.id))return;controllerRequest('UI_LAB_START_PROGRAM',()=>answerStart(run.program.id));}
 function stopDemo(){if(!demoRun)return;const manual=demoRun.mode==='manual';
  if(!manual&&!demoRun.stopped&&(demoRun.phase==='curing'||demoRun.phase==='cooling')){stopProgramRun(demoRun);return;}
  if(manual){if(demoRun.phase==='cooling')return;controllerEvent('UI_LAB_SOURCE_HMI','UI_LAB_EVENT_STOP','UI_LAB_EVENT_REQUESTED');controllerEvent('UI_LAB_DEVICE_CONTROL_CPU','UI_LAB_EVENT_MANUAL_STOPPED','UI_LAB_EVENT_CONFIRMED');enterManualCooling(demoRun);$('message').close();render();updateExpoControls();return;}
