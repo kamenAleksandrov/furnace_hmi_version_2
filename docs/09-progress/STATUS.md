@@ -1,5 +1,26 @@
 # Project status
 
+**Fact (2026-11-20, Phase 21 M21-7d-1, draft):** the editors, Manual and Settings take the
+controller's program limits and its planning reference (owner 2026-11-20: the limits must be the
+furnace's; the assumed start temperature is the operator's setting). Stacked on M21-7c; design,
+choices and gaps in the Phase 21 plan ("M21-7d").
+- **Client:** every `CAPABILITIES` limit kept per session (0 unconfigured); the reference from the
+  snapshot's `SETTINGS`, read again when missing or after an unresolved change; `SETTING_CHANGE`
+  as a command with the value in effect from its result.
+- **Screens, both presentations:** targets, rates, stages, Hold and the curing estimate by the
+  controller's rules and limits; ramps from the reference; nothing edited and Manual not started
+  without the limits; Settings > Programs shows the assumed start temperature, its range and the
+  controller's answer to a change; information dialogs close with Close; one stage reads 1 stage.
+- **Evidence:** host GCC, MSVC core, desktop and UI lab, Zephyr Twister, the operator workflows
+  against firmware #66's `link_pty` (9 of 9, with `test_f_limits_and_planning_reference`), the web
+  smoke test, and the Zephyr GUI against the simulated controller by hand (Settings > Programs
+  showed 23.0 °C and 5.0–40.0 °C; a change to 25.0 °C was applied by the controller). Counts in
+  the pull request.
+- **Reviews:** three AI reviews in the HMI roles, not the required human reviews; fixed test-first.
+- **Open:** M21-7d-2 (the labs' Start and save dialogs); M21-7e (the controller's clock, firmware
+  and HMI) waits for the owner's approval of its proposal.
+- **Next:** M21-7d-2.
+
 **Fact (2026-11-20, Phase 21 M21-7c, draft):** the Device log and a new Health category show the
 controller's history and health (furnace WI-H12, ADR-0020). Stacked on M21-7b; design, owner
 answers and questions in the Phase 21 plan ("M21-7c, the Device log and health"), where M21-7d
@@ -28,7 +49,7 @@ answers and questions in the Phase 21 plan ("M21-7c, the Device log and health")
 - **Open:** owner questions (faulted runs under Programs; UTC or local wall time; an adjusted
   clock); runs named by ID (CTRL-EVENT-NAMES); no time, run or severity filters, export or
   recording schedules.
-- **Next:** M21-7d, the controller's limits and the planning reference.
+- **Next:** M21-7d, the controller's limits and the planning reference (in draft above).
 
 **Fact (2026-11-20, Phase 21 M21-7b, draft):** the operator screens use the controller's program
 library on Zephyr: listing, saves, deletes and the program Start with the controller's proposal.

@@ -1759,8 +1759,9 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         strcmp(context->explorer.state->program_name, "Customer cure A") != 0) {
         fprintf(stderr, "New program save/list/start failed\n"); return 3;
     }
-    /* 95 minutes of heating to 120 C, then 75 minutes of automatic cooling. */
-    furnace_hmi_simulator_tick(&context->simulator, 95U * 60U);
+    /* 97 minutes of heating to 120 C from the planning reference 23 C at 1.0 C/min (M21-7d),
+     * then 75 minutes of automatic cooling. */
+    furnace_hmi_simulator_tick(&context->simulator, 97U * 60U);
     if (!furnace_hmi_operator_screens_update(&context->explorer, furnace_hmi_simulator_state(&context->simulator)) ||
         context->explorer.state->run_phase != FURNACE_HMI_RUN_PHASE_COOLING) {
         fprintf(stderr, "New program did not reach automatic cooling\n"); return 3;

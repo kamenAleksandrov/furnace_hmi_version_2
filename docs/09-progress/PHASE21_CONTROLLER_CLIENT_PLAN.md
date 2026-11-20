@@ -396,6 +396,31 @@ save dialogs) on M21-7d-1, so each stays reviewable.
 6. **M21-7d-2:** the labs simulate the controller's Start proposal, the acknowledgement of a long
    program and refusals, so their Start and save dialogs are the controller's.
 
+**M21-7d-1 done (2026-11-20, draft):** as designed, with these choices made in the work:
+- Settings > Programs is the fifth category, after System, so the earlier categories keep their
+  numbers and captures. Its range reads "5.0–40.0 °C"; the longer form did not fit its card.
+- Manual needs the limits, not the reference. Without the limits Manual shows a note; New
+  program, Edit and Save show "Program limits not available", a dialog that closes.
+- An unresolved change is shown as unknown, and the client reads `SETTINGS` again (also when a
+  snapshot lacked them); an earlier answer is cleared when the value in effect changes; Applied
+  says when the controller has no settings store (`settings_state` `NONE`).
+- A Hold beyond `curing_max_minutes` is refused as a Hold, as the controller reports it; the
+  error texts name the controller's limits ("target must be 20–180 °C").
+- Found operating the HMI against the controller: a tenths keypad stated its range in raw tenths
+  ("50 to 400"); it now states 5.0 to 40.0, step 0.1 (also the rate keypads).
+- Review fixes (three AI reviews in the HMI roles, not the required human reviews): the above,
+  and a keypad open during a page update keeps working (it already broke on library updates).
+
+**Not in M21-7d-1, recorded:**
+- The editors' stage minutes start at the reference rounded to whole degrees; the total is
+  checked with the exact reference, so the minutes shown can differ by a minute from the check.
+- `recommended_curing_minutes` and `name_max_code_points` are kept but not yet used (the save's
+  acknowledgement and the 31-character keyboard already cover them).
+- The labs' delivered programs keep minutes authored from 25 C.
+- Another client's change of the reference is seen at the next snapshot, or when a change of this
+  HMI is unresolved; the HMI does not poll `SETTINGS`.
+- Seen, not changed: the Display card "Default Running view" overlaps its value on the HMI.
+
 ### M21-7e, the controller's clock (firmware and HMI)
 
 Added 2026-11-20 (owner): the furnace controller keeps the time, in universal time (UTC); the HMI
