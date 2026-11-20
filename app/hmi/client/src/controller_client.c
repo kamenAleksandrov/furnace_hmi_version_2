@@ -33,6 +33,8 @@
 #define SAVE_SAVED 0U
 #define DELETE_DELETED 0U
 #define LIBRARY_UNRESOLVED 10U
+#define SETTING_PLANNING_REFERENCE 1U
+#define SETTING_APPLIED 0U
 /* Start transaction codes: the start reason DUPLICATE_REQUEST and the STATUS start states. */
 #define START_DUPLICATE_REQUEST 5U
 #define START_STATE_CONSUMED 4U
@@ -371,6 +373,12 @@ static bool encode_command(furnace_hmi_controller_client_t *c, const furnace_hmi
         env = &m->u.start_cancel.envelope;
         m->u.start_cancel.transaction_id = cmd->transaction_id;
         break;
+    case FURNACE_HMI_COMMAND_SETTING_CHANGE:
+        m->type = FURNACE_WIRE_MSG_SETTING_CHANGE;
+        env = &m->u.setting_change.envelope;
+        m->u.setting_change.setting = cmd->setting;
+        m->u.setting_change.value = cmd->setting_value;
+        break;
     case FURNACE_HMI_COMMAND_NONE:
     case FURNACE_HMI_COMMAND_COUNT:
     default:
@@ -482,6 +490,8 @@ static furnace_hmi_command_kind_t kind_of_message(uint16_t msg_type)
         return FURNACE_HMI_COMMAND_START_CONFIRM;
     case FURNACE_WIRE_MSG_START_CANCEL:
         return FURNACE_HMI_COMMAND_START_CANCEL;
+    case FURNACE_WIRE_MSG_SETTING_CHANGE:
+        return FURNACE_HMI_COMMAND_SETTING_CHANGE;
     default:
         return FURNACE_HMI_COMMAND_NONE;
     }
@@ -599,6 +609,41 @@ static void on_program_delete_result(furnace_hmi_controller_client_t *c,
         return;
     }
     complete(c, o, r->result == DELETE_DELETED, r->result);
+}
+
+/* ---- the planning reference (M21-7d; controller interface, Settings) ---------------------- */
+
+static void on_settings(furnace_hmi_controller_client_t *c, const struct furnace_wire_settings *s)
+{
+    furnace_hmi_controller_observation_t *o = &c->observation;
+
+    /* SETTINGS names no session: taken only from the session whose identity is known. */
+    if (!o->identity_known) {
+        saturating_increment(&o->frames_ignored);
+        return;
+    }
+    o->settings_valid = true;
+    o->settings_state = s->settings_state;
+    o->planning_reference_decicelsius = s->planning_reference;
+    changed(c);
+}
+
+static void on_setting_result(furnace_hmi_controller_client_t *c,
+                              const struct furnace_wire_setting_result *r)
+{
+    furnace_hmi_command_outcome_t *o =
+        pending_command(c, r->request_id, FURNACE_HMI_COMMAND_SETTING_CHANGE);
+
+    if (o == NULL) {
+        return;
+    }
+    /* The value in effect afterwards, whatever the result (interface, Settings). */
+    o->setting_value = r->value;
+    if (r->setting == SETTING_PLANNING_REFERENCE) {
+        c->observation.settings_valid = true;
+        c->observation.planning_reference_decicelsius = r->value;
+    }
+    complete(c, o, r->result == SETTING_APPLIED, r->result);
 }
 
 /* The pending Start-transaction command this result answers, of any of the given kinds. */
@@ -968,6 +1013,7 @@ static void discard_session_data(furnace_hmi_controller_client_t *c)
     furnace_hmi_controller_observation_t *o = &c->observation;
 
     o->capabilities_valid = false;
+    o->settings_valid = false;
     o->status_valid = false;
     o->faults_valid = false;
     o->faults_outdated = false;
@@ -1133,6 +1179,19 @@ static void on_capabilities(furnace_hmi_controller_client_t *c,
     o->heartbeat_interval_ms = caps->heartbeat_interval_ms;
     o->link_silence_ms = caps->link_silence_ms;
     o->manual_max_minutes = caps->manual_max_minutes;
+    o->max_stages = caps->max_stages;
+    o->stage_kinds = caps->stage_kinds;
+    o->target_min_decicelsius = caps->target_min;
+    o->target_max_decicelsius = caps->target_max;
+    o->rate_min_decicelsius_per_min = caps->rate_min;
+    o->rate_max_decicelsius_per_min = caps->rate_max;
+    o->curing_max_minutes = caps->curing_max_minutes;
+    o->recommended_curing_minutes = caps->recommended_curing_minutes;
+    o->planning_reference_min_decicelsius = caps->planning_reference_min;
+    o->planning_reference_max_decicelsius = caps->planning_reference_max;
+    o->name_max_code_points = caps->name_max_code_points;
+    o->name_max_bytes = caps->name_max_bytes;
+    o->library_capacity = caps->library_capacity;
     o->capabilities_valid = true;
     changed(c);
 }
@@ -1722,8 +1781,14 @@ static void on_frame(furnace_hmi_controller_client_t *c, const struct furnace_wi
         furnace_hmi_diagnostics_on_history_page(&c->diagnostics, &m->u.event_history_page,
                                                 c->now_ms);
         break;
+    case FURNACE_WIRE_MSG_SETTINGS:
+        on_settings(c, &m->u.settings);
+        break;
+    case FURNACE_WIRE_MSG_SETTING_RESULT:
+        on_setting_result(c, &m->u.setting_result);
+        break;
     default:
-        break; /* SETTINGS and estimates: M21-7d */
+        break; /* PROGRAM_ESTIMATE: not asked for (the controller's stored estimate is shown) */
     }
 }
 
