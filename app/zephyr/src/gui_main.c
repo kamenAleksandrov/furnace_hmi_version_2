@@ -13,8 +13,10 @@
  * observation without waiting and maps it to the screens' status model. Every
  * value comes from the controller, the application links no simulator, and
  * the screens get no simulated answers. The program library is the
- * controller's, taken from the link as it changes (M21-7b); until the
- * controller provides them (M21-7c), log and clock are shown as unavailable.
+ * controller's, taken from the link as it changes (M21-7b); so are the Device
+ * log and Health (M21-7c), the log read when the operator opens it. The clock,
+ * maintenance and service records stay unavailable until the controller
+ * reports them.
  * Manual, Pause, Resume and Stop are commands to the controller (M21-5b); other
  * actions that would change controller state send nothing.
  */
@@ -54,12 +56,16 @@ static furnace_hmi_dashboard_state_t status;
 /* The controller's library (M21-7b): the link's copy and the screens' form of it. */
 static furnace_hmi_controller_library_t library;
 static furnace_hmi_operator_library_t shown_library;
+/* The controller's health and history (M21-7c), shown by the screens as they are. */
+static furnace_hmi_controller_health_t health;
+static furnace_hmi_controller_history_t history;
 
 int main(void)
 {
     const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
     uint32_t seen = 0U;
     uint32_t library_seen = 0U;
+    uint32_t diagnostics_seen = 0U;
     uint32_t last_taken;
     bool watchdog_stale = false;
 
@@ -80,6 +86,8 @@ int main(void)
     }
     /* Until the link has read it, the controller's library is being read (LOADING). */
     (void)furnace_hmi_operator_screens_set_library(&screens, &shown_library);
+    /* Nothing read and nothing reported yet. */
+    (void)furnace_hmi_operator_screens_set_diagnostics(&screens, &health, &history);
     if (furnace_hmi_controller_link_start() != 0) {
         printk("Controller link UART not ready.\n");
         return 3;
@@ -114,6 +122,12 @@ int main(void)
         if (furnace_hmi_controller_link_take_library(&library, &library_seen)) {
             furnace_hmi_operator_library_from_controller(&library, &shown_library);
             (void)furnace_hmi_operator_screens_set_library(&screens, &shown_library);
+        }
+        if (furnace_hmi_controller_link_take_diagnostics(&health, &history, &diagnostics_seen)) {
+            (void)furnace_hmi_operator_screens_set_diagnostics(&screens, &health, &history);
+        }
+        if (furnace_hmi_operator_screens_take_history_read(&screens)) {
+            furnace_hmi_controller_link_read_history();
         }
         /* The operator's requests go to the link thread; their outcomes come back as feedback. */
         while (furnace_hmi_operator_screens_take_request(&screens, &request)) {

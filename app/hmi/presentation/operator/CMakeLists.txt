@@ -6,6 +6,7 @@
 add_library(
   furnace_hmi_operator_screens
   STATIC
+  src/operator_diagnostics.c
   src/operator_screens.c
   src/operator_theme.c
 )

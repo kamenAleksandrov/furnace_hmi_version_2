@@ -8,6 +8,7 @@
 
 #include <furnace_hmi/controller_library.h>
 #include <furnace_hmi/controller_observation.h>
+#include <furnace_hmi/diagnostics_model.h>
 
 /**
  * Start the link thread: the controller client on the controller-link UART.
@@ -28,6 +29,18 @@ bool furnace_hmi_controller_link_take(furnace_hmi_controller_observation_t *out,
  */
 bool furnace_hmi_controller_link_take_library(furnace_hmi_controller_library_t *out,
                                               uint32_t *seen);
+
+/**
+ * Copy the newest published health and history (M21-7c) into the outputs when
+ * they are newer than *seen, and update *seen. Never waits, as
+ * furnace_hmi_controller_link_take().
+ */
+bool furnace_hmi_controller_link_take_diagnostics(furnace_hmi_controller_health_t *health,
+                                                  furnace_hmi_controller_history_t *history,
+                                                  uint32_t *seen);
+
+/** Ask the link thread to read the controller's event history (M21-7c). Never waits. */
+void furnace_hmi_controller_link_read_history(void);
 
 /**
  * Hand an operator command to the link thread, which submits it at its next

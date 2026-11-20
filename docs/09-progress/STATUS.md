@@ -1,5 +1,35 @@
 # Project status
 
+**Fact (2026-11-20, Phase 21 M21-7c, draft):** the Device log and a new Health category show the
+controller's history and health (furnace WI-H12, ADR-0020). Stacked on M21-7b; design, owner
+answers and questions in the Phase 21 plan ("M21-7c, the Device log and health"), where M21-7d
+(the controller's limits and the planning reference, owner 2026-11-20) is added.
+- **Client:** health every 5 s while current; the three logs read on request, newest 40 entries
+  each, merged into one window complete in every log; BUSY, lost, stale and repeated pages,
+  unanswered, failed and unavailable logs, link loss and a new session handled.
+- **Screens, both presentations:** every controller event in the operator's words (an unknown one
+  by number and severity); grouped by day, or by controller start without a clock; filters,
+  Refresh, details, and notes for what a read lacked. Health: overall, counts, uptime, starts,
+  reset cause, service hours and ten subsystems; unknown never healthy, stale drawn neutral. The
+  labs map their simulated events to what a controller records; the old log renderer is removed.
+- **Evidence (e4bc8a3):**
+  - host GCC 18 of 18, MSVC core 15 of 15, MSVC desktop 18 of 18, UI lab 17 of 17 with all
+    capture geometry checks (new captures `device-log`, `device-health`);
+  - Zephyr Twister on native_sim, 30 of 30 test cases;
+  - the operator workflows against firmware #66's `link_pty`, 8 of 8, including
+    `test_e_device_log_and_health` (health current, 60 entries in three logs);
+  - the web demo smoke test;
+  - the Zephyr GUI against the simulated controller, by hand (WSLg): Health and the Device log,
+    then Refresh after the controller wrote its general log;
+  - 40 mutation probes in a detached worktree: 37 killed, one did not compile, one removed code,
+    one survives (a defensive `scanned_to` check also bounded by the page limit).
+- **Reviews:** three AI reviews in the HMI roles, not the required human reviews; fixed
+  test-first (see the plan).
+- **Open:** owner questions (faulted runs under Programs; UTC or local wall time; an adjusted
+  clock); runs named by ID (CTRL-EVENT-NAMES); no time, run or severity filters, export or
+  recording schedules.
+- **Next:** M21-7d, the controller's limits and the planning reference.
+
 **Fact (2026-11-20, Phase 21 M21-7b, draft):** the operator screens use the controller's program
 library on Zephyr: listing, saves, deletes and the program Start with the controller's proposal.
 Stacked on M21-7a; design and owner answers in the Phase 21 plan ("M21-7b, the screens").
@@ -35,7 +65,7 @@ Stacked on M21-7a; design and owner answers in the Phase 21 plan ("M21-7b, the s
 - **Open:** the labs answer every Start and change at once (no proposal view); no Cyrillic glyphs
   (ADR-0012); the editors' bounds are not the controller's limits; on native_sim a write to a
   closed serial peer ends the HMI (driver behaviour; the demo's relay holds the HMI's end).
-- **Next:** M21-7c, the Device log and health.
+- **Next:** M21-7c, the Device log and health (done in draft, above).
 
 **Fact (2026-11-19, Phase 21 M21-7a, draft):** the controller client mirrors the controller's
 program library and sends saves, deletes and the program Start transaction. No screen changes

@@ -48,10 +48,12 @@ SYNC = REPO / "app" / "hmi" / "protocol" / "wire" / "CONTROLLER_SYNC.json"
 
 STATUS = 0x8003
 FAULT_LIST = 0x8043
-# M21-7a: the client lists and reads the controller's library by itself; both change nothing.
+# M21-7a: the client lists and reads the controller's library by itself; M21-7c: its health
+# and, on request, its history. None of them changes anything.
 CLIENT_READ_MESSAGES = {0x0001: "HELLO", 0x0003: "HEARTBEAT", 0x0004: "SNAPSHOT_REQUEST",
                         0x0005: "CAPABILITIES_REQUEST", 0x0050: "PROGRAM_LIST_REQUEST",
-                        0x0051: "PROGRAM_READ_REQUEST"}
+                        0x0051: "PROGRAM_READ_REQUEST", 0x0060: "HEALTH_REQUEST",
+                        0x0061: "EVENT_HISTORY_REQUEST"}
 PTY_LINE = re.compile(rb"(\S+) connected to pseudotty: (/dev/pts/\d+)")
 TRACE_LINE = re.compile(r"hmi-link: (.*)")
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /*
- * SIMULATION ONLY (Phase 21 M21-5, M21-7a). The HMI's controller link, its link
+ * SIMULATION ONLY (Phase 21 M21-5, M21-7a, M21-7c). The HMI's controller link, its link
  * thread, command mailbox and library copy included, against the real controller: the furnace
  * firmware's tests/sim/link_pty program, started by
  * tools/controller_workflow_check.py. Each workflow submits operator commands as
@@ -650,4 +650,80 @@ ZTEST(controller_workflows, test_d_protective_trip)
     }
     refresh();
     zassert_equal(obs.latched_class, CLASS_PROTECTIVE_TRIP, "the trip's latch stays");
+}
+
+/* ---- health and history (M21-7c) --------------------------------------------------------- */
+
+#define EVENT_RUN 11U
+#define EVENT_FAULT 12U
+#define EVENT_BOOT 30U
+#define RUN_STARTED 1U
+#define LOG_CRITICAL 1U
+#define LOG_GENERAL 2U
+/* The simulated controller writes its general log at most once a minute (ADR-0017 fixture). */
+#define GENERAL_LOG_WAIT_MS 75000
+
+static furnace_hmi_controller_health_t health;
+static furnace_hmi_controller_history_t history;
+static uint32_t diagnostics_seen;
+
+static void take_diagnostics(void)
+{
+    (void)furnace_hmi_controller_link_take_diagnostics(&health, &history, &diagnostics_seen);
+}
+
+static bool health_reported(void)
+{
+    take_diagnostics();
+    return health.valid && health.current;
+}
+
+static bool history_read(void)
+{
+    take_diagnostics();
+    return history.state == FURNACE_HMI_HISTORY_READ && !history.reading;
+}
+
+static bool history_has(uint8_t log, uint16_t event_id, bool run_start)
+{
+    for (uint16_t i = 0U; i < history.count; i++) {
+        const furnace_hmi_controller_history_entry_t *e = &history.entries[i];
+
+        if (e->log == log && e->event_id == event_id &&
+            (!run_start || (e->param_count > 0U && e->param_values[0] == RUN_STARTED))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * The controller's health reaches the HMI by itself; its history, read on request,
+ * holds this controller's start, the faults of the workflows before and their runs.
+ */
+ZTEST(controller_workflows, test_e_device_log_and_health)
+{
+    const int64_t end = k_uptime_get() + GENERAL_LOG_WAIT_MS;
+    bool run_seen = false;
+
+    zassert_true(wait_until(health_reported), "no current health report");
+    zassert_true(health.subsystem_count > 0U, "no subsystems");
+    printk("workflow: health overall %u, %u subsystems, boot %u, uptime %u s, faults %u/%u/%u\n",
+           health.overall, health.subsystem_count, health.boot_count,
+           (unsigned int)(health.uptime_ms / 1000U), health.faults_active, health.faults_latched,
+           health.faults_unacknowledged);
+    do {
+        furnace_hmi_controller_link_read_history();
+        k_msleep(500);
+        zassert_true(wait_until(history_read), "the history is not read");
+        run_seen = history_has(LOG_GENERAL, EVENT_RUN, true);
+        if (!run_seen) {
+            k_msleep(5000); /* the general log is not written yet */
+        }
+    } while (!run_seen && k_uptime_get() < end);
+    printk("workflow: history %u entries, logs %u/%u/%u\n", history.count, history.logs[0].state,
+           history.logs[1].state, history.logs[2].state);
+    zassert_true(history_has(LOG_CRITICAL, EVENT_BOOT, false), "no controller start in the log");
+    zassert_true(history_has(LOG_CRITICAL, EVENT_FAULT, false), "no fault in the log");
+    zassert_true(run_seen, "no run start in the general log");
 }
