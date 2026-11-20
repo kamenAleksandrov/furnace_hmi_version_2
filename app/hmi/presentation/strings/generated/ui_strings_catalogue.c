@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 1036 of 1036 strings; missing entries are NULL and fall back to English. */
+/* en: 1062 of 1062 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -542,10 +542,9 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_STAGE_TITLE] = "Discard stage changes?",
     [FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_STAGE_DETAIL] = "All unsaved stage edits in this session will be discarded.",
     [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TARGET_FORMAT] = "Stage %u: target is outside controller limits.",
-    [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_START_FORMAT] = "Stage %u: heating target must exceed its starting temperature.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_START_FORMAT] = "Stage %u: heating target must be above the previous heating target.",
     [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_RATE_FORMAT] = "Stage %u: invalid heating rate.",
     [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_DURATION_FORMAT] = "Stage %u: duration must be positive.",
-    [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TOTAL] = "Curing duration cannot exceed 48 hours.",
     [FURNACE_HMI_UI_STRING_UI_LAB_GRAPH_PLANNED_MEASURED] = "Planned / Measured",
     [FURNACE_HMI_UI_STRING_UI_LAB_GRAPH_PREDICTED] = "Predicted",
     [FURNACE_HMI_UI_STRING_UI_LAB_GRAPH_MEASURED_PREDICTED] = "Measured / Predicted",
@@ -1044,6 +1043,33 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_TARGET_TEMPERATURE] = "Target temperature (\xC2\xB0" "C)",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_LANGUAGE_CHOICE_DETAIL] = "Show this display in:",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_THEME_CHOICE_DETAIL] = "Use this colour scheme on this display:",
+    [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TOTAL_FORMAT] = "Curing cannot exceed the controller's %ld min.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_KIND_FORMAT] = "Stage %u: this furnace does not allow Hold stages.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_HOLD_FIRST_FORMAT] = "Stage %u: a Hold must follow a Heating stage.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_STAGES] = "A program has at most %u stages on this furnace.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_ONE_FORMAT] = "%u stage",
+    [FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM_DETAIL_ONE_FORMAT] = "%u stage \xC2\xB7 %s curing \xC2\xB7 max %s",
+    [FURNACE_HMI_UI_STRING_UI_LAB_LIMITS_UNKNOWN_TITLE] = "Program limits not available",
+    [FURNACE_HMI_UI_STRING_UI_LAB_LIMITS_UNKNOWN_DETAIL] = "The furnace controller has not reported its program limits and assumed start temperature yet. Programs can be edited once it has.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS] = "Programs",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SUBTITLE_PROGRAMS] = "Program estimates are made by the furnace controller.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE] = "Assumed start temperature",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_VALUE_FORMAT] = "%s \xC2\xB0" "C",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_CAPTION] = "New and edited programs are estimated from it.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_UNKNOWN] = "The controller has not reported it yet.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_DURING_RUN] = "Can be changed when no program or Manual session runs.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_PENDING] = "Sending to the controller\xE2\x80\xA6",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_APPLIED] = "Applied by the controller.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_OUT_OF_RANGE] = "Refused: outside the allowed range.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_SESSION_ACTIVE] = "Refused: a program or Manual session runs.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_BUSY] = "Refused: the controller is busy. Try again.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_NOT_APPLIED] = "Not applied; the value shown is in effect.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_RANGE] = "Allowed range",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_RANGE_FORMAT] = "%s\xE2\x80\x93%s \xC2\xB0" "C",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_RANGE_CAPTION] = "Set by the furnace controller.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_START] = "When a program starts",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_START_VALUE] = "Measured",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_START_CAPTION] = "A Start uses the measured temperature.",
 };
 
 const furnace_hmi_ui_language_info_t furnace_hmi_ui_language_catalogue[FURNACE_HMI_UI_LANGUAGE_COUNT] = {

@@ -126,6 +126,12 @@ bool furnace_hmi_operator_command_for(const furnace_hmi_operator_request_t *requ
         command->kind = FURNACE_HMI_COMMAND_START_CANCEL;
         command->transaction_id = request->transaction_id;
         return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE:
+        /* SETTING_CHANGE of the planning reference (M21-7d); the controller checks its range. */
+        command->kind = FURNACE_HMI_COMMAND_SETTING_CHANGE;
+        command->setting = 1U;
+        command->setting_value = request->planning_reference_decicelsius;
+        return true;
     default:
         return false;
     }

@@ -1239,6 +1239,7 @@ static void copy_status(furnace_hmi_controller_observation_t *o, const struct fu
     o->execution_active = s->lifecycle.execution_active;
     o->heating_authorized = s->lifecycle.heating_authorized;
     o->navigation_permitted = s->lifecycle.navigation_permitted;
+    o->settings_changes_permitted = s->lifecycle.settings_changes_permitted;
     o->fan_feedback = s->equipment.fan_feedback;
     o->door_state = s->equipment.door_state;
     o->emergency_active = s->equipment.emergency_active;

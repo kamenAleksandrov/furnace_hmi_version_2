@@ -355,6 +355,47 @@ pull request stacked on it:
 Owner 2026-11-20: the lab parity stays for now (it may be removed later); the text fixes are
 quality and are required; the planning reference's range is the controller's, not the HMI's.
 
+**Design (started 2026-11-20, owner: "ready for M21-7d").** Two draft pull requests, stacked:
+M21-7d-1 (limits, planning reference, text fixes) on M21-7c, and M21-7d-2 (the labs' Start and
+save dialogs) on M21-7d-1, so each stays reviewable.
+
+1. **Client:** the observation keeps every `CAPABILITIES` program limit (0 without a
+   configuration) and the planning reference from the snapshot's `SETTINGS`; a new controller
+   session discards it. `SETTING_CHANGE` is a command in the ordinary slot; `SETTING_RESULT`'s
+   value in effect becomes the reference whatever the result; `APPLIED` is accepted, the others
+   rejected with the controller's code; `COMMAND_REJECTED` (for example `NOT_CONFIGURED`) refuses.
+   The HMI does not ask for `SETTINGS` again on its own: another client's change is seen at the
+   next snapshot (a gap while the HMI is the only client).
+2. **The screens' limits** (one plain-data type, the lab's simulated values and the
+   controller's, never mixed):
+   - The editor holds whole degrees: `target_min` is rounded up and `target_max` down to whole
+     degrees, so the HMI never offers a value the controller refuses; rates are tenths, exact.
+   - The stage rules are the controller's (furnace `core/program`): each Heating target within
+     the limits and above the previous Heating target, the first only within the limits; a rate
+     within the limits; a Hold after a Heating stage, 1 minute or more. The HMI's own rule that the
+     first target lies above 25 C goes.
+   - The total: the curing estimate from the planning reference, computed as the controller does
+     (each Heating stage from the previous target, rounded up to a second; a stage already at its
+     target takes no time), at most `curing_max_minutes`; the HMI's 48 h goes.
+   - Stages: at most `max_stages`; a kind the controller does not allow is not offered.
+   - Manual's target and rate take the same limits (MAN-03).
+   - Without limits (not yet reported, or an unconfigured controller) New program, Edit and
+     Manual Start are not offered, with a note; the controller decides anyway.
+   - The library's programs are checked against the controller's limits when shown, not the
+     HMI's.
+3. **The planning reference:** Settings gains a "Programs" category (interface Q17) with the
+   assumed start temperature: its value, the controller's range, and Change (a keypad in
+   0.1 C, within the range); the controller's answer is shown (applied, out of range, refused
+   during a run, busy, refused). Not offered while execution is active
+   (`settings_changes_permitted`). The labs simulate it with the controller's fixture (23.0 C,
+   5.0 to 40.0 C).
+4. **The estimate:** the program graph, the editor's preview and the stage minutes ramp from
+   the planning reference, labelled as an estimate from it; a program card keeps the controller's
+   stored estimate.
+5. **Text fixes:** an information-only dialog closes with "Close"; one stage reads "1 stage".
+6. **M21-7d-2:** the labs simulate the controller's Start proposal, the acknowledgement of a long
+   program and refusals, so their Start and save dialogs are the controller's.
+
 ### M21-7e, the controller's clock (firmware and HMI)
 
 Added 2026-11-20 (owner): the furnace controller keeps the time, in universal time (UTC); the HMI

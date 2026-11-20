@@ -199,6 +199,8 @@ typedef enum {
     /* M21-7b: Confirm or Cancel of the controller's start transaction (START_PROGRAM opens it). */
     FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM,
     FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL,
+    /* M21-7d, raised only without simulated answers: the planning reference's change. */
+    FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE,
 } furnace_hmi_operator_request_kind_t;
 
 typedef struct {
@@ -230,6 +232,8 @@ typedef struct {
     uint32_t proposal_revision;
     uint8_t proposed_stage;
     uint32_t accepted_duration_s;
+    /* PLANNING_REFERENCE: the value asked for, 0.1 °C. */
+    int32_t planning_reference_decicelsius;
 } furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
@@ -280,6 +284,54 @@ typedef struct {
 } furnace_hmi_operator_clock_t;
 
 /**
+ * The controller's program limits as the editors use them (M21-7d; controller
+ * interface, Capabilities). Targets are whole degrees within the controller's
+ * range (its minimum rounded up, its maximum down), so the editors never offer
+ * a value the controller refuses; rates are tenths of a degree per minute. The
+ * editors and Manual are offered only when `known`; the controller validates
+ * every request anyway. The UI lab simulates them.
+ */
+typedef struct {
+    bool known;
+    uint8_t max_stages;
+    /** Hold stages may be authored (stage_kinds bit 2); a program starts with Heating. */
+    bool hold_allowed;
+    int32_t target_min_c;
+    int32_t target_max_c;
+    int32_t rate_min_tenths;
+    int32_t rate_max_tenths;
+    /** The longest curing (Heating and Hold) from the planning reference. */
+    int32_t curing_max_minutes;
+    uint8_t name_max_code_points;
+} furnace_hmi_operator_program_limits_t;
+
+/**
+ * The planning reference (M21-7d; furnace PROG-12): the assumed start
+ * temperature of a program's estimate, an operator setting on the controller.
+ */
+typedef struct {
+    bool known;
+    int32_t decicelsius;
+    /** The settable range (0.1 °C); known with the limits. */
+    int32_t min_decicelsius;
+    int32_t max_decicelsius;
+    /** False while execution is active: the controller refuses a change. */
+    bool change_permitted;
+} furnace_hmi_operator_planning_reference_t;
+
+/** The planning-reference change the operator asked for, and the controller's answer. */
+typedef enum {
+    FURNACE_HMI_OPERATOR_SETTING_IDLE = 0,
+    FURNACE_HMI_OPERATOR_SETTING_PENDING,
+    FURNACE_HMI_OPERATOR_SETTING_APPLIED,
+    FURNACE_HMI_OPERATOR_SETTING_OUT_OF_RANGE,
+    FURNACE_HMI_OPERATOR_SETTING_SESSION_ACTIVE,
+    FURNACE_HMI_OPERATOR_SETTING_BUSY,
+    /** Refused, unresolved or not sent: the value in effect is the one shown. */
+    FURNACE_HMI_OPERATOR_SETTING_NOT_APPLIED,
+} furnace_hmi_operator_setting_outcome_t;
+
+/**
  * Controller-owned content the screens show besides the status observation:
  * the program library and the recently run programs, the controller's clock,
  * its event log, its program limits and the Device catalogue. The host
@@ -312,6 +364,13 @@ typedef struct {
     int32_t default_duration_minutes;
     bool device_catalogue_known;
     furnace_hmi_operator_device_catalogue_t device_catalogue;
+    /**
+     * The program limits and the planning reference the editors use (M21-7d):
+     * the UI lab's simulated controller; the Zephyr application sets the
+     * controller's with furnace_hmi_operator_screens_set_program_limits().
+     */
+    furnace_hmi_operator_program_limits_t program_limits;
+    furnace_hmi_operator_planning_reference_t planning_reference;
     /**
      * The host answers controller actions itself (the UI lab's simulation).
      * When false, an action that would change controller state (starting,
@@ -394,6 +453,15 @@ bool furnace_hmi_operator_screens_set_library(furnace_hmi_operator_screens_t *ex
 bool furnace_hmi_operator_screens_set_diagnostics(furnace_hmi_operator_screens_t *explorer,
                                                   const furnace_hmi_controller_health_t *health,
                                                   const furnace_hmi_controller_history_t *history);
+
+/**
+ * The controller's program limits and planning reference (M21-7d): the
+ * editors, Manual, the estimates and Settings take them from now on. Call
+ * whenever they change; only from the GUI context.
+ */
+bool furnace_hmi_operator_screens_set_program_limits(
+    furnace_hmi_operator_screens_t *explorer, const furnace_hmi_operator_program_limits_t *limits,
+    const furnace_hmi_operator_planning_reference_t *reference);
 
 /**
  * True once after the operator asked for the controller's history (the Device
@@ -659,6 +727,10 @@ struct furnace_hmi_operator_screens {
     bool limits_known;
     bool device_catalogue_known;
     bool simulated_responses;
+    /* M21-7d: the limits and planning reference in effect (content's, or the controller's). */
+    furnace_hmi_operator_program_limits_t program_limits;
+    furnace_hmi_operator_planning_reference_t planning_reference;
+    furnace_hmi_operator_setting_outcome_t setting_outcome;
     uint8_t device_tab;
     uint8_t device_filter;
     uint8_t device_page;

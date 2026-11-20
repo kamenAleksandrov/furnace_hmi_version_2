@@ -239,6 +239,8 @@ typedef struct {
     bool heating_authorized;
     /** The controller's lifecycle decides navigation, never a local flag (interface: Lifecycle). */
     bool navigation_permitted;
+    /** Operator settings may change (false while execution is active; M21-7d). */
+    bool settings_changes_permitted;
     uint8_t fan_feedback;
     uint8_t door_state;
     bool emergency_active;

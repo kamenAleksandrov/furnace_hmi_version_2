@@ -22,6 +22,7 @@
  */
 
 #include <stdint.h>
+#include <string.h>
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/display.h>
@@ -58,6 +59,9 @@ static furnace_hmi_controller_library_t library;
 static furnace_hmi_operator_library_t shown_library;
 /* The controller's health and history (M21-7c), shown by the screens as they are. */
 static furnace_hmi_controller_health_t health;
+/* M21-7d: the controller's program limits and planning reference as the screens use them. */
+static furnace_hmi_operator_program_limits_t limits;
+static furnace_hmi_operator_planning_reference_t reference;
 static furnace_hmi_controller_history_t history;
 
 int main(void)
@@ -115,12 +119,26 @@ int main(void)
             watchdog_stale = true;
             refresh = true;
         }
+        bool library_changed = furnace_hmi_controller_link_take_library(&library, &library_seen);
+
         if (refresh) {
+            furnace_hmi_operator_program_limits_t new_limits;
+            furnace_hmi_operator_planning_reference_t new_reference;
+
             furnace_hmi_controller_dashboard_state(&observation, &status);
             (void)furnace_hmi_operator_screens_update(&screens, &status);
+            furnace_hmi_operator_limits_from_controller(&observation, &new_limits, &new_reference);
+            if (memcmp(&new_limits, &limits, sizeof(limits)) != 0 ||
+                memcmp(&new_reference, &reference, sizeof(reference)) != 0) {
+                limits = new_limits;
+                reference = new_reference;
+                (void)furnace_hmi_operator_screens_set_program_limits(&screens, &limits, &reference);
+                /* The library's ramps and exactness follow the limits and the reference. */
+                library_changed = true;
+            }
         }
-        if (furnace_hmi_controller_link_take_library(&library, &library_seen)) {
-            furnace_hmi_operator_library_from_controller(&library, &shown_library);
+        if (library_changed) {
+            furnace_hmi_operator_library_from_controller(&library, &limits, &reference, &shown_library);
             (void)furnace_hmi_operator_screens_set_library(&screens, &shown_library);
         }
         if (furnace_hmi_controller_link_take_diagnostics(&health, &history, &diagnostics_seen)) {
