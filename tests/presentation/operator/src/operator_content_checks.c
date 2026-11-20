@@ -2240,6 +2240,9 @@ static int limits_checks(const char **failure)
         return failed(failure, "Settings does not show the planning reference and its range.", 1012);
     }
     click(card_with_text(screens.root, "23.0 °C"));
+    if (screens.modal == NULL || !modal_contains("5.0") || !modal_contains("40.0") || modal_contains("400")) {
+        return failed(failure, "The reference keypad does not state its range in degrees.", 1018);
+    }
     click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
     click(button_with_text(screens.modal, "2"));
     click(button_with_text(screens.modal, "5"));

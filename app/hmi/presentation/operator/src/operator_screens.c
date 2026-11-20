@@ -442,6 +442,7 @@ static operator_stage_fixture_t program_stage(const furnace_hmi_operator_screens
 static size_t program_authored_stage_count(const furnace_hmi_operator_program_t *program);
 static int32_t reference_start_c(const furnace_hmi_operator_screens_t *explorer, int32_t otherwise);
 static void post_request(furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_request_kind_t kind);
+static void format_keyboard_value(char *buffer, size_t capacity, int32_t value, bool rate_tenths);
 static bool rebuild_page_keeping_modal(furnace_hmi_operator_screens_t *explorer);
 static void manual_within_limits(furnace_hmi_operator_screens_t *explorer);
 
@@ -2751,11 +2752,24 @@ static void keyboard_update_feedback(furnace_hmi_operator_screens_t *explorer)
     }
     else {
         char range[96];
-        (void)snprintf(range, sizeof(range),
-                       ui_string(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_RANGE_FORMAT),
-                       (long)explorer->keyboard_minimum,
-                       (long)explorer->keyboard_maximum,
-                       (long)explorer->keyboard_step);
+        if (explorer->keyboard_rate_tenths != 0U) {
+            /* Tenths are entered and stated as decimals, never as raw tenths (M21-7d). */
+            char low[24];
+            char high[24];
+            char step[24];
+            format_keyboard_value(low, sizeof(low), explorer->keyboard_minimum, true);
+            format_keyboard_value(high, sizeof(high), explorer->keyboard_maximum, true);
+            format_keyboard_value(step, sizeof(step), explorer->keyboard_step, true);
+            (void)snprintf(range, sizeof(range), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_RANGE_TEXT_FORMAT),
+                           low, high, step);
+        }
+        else {
+            (void)snprintf(range, sizeof(range),
+                           ui_string(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_RANGE_FORMAT),
+                           (long)explorer->keyboard_minimum,
+                           (long)explorer->keyboard_maximum,
+                           (long)explorer->keyboard_step);
+        }
         lv_label_set_text(explorer->keyboard_hint, range);
         lv_obj_set_style_text_color(explorer->keyboard_hint, OPERATOR_MUTED, LV_PART_MAIN);
     }
