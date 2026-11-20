@@ -2005,9 +2005,10 @@ static int diagnostics_checks(const char **failure)
     }
     click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_PROGRAMS)));
     lv_refr_now(NULL);
-    if (!log_shows("Run 12: started") || log_shows("Run 9: faulted, heating stopped") ||
+    /* A faulted run is both a run and an alarm (owner 2026-11-20). */
+    if (!log_shows("Run 12: started") || !log_shows("Run 9: faulted, heating stopped") ||
         log_shows(furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1))) {
-        return failed(failure, "Programs lists more than the runs, or a faulted run.", 923);
+        return failed(failure, "Programs does not list every run, a faulted one included, or lists more.", 923);
     }
     click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_MAINTENANCE)));
     lv_refr_now(NULL);

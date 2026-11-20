@@ -9,6 +9,7 @@
 #ifndef FURNACE_HMI_OPERATOR_DIAGNOSTICS_H
 #define FURNACE_HMI_OPERATOR_DIAGNOSTICS_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -34,7 +35,9 @@ typedef enum {
 #define OPERATOR_DIAG_SEVERITY_ERROR 2U
 #define OPERATOR_DIAG_SEVERITY_COUNT 4U
 
-operator_history_group_t operator_history_group(const furnace_hmi_controller_history_entry_t *entry);
+/* Whether a filter lists an entry: Programs every run entry, Alarms faults, sensing, actuators and
+ * anything of severity Error or above (a faulted run is in both, owner 2026-11-20), System the rest. */
+bool operator_history_listed(const furnace_hmi_controller_history_entry_t *entry, operator_history_group_t group);
 
 /* The operator's text of an entry; an unknown event is named by its number. */
 void operator_history_text(const furnace_hmi_controller_history_entry_t *entry, char *buffer,

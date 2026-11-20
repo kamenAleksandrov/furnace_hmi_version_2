@@ -52,14 +52,26 @@ static uint32_t param(const furnace_hmi_controller_history_entry_t *e, uint8_t i
     return (index < e->param_count) ? e->param_values[index] : 0U;
 }
 
-operator_history_group_t operator_history_group(const furnace_hmi_controller_history_entry_t *e)
+static bool history_alarm(const furnace_hmi_controller_history_entry_t *e)
 {
-    if (e->category == OPERATOR_DIAG_CATEGORY_FAULT || e->category == OPERATOR_DIAG_CATEGORY_SENSOR ||
-        e->category == OPERATOR_DIAG_CATEGORY_ACTUATOR || e->severity >= OPERATOR_DIAG_SEVERITY_ERROR) {
-        return OPERATOR_HISTORY_ALARMS;
+    return e->category == OPERATOR_DIAG_CATEGORY_FAULT || e->category == OPERATOR_DIAG_CATEGORY_SENSOR ||
+           e->category == OPERATOR_DIAG_CATEGORY_ACTUATOR || e->severity >= OPERATOR_DIAG_SEVERITY_ERROR;
+}
+
+bool operator_history_listed(const furnace_hmi_controller_history_entry_t *e, operator_history_group_t group)
+{
+    const bool run = e->category == OPERATOR_DIAG_CATEGORY_RUN;
+
+    switch (group) {
+    case OPERATOR_HISTORY_PROGRAMS:
+        return run;
+    case OPERATOR_HISTORY_ALARMS:
+        return history_alarm(e);
+    case OPERATOR_HISTORY_SYSTEM:
+        return !run && !history_alarm(e);
+    default:
+        return false;
     }
-    return (e->category == OPERATOR_DIAG_CATEGORY_RUN) ? OPERATOR_HISTORY_PROGRAMS
-                                                       : OPERATOR_HISTORY_SYSTEM;
 }
 
 /* Run event codes whose stage is meaningful (furnace core/run, enum furnace_run_event_code). */

@@ -1231,7 +1231,10 @@ function simulateHistory(){
   if(code===1&&run>0)run--;});
  return entries;}
 function historyText(x){return x.event===11?t('CTRL_LOG_RUN_FORMAT',x.run,t('CTRL_LOG_RUN_'+x.code)):t(x.connected?'CTRL_LOG_LINK_UP':'CTRL_LOG_LINK_DOWN');}
-function historyGroup(x){return [4,5,6].includes(x.category)||x.severity>=2?'alarms':x.category===3?'programs':'system';}
+// Programs: every run entry; Alarms: faults, sensing, actuators and anything of severity Error or above,
+// so a faulted run is in both (owner 2026-11-20); System: everything else.
+function historyListed(x,filter){const alarm=[4,5,6].includes(x.category)||x.severity>=2;
+ return filter==='programs'?x.category===3:filter==='alarms'?alarm:filter==='system'?x.category!==3&&!alarm:false;}
 function sinceStart(ms){const s=Math.floor(ms/1000);return t('CTRL_LOG_SINCE_START_FORMAT',Math.floor(s/3600),Math.floor(s/60)%60,s%60);}
 function renderDeviceLog(c){
  // The filter tabs take the whole toolbar; the rail already names the page.
@@ -1240,7 +1243,7 @@ function renderDeviceLog(c){
  c.append(bar);
  if(fixture()!=='current')c.append(node('p',t('CTRL_LOG_NOT_CURRENT'),'log-note'));
  const list=node('div',undefined,'log-list'),footer=node('div',undefined,'device-footer');c.append(list,footer);
- const entries=simulateHistory(),listed=entries.filter(x=>logFilter==='all'||historyGroup(x)===logFilter),pages=logPages(listed,list.clientHeight),today=Math.floor(wallMinutes(clockNow())/1440);
+ const entries=simulateHistory(),listed=entries.filter(x=>logFilter==='all'||historyListed(x,logFilter)),pages=logPages(listed,list.clientHeight),today=Math.floor(wallMinutes(clockNow())/1440);
  devicePage=Math.min(devicePage,pages.length-1);
  if(!listed.length)list.append(node('div',t(logFilter==='maintenance'?'CTRL_LOG_MAINTENANCE_NOT_RECORDED':entries.length?'UI_LAB_DEVICE_LOG_EMPTY':'CTRL_LOG_EMPTY'),'device-empty'));
  for(const item of pages[devicePage]){

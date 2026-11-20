@@ -74,7 +74,7 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 | M21-4 | Merged into M21-3 | Owner decision 2026-11-10: the end-to-end link is part of M21-3 |
 | M21-5 | Run, Manual and fault workflows (WI-H03, WI-H04) | Each workflow runs against the controller; the same behavior in the web demo, simulated |
 | M21-6 | Controller 20d (firmware) | A controller-side plan with its open decisions for the product owner and the controller's reviewers (for example the health rules still proposed); the messages built test-first with the controller's verification; the HMI resynced to the new revision in lockstep, ADR-0007 checked against its reopen triggers, before M21-7. **2026-11-19:** firmware 20d in #56–#60 (merged) and drafts #63–#65; pin moved to `a96d138` with the codec byte-identical; ADR-0007 trigger not met (result values only, no layout change; STATUS) |
-| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b (screens) in draft, stacked on it; **2026-11-20:** M21-7c (Device log and health) in draft, stacked on M21-7b; M21-7d (the controller's limits and the planning reference) added |
+| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b (screens) in draft, stacked on it; **2026-11-20:** M21-7c (Device log and health) in draft, stacked on M21-7b; M21-7d (the controller's limits and the planning reference) added; M21-7e (the controller's clock, firmware and HMI) added |
 | M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria |
 
 ### M21-2b design
@@ -276,9 +276,9 @@ Started 2026-11-20 (owner: "begin M21-7c"). Furnace WI-H12, ADR-0020, controller
 2. **The screens** (both presentations, parity):
    - **Device log** shows the controller's history when the screens are on the controller:
      every entry with its text, tone and filter.
-     - Filters: Programs (category RUN below severity ERROR), Alarms (FAULT, SENSOR, ACTUATOR,
-       and anything of severity ERROR or above, a faulted run included), System (everything else:
-       SYSTEM, DIAG, COMM, CONFIG; CONTROL traces are not stored).
+     - Filters: Programs (every RUN entry), Alarms (FAULT, SENSOR, ACTUATOR, and anything of
+       severity ERROR or above), so a faulted run is in both (owner 2026-11-20); System (everything
+       else: SYSTEM, DIAG, COMM, CONFIG; CONTROL traces are not stored).
      - Maintenance shows that the controller does not record maintenance yet (CTRL-MAINTENANCE).
      - A time from a valid or adjusted wall clock is shown as date and time. Without one (the
        firmware's simulated controller, `link_pty`, has no clock), the entry is grouped under its
@@ -320,10 +320,11 @@ Started 2026-11-20 (owner: "begin M21-7c"). Furnace WI-H12, ADR-0020, controller
 versus historical faults (ADR-0020, Phase 25); recording schedules (WI-I09). The labs' health
 simulates no latched or unacknowledged fault counts (shown as 0).
 
-**Questions for the owner (M21-7c review):**
-- Should a faulted run also appear under Programs, not only under Alarms?
-- The controller's `wall_ms`: UTC or local? Today and Yesterday are judged on the display's clock.
-- Does an `ADJUSTED` wall clock need to look different from a valid one?
+**Questions for the owner (M21-7c review), answered 2026-11-20:**
+- A faulted run appears under Programs and under Alarms. Changed in M21-7c (both presentations).
+- The controller keeps the time as universal time (UTC), and the operator sets it from the display
+  (M21-7e). The Device log shows it as the controller gives it.
+- An `ADJUSTED` wall clock looks the same as a valid one (as built).
 
 **Proposed in M21-7c, the owner may change:** the 5 s health period; reading the logs on
 request instead of following new entries; the complete-window rule; Health as its own Device
@@ -350,6 +351,27 @@ pull request stacked on it:
   controller.
 - **Two small text fixes:** an information dialog is dismissed with "Close", not "Cancel"; one
   stage reads "1 stage".
+
+Owner 2026-11-20: the lab parity stays for now (it may be removed later); the text fixes are
+quality and are required; the planning reference's range is the controller's, not the HMI's.
+
+### M21-7e, the controller's clock (firmware and HMI)
+
+Added 2026-11-20 (owner): the furnace controller keeps the time, in universal time (UTC); the HMI
+only shows it and changes it when the operator asks; the Device log uses it. Today the controller has
+no time source (furnace HW-BLOCK-013, WI-K08), and interface 0.16 has no message to read or set the
+time: "clock set" is planned as a new message type (interface Q15, WI-H09). The firmware's
+diagnostics can already hold a wall clock (`furnace_diag_set_wall_clock`, the `WALL_CLOCK` event,
+`wall_state` `ADJUSTED` after a change). Proposed, for the owner's approval before it starts:
+- **Firmware (a furnace plan and draft first):** a time read in `STATUS` or its own message, and
+  `CLOCK_SET` (UTC milliseconds), validated by the controller, refused during execution or not
+  (owner question), recorded as `WALL_CLOCK` in the audit log; the time is `UNKNOWN` after every
+  start until set, while no hardware clock keeps it (HW-BLOCK-013 stays open). Monotonic time keeps
+  every deadline (RUN-14). An interface minor version; the HMI's codec resynced (ADR-0007 check).
+- **HMI:** Settings' Date & time shows the controller's time and sets it; Home's clock and the
+  Device log take it; without a valid time nothing is invented (as now).
+- **Owner questions:** is the time shown in UTC or in a local time zone the operator chooses on the
+  display; may the time be set during a run; must the controller ask for the time after a restart.
 
 ### M21-5 design
 

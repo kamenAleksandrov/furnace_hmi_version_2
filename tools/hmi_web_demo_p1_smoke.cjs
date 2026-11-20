@@ -458,6 +458,8 @@ const PRESENTATION_CHOICE = `(()=>{
     assert.strictEqual(await evaluate('document.querySelector(".log-row .log-text").textContent === historyText(simulateHistory()[0])'), true);
     await evaluate('[...document.querySelectorAll(".log-toolbar button")].find(b=>b.textContent==="Alarms").click()');
     assert.strictEqual(await evaluate('[...document.querySelectorAll(".log-row .log-text")].every(e=>/^Run \\d+: faulted, heating stopped$/.test(e.textContent))&&document.querySelectorAll(".log-row").length>0'), true);
+    // A faulted run is both a run and an alarm (owner 2026-11-20): Programs lists it too.
+    assert.strictEqual(await evaluate('(()=>{const h=simulateHistory();return h.some(x=>x.code===20)&&h.filter(x=>x.code===20).every(x=>historyListed(x,"programs")&&historyListed(x,"alarms"))&&h.filter(x=>x.event===15).every(x=>historyListed(x,"system")&&!historyListed(x,"programs"))})()'), true);
     await evaluate('[...document.querySelectorAll(".log-toolbar button")].find(b=>b.textContent==="Maintenance").click()');
     assert.strictEqual(await evaluate('document.querySelector(".log-list").textContent'), 'The controller does not record maintenance yet.');
     await evaluate('logFilter="all";devicePage=0;render();document.querySelector(".log-row").click()');

@@ -6605,11 +6605,11 @@ static bool controller_log_listed(const furnace_hmi_operator_screens_t *explorer
     case OPERATOR_LOG_ALL:
         return true;
     case OPERATOR_LOG_PROGRAMS:
-        return operator_history_group(entry) == OPERATOR_HISTORY_PROGRAMS;
+        return operator_history_listed(entry, OPERATOR_HISTORY_PROGRAMS);
     case OPERATOR_LOG_ALARMS:
-        return operator_history_group(entry) == OPERATOR_HISTORY_ALARMS;
+        return operator_history_listed(entry, OPERATOR_HISTORY_ALARMS);
     case OPERATOR_LOG_SYSTEM:
-        return operator_history_group(entry) == OPERATOR_HISTORY_SYSTEM;
+        return operator_history_listed(entry, OPERATOR_HISTORY_SYSTEM);
     default:
         return false; /* Maintenance: the controller does not record it (CTRL-MAINTENANCE) */
     }
