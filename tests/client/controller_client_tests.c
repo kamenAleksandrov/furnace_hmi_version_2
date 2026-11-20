@@ -63,6 +63,9 @@ typedef struct {
     /* What the scripted STATUS reports besides its defaults (M21-7a). */
     uint32_t status_library_revision;
     struct furnace_wire_start_status status_start;
+    /* SETTINGS_REQUEST (M21-7d), which the client sends by itself. */
+    size_t settings_sent;
+    uint32_t last_settings_id;
     /* Diagnostic reads (M21-7c), which the client sends by itself: the newest of each. */
     size_t health_sent;
     uint32_t last_health_id;
@@ -150,6 +153,10 @@ static void drain_client(void)
                 fx.last_read_type = frame.msg_type;
                 fx.reads_sent++;
                 break;
+            case FURNACE_WIRE_MSG_SETTINGS_REQUEST:
+                fx.last_settings_id = fx.in.u.settings_request.envelope.request_id;
+                fx.settings_sent++;
+                break;
             case FURNACE_WIRE_MSG_HEALTH_REQUEST:
                 fx.last_health_id = fx.in.u.health_request.envelope.request_id;
                 fx.health_sent++;
@@ -228,8 +235,8 @@ static void begin(const char *name)
 static void end(void)
 {
     EXPECT(!fx.forbidden_sent,
-           "only HELLO, HEARTBEAT, SNAPSHOT_REQUEST, CAPABILITIES_REQUEST, library and "
-           "diagnostic reads");
+           "only HELLO, HEARTBEAT, SNAPSHOT_REQUEST, CAPABILITIES_REQUEST, library, settings "
+           "and diagnostic reads");
 }
 
 /* ---- the scripted controller ------------------------------------------------------------ */
@@ -428,6 +435,15 @@ static void send_command_rejected(uint32_t request_id, uint8_t reason)
     send_out();
 }
 
+/* The snapshot's SETTINGS (request_id 0), state STORED. */
+static void send_snapshot_settings(int32_t reference)
+{
+    start_out(FURNACE_WIRE_MSG_SETTINGS);
+    fx.out.u.settings.settings_state = 2U;
+    fx.out.u.settings.planning_reference = reference;
+    send_out();
+}
+
 /* HELLO answered, CAPABILITIES and a complete snapshot: run seq 5, fault seq 3, one fault. */
 static void synchronize(uint8_t session, uint32_t status_sequence)
 {
@@ -435,6 +451,7 @@ static void synchronize(uint8_t session, uint32_t status_sequence)
     send_capabilities(0U, session);
     send_status(status_sequence, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, session);
     send_fault_list(0U, status_sequence, 1U, 0U, 1U);
+    send_snapshot_settings(230);
     send_snapshot_end(0U, status_sequence, 3U, 5U);
     advance(10U);
 }
@@ -2402,6 +2419,47 @@ static void planning_reference_from_the_snapshot(void)
     end();
 }
 
+/* A snapshot without SETTINGS: the client asks for them, once, and takes the answer. */
+static void settings_read_when_missing(void)
+{
+    const furnace_hmi_controller_observation_t *o = obs();
+
+    begin("settings read when missing");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_capabilities(0U, SESSION_A);
+    send_status(10U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_list(0U, 10U, 1U, 0U, 1U);
+    send_snapshot_end(0U, 10U, 3U, 5U);
+    advance(100U);
+    EXPECT(!o->settings_valid && fx.settings_sent == 1U, "SETTINGS_REQUEST after a snapshot without them");
+    send_settings(fx.last_settings_id, 240);
+    advance(FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS + 100U);
+    EXPECT(o->settings_valid && o->planning_reference_decicelsius == 240 && fx.settings_sent == 1U,
+           "the answer is the reference, and it is not asked again");
+    end();
+}
+
+/* A change without a result may have been applied: the client reads the value in effect again. */
+static void unresolved_change_reads_settings(void)
+{
+    const furnace_hmi_controller_observation_t *o = obs();
+    const furnace_hmi_command_t command = {.kind = FURNACE_HMI_COMMAND_SETTING_CHANGE,
+                                           .setting = SETTING_PLANNING_REFERENCE,
+                                           .setting_value = 250};
+
+    begin_commands("unresolved change reads settings");
+    EXPECT(fx.settings_sent == 0U, "no read while the snapshot gave them");
+    (void)submit_command(&command, 1U);
+    keep_current(30000U);
+    /* Unanswered, the read is asked again after the sync timeout: at least one. */
+    EXPECT(o->command.state == FURNACE_HMI_COMMAND_UNRESOLVED, "the change is unresolved");
+    EXPECT(fx.settings_sent >= 1U, "an unresolved change is followed by SETTINGS_REQUEST");
+    send_settings(fx.last_settings_id, 250);
+    advance(10U);
+    EXPECT(o->planning_reference_decicelsius == 250, "the value in effect is read");
+    end();
+}
+
 static void planning_reference_changed(void)
 {
     const furnace_hmi_controller_observation_t *o = obs();
@@ -3230,6 +3288,8 @@ int controller_client_tests_run(void)
     program_limits_reported();
     planning_reference_from_the_snapshot();
     planning_reference_changed();
+    settings_read_when_missing();
+    unresolved_change_reads_settings();
     program_start_accepted();
     program_start_proposed_and_confirmed();
     proposal_invalidated();

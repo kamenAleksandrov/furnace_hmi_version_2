@@ -88,6 +88,12 @@ typedef struct {
     int32_t setting_value;
 } furnace_hmi_command_t;
 
+/** SETTING_RESULT results (controller interface, Settings). */
+#define FURNACE_HMI_SETTING_RESULT_APPLIED 0U
+#define FURNACE_HMI_SETTING_RESULT_OUT_OF_RANGE 1U
+#define FURNACE_HMI_SETTING_RESULT_SESSION_ACTIVE 2U
+#define FURNACE_HMI_SETTING_RESULT_BUSY 3U
+
 /** Where a command stands. Only the controller's result makes it accepted or rejected (API-03). */
 typedef enum {
     FURNACE_HMI_COMMAND_IDLE = 0,

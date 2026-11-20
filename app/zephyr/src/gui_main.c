@@ -128,8 +128,8 @@ int main(void)
             furnace_hmi_controller_dashboard_state(&observation, &status);
             (void)furnace_hmi_operator_screens_update(&screens, &status);
             furnace_hmi_operator_limits_from_controller(&observation, &new_limits, &new_reference);
-            if (memcmp(&new_limits, &limits, sizeof(limits)) != 0 ||
-                memcmp(&new_reference, &reference, sizeof(reference)) != 0) {
+            if (!furnace_hmi_operator_program_limits_equal(&new_limits, &limits) ||
+                !furnace_hmi_operator_planning_reference_equal(&new_reference, &reference)) {
                 limits = new_limits;
                 reference = new_reference;
                 (void)furnace_hmi_operator_screens_set_program_limits(&screens, &limits, &reference);

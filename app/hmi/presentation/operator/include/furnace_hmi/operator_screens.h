@@ -317,7 +317,15 @@ typedef struct {
     int32_t max_decicelsius;
     /** False while execution is active: the controller refuses a change. */
     bool change_permitted;
+    /** The controller has a settings store (state not NONE): an applied value survives a restart. */
+    bool storable;
 } furnace_hmi_operator_planning_reference_t;
+
+/** Field by field (no padding compared); true when both say the same. */
+bool furnace_hmi_operator_program_limits_equal(const furnace_hmi_operator_program_limits_t *a,
+                                               const furnace_hmi_operator_program_limits_t *b);
+bool furnace_hmi_operator_planning_reference_equal(const furnace_hmi_operator_planning_reference_t *a,
+                                                   const furnace_hmi_operator_planning_reference_t *b);
 
 /** The planning-reference change the operator asked for, and the controller's answer. */
 typedef enum {
@@ -327,8 +335,10 @@ typedef enum {
     FURNACE_HMI_OPERATOR_SETTING_OUT_OF_RANGE,
     FURNACE_HMI_OPERATOR_SETTING_SESSION_ACTIVE,
     FURNACE_HMI_OPERATOR_SETTING_BUSY,
-    /** Refused, unresolved or not sent: the value in effect is the one shown. */
+    /** Refused before the controller, or not sent: the value in effect is the one shown. */
     FURNACE_HMI_OPERATOR_SETTING_NOT_APPLIED,
+    /** No result: it may have been applied; the controller's value is read again. */
+    FURNACE_HMI_OPERATOR_SETTING_UNKNOWN,
 } furnace_hmi_operator_setting_outcome_t;
 
 /**
@@ -354,14 +364,6 @@ typedef struct {
     bool log_known;
     uint16_t log_count;
     furnace_hmi_operator_log_event_t log_events[FURNACE_HMI_OPERATOR_LOG_CAPACITY];
-    /**
-     * The controller's program limits, kept for Settings; not shown yet, and
-     * the editors still bound values by the screens' own constants (CTRL-LIMITS).
-     */
-    bool limits_known;
-    int32_t max_rate_tenths_c_per_minute;
-    int32_t max_temperature_c;
-    int32_t default_duration_minutes;
     bool device_catalogue_known;
     furnace_hmi_operator_device_catalogue_t device_catalogue;
     /**
@@ -666,8 +668,9 @@ struct furnace_hmi_operator_screens {
     bool settings_connections_enabled;
     uint8_t settings_restart_assessment;
     uint8_t settings_restart_result;
-    int32_t settings_saved_numeric[5];
-    int32_t settings_candidate_numeric[5];
+    /* Brightness and idle dim (the display's own settings). */
+    int32_t settings_saved_numeric[2];
+    int32_t settings_candidate_numeric[2];
     bool settings_saved_reduced_motion;
     bool settings_candidate_reduced_motion;
     uint8_t settings_saved_running_view;
@@ -724,7 +727,6 @@ struct furnace_hmi_operator_screens {
     bool library_updating;
     bool clock_known;
     bool log_known;
-    bool limits_known;
     bool device_catalogue_known;
     bool simulated_responses;
     /* M21-7d: the limits and planning reference in effect (content's, or the controller's). */

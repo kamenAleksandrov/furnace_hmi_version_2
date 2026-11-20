@@ -98,6 +98,14 @@ typedef struct {
     bool hello_sent;
     uint32_t next_request_id;
     uint32_t capabilities_request_id;
+    /*
+     * SETTINGS_REQUEST (M21-7d review): wanted when a snapshot ended without
+     * SETTINGS or a setting change ended unresolved; one at a time, asked again
+     * after FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS without an answer.
+     */
+    bool settings_wanted;
+    uint32_t settings_request_id;
+    uint32_t settings_requested_ms;
     /** The controller answered a request of this client session: its ID is not a reused one. */
     bool client_session_confirmed;
 

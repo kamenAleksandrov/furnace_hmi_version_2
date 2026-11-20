@@ -2158,6 +2158,87 @@ static bool save_says(const char *name, const char *text)
     return said && no_request();
 }
 
+/* Save the named program: whether the editor sends it (answered as saved). */
+static bool save_sends(const char *name, uint32_t submission)
+{
+    furnace_hmi_operator_request_t request;
+
+    if (!open_editor_on(name)) {
+        return false;
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, submission, &request) ||
+        !library_answer(submission, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U)) {
+        click(first_button(screens.modal));
+        return false;
+    }
+    click(first_button(screens.modal));
+    return true;
+}
+
+/*
+ * Limits unlike the HMI's old constants, so a check passes only with the controller's: 40 to
+ * 90 C, 0.5 to 2.0 C/min, 3 stages, 60 min of curing, a reference of 23.4 C. From 23.4 C to
+ * 90 C at 1.8 C/min is 2220 s exactly (from 23 C it would be 2234 s): with a Hold of 23 min the
+ * estimate is 3600 s, the longest; 24 min is one minute too long.
+ */
+static int unusual_limits_checks(const char **failure)
+{
+    static const furnace_hmi_operator_program_limits_t unusual = {
+        .known = true, .max_stages = 3U, .hold_allowed = true, .target_min_c = 40, .target_max_c = 90,
+        .rate_min_tenths = 5, .rate_max_tenths = 20, .curing_max_minutes = 60, .name_max_code_points = 31U,
+    };
+    static const furnace_hmi_operator_planning_reference_t reference = {
+        .known = true, .decicelsius = 234, .min_decicelsius = 50, .max_decicelsius = 400,
+        .change_permitted = true, .storable = true,
+    };
+    static const int32_t ninety[] = {90};
+    static const int32_t equal[] = {60, 60};
+    static const int32_t below_reference[] = {40};
+    static const int32_t four[] = {50, 60, 70, 80};
+    char text[96];
+
+    (void)memset(&library, 0, sizeof(library));
+    program_of_targets(0U, 40U, "Exactly longest", ninety, 1U, 23);
+    program_of_targets(1U, 41U, "Minute too long", ninety, 1U, 24);
+    program_of_targets(2U, 42U, "Equal targets", equal, 2U, 0);
+    program_of_targets(3U, 43U, "Slow rate", below_reference, 1U, 0);
+    program_of_targets(4U, 44U, "Four stages", four, 4U, 0);
+    for (uint8_t slot = 0U; slot < 5U; ++slot) {
+        for (uint8_t stage = 0U; stage < library.programs[slot].stage_count; ++stage) {
+            if (library.programs[slot].stages[stage].kind == FURNACE_HMI_OPERATOR_STAGE_HEATING) {
+                library.programs[slot].stages[stage].rate_tenths_c_per_minute = 18;
+            }
+        }
+    }
+    library.programs[3].stages[0].rate_tenths_c_per_minute = 4;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 5U, false) ||
+        !furnace_hmi_operator_screens_set_program_limits(&screens, &unusual, &reference)) {
+        return failed(failure, "The unusual limits could not be given.", 1030);
+    }
+    settle();
+    if (!save_sends("Exactly longest", 71U)) {
+        return failed(failure, "Curing of exactly the controller's longest, from 23.4 C, is refused.", 1031);
+    }
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TOTAL_FORMAT),
+                   1L, 0L);
+    if (!save_says("Minute too long", text)) {
+        return failed(failure, "Curing one minute beyond the controller's longest is not refused.", 1032);
+    }
+    if (!save_says("Equal targets", formatted(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_START_FORMAT, 2U))) {
+        return failed(failure, "A Heating target equal to the previous one is not refused.", 1033);
+    }
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_RATE_FORMAT),
+                   1U, "0.5", "2.0");
+    if (!save_says("Slow rate", text)) {
+        return failed(failure, "A rate below the controller's minimum is not refused with its range.", 1034);
+    }
+    if (!save_says("Four stages", formatted(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_STAGES, 3U))) {
+        return failed(failure, "More stages than the controller allows are not refused.", 1035);
+    }
+    return 0;
+}
+
 static int limits_checks(const char **failure)
 {
     static const int32_t one[] = {120};
@@ -2213,7 +2294,7 @@ static int limits_checks(const char **failure)
 
     /* One stage reads "1 stage". */
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) ||
-        !tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_ONE_FORMAT, 1U)) ||
+        label_with_text(screens.root, formatted(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_ONE_FORMAT, 1U)) == NULL ||
         tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_FORMAT, 1U))) {
         return failed(failure, "One stage does not read as one stage.", 1008);
     }
@@ -2222,13 +2303,15 @@ static int limits_checks(const char **failure)
     if (!save_says("Falling", formatted(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_START_FORMAT, 2U))) {
         return failed(failure, "A Heating target below the previous one is not refused.", 1009);
     }
-    if (!save_says("Too hot", formatted(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_TARGET_FORMAT, 1U))) {
-        return failed(failure, "A target above the controller's maximum is not refused.", 1010);
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_TARGET_FORMAT),
+                   1U, 20L, 180L);
+    if (!save_says("Too hot", text)) {
+        return failed(failure, "A target above the controller's maximum is not refused with its range.", 1010);
     }
-    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TOTAL_FORMAT),
-                   (long)fixture_limits.curing_max_minutes);
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_HOLD_LONG_FORMAT),
+                   2U, 48L, 0L);
     if (!save_says("Too long", text)) {
-        return failed(failure, "Curing beyond the controller's longest is not refused.", 1011);
+        return failed(failure, "A Hold beyond the controller's longest is not refused as the controller does.", 1011);
     }
 
     /* Settings > Programs: the reference, its range, and a change the controller answers. */
@@ -2258,6 +2341,32 @@ static int limits_checks(const char **failure)
         return failed(failure, "A refusal is not shown, or the value shown is not the one in effect.", 1014);
     }
 
+    /* A change whose answer never came may have been applied: said so, not "not applied". */
+    click(card_with_text(screens.root, "23.0 °C"));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
+    click(button_with_text(screens.modal, "2"));
+    click(button_with_text(screens.modal, "6"));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE, 62U, &request)) {
+        return failed(failure, "A second change is not asked.", 1019);
+    }
+    answer(&state.command_feedback, 62U, FURNACE_HMI_FEEDBACK_UNRESOLVED, 0U);
+    if (!update() || !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_UNKNOWN_OUTCOME) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_NOT_APPLIED)) {
+        return failed(failure, "A change without an answer is said to be not applied.", 1020);
+    }
+    furnace_hmi_operator_planning_reference_t read_again = fixture_reference;
+    read_again.decicelsius = 260;
+    if (!furnace_hmi_operator_screens_set_program_limits(&screens, &fixture_limits, &read_again)) {
+        return failed(failure, "The limits could not be given.", 1021);
+    }
+    settle();
+    if (!tree_contains(screens.root, "26.0 °C") ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_UNKNOWN_OUTCOME) ||
+        !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_CAPTION)) {
+        return failed(failure, "The value read again does not replace the earlier answer.", 1022);
+    }
+
     /* During execution the controller refuses a change: not offered. */
     furnace_hmi_operator_planning_reference_t running = fixture_reference;
     running.change_permitted = false;
@@ -2269,7 +2378,7 @@ static int limits_checks(const char **failure)
     if (screens.modal != NULL || !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_DURING_RUN)) {
         return failed(failure, "The reference is offered for change during execution.", 1016);
     }
-    return 0;
+    return unusual_limits_checks(failure);
 }
 
 int furnace_hmi_operator_limits_check(lv_display_t *display, const char **failure)

@@ -1519,16 +1519,16 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_MORE)) != NULL ||
         find_label(context->explorer.content, "80%") != NULL ||
-        context->explorer.settings_saved_numeric[4] != 0 ||
+        context->explorer.settings_saved_numeric[1] != 0 ||
         !tap_object(brightness_step(context, 2U)) ||
-        context->explorer.settings_candidate_numeric[3] != 30 ||
+        context->explorer.settings_candidate_numeric[0] != 30 ||
         !tap_content_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_INCREASE)) ||
-        context->explorer.settings_candidate_numeric[3] != 40 ||
+        context->explorer.settings_candidate_numeric[0] != 40 ||
         !tap_object(brightness_step(context, 0U)) ||
         !lv_obj_has_state(find_button(context->explorer.content,
                                       ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECREASE)), LV_STATE_DISABLED) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DISCARD) ||
-        context->explorer.settings_candidate_numeric[3] != 80) {
+        context->explorer.settings_candidate_numeric[0] != 80) {
         fprintf(stderr, "Settings brightness gauge failed\n"); return 3;
     }
     if (!tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DIM_WHEN_IDLE)) ||
@@ -1536,13 +1536,13 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         find_button(context->explorer.modal, "30 min") == NULL ||
         !tap_object(find_button(context->explorer.modal, "5 min")) ||
         context->explorer.modal != NULL ||
-        context->explorer.settings_candidate_numeric[4] != 5 ||
+        context->explorer.settings_candidate_numeric[1] != 5 ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DEFAULT_RUNNING_VIEW)) ||
         !tap_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_FURNACE)) ||
         context->explorer.settings_candidate_running_view != 2U ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SAVE) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) ||
-        context->explorer.settings_saved_numeric[4] != 5) {
+        context->explorer.settings_saved_numeric[1] != 5) {
         fprintf(stderr, "Settings display/save flow failed\n"); return 3;
     }
     /* Rail: Connections is listed only when the controller enables it;
