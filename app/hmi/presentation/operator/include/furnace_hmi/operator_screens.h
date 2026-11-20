@@ -302,6 +302,12 @@ typedef struct {
     int32_t rate_max_tenths;
     /** The longest curing (Heating and Hold) from the planning reference. */
     int32_t curing_max_minutes;
+    /**
+     * The advisory duration (PROG-11; 0 none, then the maximum): a longer estimate needs the
+     * operator's acknowledgement at a save and a Start. The controller asks for it; the labs'
+     * simulated controller uses it to ask the same (M21-7d-2).
+     */
+    int32_t recommended_curing_minutes;
     uint8_t name_max_code_points;
 } furnace_hmi_operator_program_limits_t;
 

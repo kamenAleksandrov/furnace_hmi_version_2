@@ -9551,6 +9551,19 @@ static bool run_was_stopped(const furnace_hmi_operator_screens_t *explorer)
  * controllerRequest). Stop has its own slot. Without simulated answers the
  * slot then awaits the controller's outcome (M21-5b).
  */
+static bool is_start_request(furnace_hmi_operator_request_kind_t kind);
+
+/*
+ * A request whose answer comes back as the ordinary command's feedback: every request on a
+ * controller; in the labs program Start, Confirm and Cancel, which the simulated controller
+ * answers as the controller does, so the labs show the controller's Start dialogs (M21-7d-2).
+ */
+static bool answered_by_controller(const furnace_hmi_operator_screens_t *explorer,
+                                   furnace_hmi_operator_request_kind_t kind)
+{
+    return !explorer->simulated_responses || is_start_request(kind);
+}
+
 static void post_request(furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_request_kind_t kind)
 {
     if (kind == FURNACE_HMI_OPERATOR_REQUEST_STOP) {
@@ -9587,7 +9600,7 @@ static void post_request(furnace_hmi_operator_screens_t *explorer, furnace_hmi_o
         explorer->request.session_minutes = explorer->state->manual_max_minutes.value;
         explorer->manual_retarget_wanted = false;
     }
-    if (!explorer->simulated_responses) {
+    if (answered_by_controller(explorer, kind)) {
         explorer->command_awaiting = true;
         explorer->command_kind = kind;
         explorer->command_submission = 0U;
@@ -9937,6 +9950,20 @@ static void settings_delete_next(furnace_hmi_operator_screens_t *explorer)
     (void)settings_show_message(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED), detail);
 }
 
+/* The controller asks the operator to acknowledge this curing estimate before it saves (PROG-11);
+ * the labs' simulated controller asks the same (M21-7d-2). Acknowledge saves again. */
+static void open_save_acknowledgement(furnace_hmi_operator_screens_t *explorer, uint32_t estimate_s)
+{
+    char duration[32];
+    char detail[192];
+    (void)snprintf(duration, sizeof(duration), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_VALUE_FORMAT_MINUTES),
+                   (long)((estimate_s / 60U) + (estimate_s % 60U != 0U ? 1U : 0U)));
+    (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_FORMAT), duration);
+    (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_TITLE), detail,
+                      OPERATOR_ACTION_SAVE_ACKNOWLEDGED, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM),
+                      OPERATOR_TONE_PRIMARY);
+}
+
 /* The controller answered a save or a delete. Only SAVED and DELETED change what is shown, and
  * only through the library it lists again; every other answer keeps the editor's draft. */
 static void library_change_done(furnace_hmi_operator_screens_t *explorer,
@@ -9986,15 +10013,8 @@ static void library_change_done(furnace_hmi_operator_screens_t *explorer,
     if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED && kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE &&
         feedback->reason == LIBRARY_RESULT_ACKNOWLEDGMENT_REQUIRED && feedback->curing_estimate_s > 0U) {
         /* Saved only with the operator's acknowledgement of exactly this estimate (PROG-11). */
-        char duration[32];
         explorer->library_request.acknowledged_duration_s = feedback->curing_estimate_s;
-        (void)snprintf(duration, sizeof(duration), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_VALUE_FORMAT_MINUTES),
-                       (long)((feedback->curing_estimate_s + 59U) / 60U));
-        (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_FORMAT),
-                       duration);
-        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_TITLE), detail,
-                          OPERATOR_ACTION_SAVE_ACKNOWLEDGED,
-                          ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM), OPERATOR_TONE_PRIMARY);
+        open_save_acknowledgement(explorer, feedback->curing_estimate_s);
         return;
     }
     if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED) {
@@ -10027,7 +10047,7 @@ static void ordinary_command_done(furnace_hmi_operator_screens_t *explorer,
         flush_manual_retarget(explorer);
         return;
     }
-    if (!explorer->simulated_responses && is_start_request(kind)) {
+    if (is_start_request(kind)) {
         start_change_done(explorer, kind, feedback);
         return;
     }
@@ -10066,12 +10086,10 @@ static bool feedback_final(const furnace_hmi_command_feedback_t *feedback, uint3
            feedback->state != FURNACE_HMI_FEEDBACK_NONE && feedback->state != FURNACE_HMI_FEEDBACK_PENDING;
 }
 
-/* Each slot's outcome, from the observation (no simulated answers). */
+/* Each slot's outcome, from the observation. In the labs only a program Start awaits one
+ * (answered_by_controller); their Stop is answered at once. */
 static void follow_commands(furnace_hmi_operator_screens_t *explorer)
 {
-    if (explorer->simulated_responses) {
-        return;
-    }
     const furnace_hmi_dashboard_state_t *state = explorer->state;
     if (explorer->command_awaiting && feedback_final(&state->command_feedback, explorer->command_submission)) {
         ordinary_command_done(explorer, &state->command_feedback);
@@ -10094,6 +10112,28 @@ static bool text_is_blank(const char *text)
     return true;
 }
 
+/* The program draft's stages as the controller's rules take them. */
+typedef struct {
+    size_t count;
+    uint8_t kinds[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t targets[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t rates[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t minutes[FURNACE_HMI_OPERATOR_MAX_STAGES];
+} editor_rule_stages_t;
+
+static void editor_rule_stages(const furnace_hmi_operator_screens_t *explorer, editor_rule_stages_t *stages)
+{
+    const size_t count = editor_stage_count(explorer);
+    stages->count = count > FURNACE_HMI_OPERATOR_MAX_STAGES ? FURNACE_HMI_OPERATOR_MAX_STAGES : count;
+    for (size_t index = 0U; index < stages->count; ++index) {
+        const operator_stage_fixture_t stage = program_stage(explorer, index);
+        stages->kinds[index] = (uint8_t)fixture_stage_kind(&stage);
+        stages->targets[index] = stage.target_c;
+        stages->rates[index] = stage.delta_c_per_minute;
+        stages->minutes[index] = stage.duration_minutes;
+    }
+}
+
 /* Web programEditorErrors: the first problem with the open program draft. */
 static bool program_editor_error(const furnace_hmi_operator_screens_t *explorer, char *buffer, size_t capacity)
 {
@@ -10113,24 +10153,24 @@ static bool program_editor_error(const furnace_hmi_operator_screens_t *explorer,
         (void)snprintf(buffer, capacity, ui_string(problem), (unsigned int)explorer->program_limits.max_stages);
         return true;
     }
-    uint8_t kinds[FURNACE_HMI_OPERATOR_MAX_STAGES];
-    int32_t targets[FURNACE_HMI_OPERATOR_MAX_STAGES];
-    int32_t rates[FURNACE_HMI_OPERATOR_MAX_STAGES];
-    int32_t minutes[FURNACE_HMI_OPERATOR_MAX_STAGES];
-    for (size_t index = 0U; index < count; ++index) {
-        const operator_stage_fixture_t stage = program_stage(explorer, index);
-        kinds[index] = (uint8_t)fixture_stage_kind(&stage);
-        targets[index] = stage.target_c;
-        rates[index] = stage.delta_c_per_minute;
-        minutes[index] = stage.duration_minutes;
-    }
+    editor_rule_stages_t stages;
+    editor_rule_stages(explorer, &stages);
     size_t at = 0U;
-    problem = stage_rules_problem(explorer, kinds, targets, rates, minutes, count, true, &at);
+    problem = stage_rules_problem(explorer, stages.kinds, stages.targets, stages.rates, stages.minutes, stages.count,
+                                  true, &at);
     if (problem == FURNACE_HMI_UI_STRING_COUNT) {
         return false;
     }
     stage_rules_text(explorer, problem, at, buffer, capacity);
     return true;
+}
+
+/* The draft's curing estimate from the planning reference, as the controller computes it. */
+static int64_t editor_estimate_seconds(const furnace_hmi_operator_screens_t *explorer)
+{
+    editor_rule_stages_t stages;
+    editor_rule_stages(explorer, &stages);
+    return curing_estimate_seconds(explorer, stages.kinds, stages.targets, stages.rates, stages.minutes, stages.count);
 }
 
 /* The program editor's draft as a program (stages only; no name or identity). */
@@ -10192,6 +10232,19 @@ static void commit_program_editor(furnace_hmi_operator_screens_t *explorer)
                               OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
             return;
         }
+    }
+    /* The simulated controller, as the controller (PROG-11): an estimate above the advisory
+     * duration is saved only once the operator has acknowledged exactly that estimate. */
+    const int64_t estimate = editor_estimate_seconds(explorer);
+    const int32_t advisory = explorer->program_limits.recommended_curing_minutes;
+    const bool acknowledged = explorer->library_request.kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE &&
+                              (int64_t)explorer->library_request.acknowledged_duration_s == estimate;
+    (void)memset(&explorer->library_request, 0, sizeof(explorer->library_request));
+    if (advisory > 0 && estimate > (int64_t)advisory * 60 && !acknowledged) {
+        /* Acknowledge marks it (OPERATOR_ACTION_SAVE_ACKNOWLEDGED); closing the dialog does not. */
+        explorer->library_request.acknowledged_duration_s = (uint32_t)estimate;
+        open_save_acknowledgement(explorer, (uint32_t)estimate);
+        return;
     }
     furnace_hmi_operator_program_t saved;
     editor_program(explorer, &saved);
@@ -10806,9 +10859,6 @@ static bool open_start_waiting(furnace_hmi_operator_screens_t *explorer)
  * transaction this display has no proposal for is pointed out. */
 static void follow_start(furnace_hmi_operator_screens_t *explorer)
 {
-    if (explorer->simulated_responses) {
-        return;
-    }
     const furnace_hmi_dashboard_state_t *state = explorer->state;
     const furnace_hmi_start_proposal_view_t *p = &state->start_proposal;
     const bool open = p->state == FURNACE_HMI_START_PROPOSAL_OPEN;
@@ -10873,8 +10923,12 @@ static void start_change_done(furnace_hmi_operator_screens_t *explorer, furnace_
     case FURNACE_HMI_FEEDBACK_ACCEPTED: {
         clear_modal(explorer);
         if (kind != FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL) {
-            /* The run started: it is the most recent program. */
-            const size_t slot = library_slot_of(explorer->programs, explorer->library_request.program_id);
+            /* The run started: it is the most recent program (the labs' programs have no
+             * controller ID: the one the Start named). */
+            const size_t slot = explorer->simulated_responses
+                ? explorer->running_program
+                : library_slot_of(explorer->programs, explorer->library_request.program_id);
+            explorer->run_stopped = false;
             if (slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS) {
                 explorer->running_program = (uint8_t)slot;
                 record_recent_program(explorer, (uint8_t)slot);
@@ -10924,6 +10978,8 @@ static void request_program_start(furnace_hmi_operator_screens_t *explorer, size
     change.kind = FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM;
     change.program_id = explorer->programs[slot].id;
     change.program_revision = explorer->programs[slot].revision;
+    /* The stages too: the labs' simulated controller has no library of its own. */
+    change.program = explorer->programs[slot];
     copy_text_bounded(change.program_name, sizeof(change.program_name), program_name_text(explorer, slot));
     copy_text_bounded(explorer->start_name, sizeof(explorer->start_name), change.program_name);
     explorer->selected_program = (uint8_t)slot;
@@ -11126,15 +11182,9 @@ static void apply_action(
     case OPERATOR_ACTION_RUNNING:
         /* Start request; Running opens when the controller reports the run. */
         clear_modal(explorer);
-        if (!explorer->simulated_responses) {
-            /* The controller's program by ID and revision; it answers with a proposal or its run. */
-            request_program_start(explorer, explorer->selected_program);
-            break;
-        }
-        if (program_listed(explorer, explorer->selected_program)) {
-            record_recent_program(explorer, explorer->selected_program);
-            post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM);
-        }
+        /* The controller's program by ID and revision; it answers with a proposal or its run
+         * (in the labs, the simulated controller, by the same rules). */
+        request_program_start(explorer, explorer->selected_program);
         break;
     case OPERATOR_ACTION_PROGRAM_DETAIL:
         if (value >= 0 && program_listed(explorer, (size_t)value)) {
@@ -11951,10 +12001,8 @@ static void apply_action(
             break;
         }
         if (run_was_stopped(explorer) && program_listed(explorer, explorer->running_program)) {
-            explorer->selected_program = explorer->running_program;
-            explorer->run_stopped = false;
-            record_recent_program(explorer, explorer->selected_program);
-            post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM);
+            /* The furnace is still hot: the simulated controller may propose a later stage. */
+            request_program_start(explorer, explorer->running_program);
         }
         break;
     case OPERATOR_ACTION_DECREMENT_TARGET:
@@ -12135,8 +12183,16 @@ static void apply_action(
         break;
     case OPERATOR_ACTION_SAVE_ACKNOWLEDGED:
         /* The same save, with the estimate the controller asked the operator to acknowledge. */
-        if (!explorer->simulated_responses &&
-            explorer->library_request.kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE &&
+        if (explorer->simulated_responses) {
+            /* The labs: the draft is still open; it is saved if it still has that estimate. */
+            if (explorer->program_editor_active && explorer->library_request.kind == FURNACE_HMI_OPERATOR_REQUEST_NONE &&
+                explorer->library_request.acknowledged_duration_s > 0U) {
+                explorer->library_request.kind = FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE;
+                commit_program_editor(explorer);
+            }
+            break;
+        }
+        if (explorer->library_request.kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE &&
             explorer->library_request.acknowledged_duration_s > 0U) {
             send_controller_change(explorer, &explorer->library_request);
         }
@@ -12144,9 +12200,7 @@ static void apply_action(
     case OPERATOR_ACTION_PROPOSAL_CONFIRM:
     case OPERATOR_ACTION_PROPOSAL_CANCEL:
     case OPERATOR_ACTION_START_WAITING_CANCEL:
-        if (!explorer->simulated_responses) {
-            answer_proposal(explorer, action);
-        }
+        answer_proposal(explorer, action);
         break;
     }
 }
@@ -12725,7 +12779,7 @@ void furnace_hmi_operator_screens_request_submitted(
     uint32_t submission
 )
 {
-    if (explorer == NULL || explorer->simulated_responses) {
+    if (explorer == NULL || !answered_by_controller(explorer, kind)) {
         return;
     }
     const bool stop = kind == FURNACE_HMI_OPERATOR_REQUEST_STOP;
@@ -12909,7 +12963,9 @@ bool furnace_hmi_operator_program_limits_equal(const furnace_hmi_operator_progra
     return a->known == b->known && a->max_stages == b->max_stages && a->hold_allowed == b->hold_allowed &&
            a->target_min_c == b->target_min_c && a->target_max_c == b->target_max_c &&
            a->rate_min_tenths == b->rate_min_tenths && a->rate_max_tenths == b->rate_max_tenths &&
-           a->curing_max_minutes == b->curing_max_minutes && a->name_max_code_points == b->name_max_code_points;
+           a->curing_max_minutes == b->curing_max_minutes &&
+           a->recommended_curing_minutes == b->recommended_curing_minutes &&
+           a->name_max_code_points == b->name_max_code_points;
 }
 
 bool furnace_hmi_operator_planning_reference_equal(const furnace_hmi_operator_planning_reference_t *a,
