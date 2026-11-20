@@ -1949,12 +1949,18 @@ static int diagnostics_checks(const char **failure)
     /* Newest first: start 3 (a run and a fault), then start 2. */
     history_fixture.state = FURNACE_HMI_HISTORY_READ;
     history_fixture.reading = false;
-    history_fixture.count = 5U;
+    history_fixture.count = 8U;
     history_entry(0U, 2U, 3U, 3723000U, 11U, 0U, 3U, 4U, 1U, 0U, 0U, 12U);
     history_entry(1U, 2U, 3U, 3000000U, 11U, 0U, 3U, 4U, 5U, 1U, 0U, 12U);
-    history_entry(2U, 1U, 3U, 2000000U, 12U, 2U, 4U, 4U, 1U, 0U, 1U, 1U);
+    history_entry(2U, 1U, 3U, 2000000U, 12U, 2U, 4U, 4U, 1U, 0U, 3U, 1U); /* class 3, transition 1 */
     history_entry(3U, 1U, 3U, 1000000U, 99U, 0U, 1U, 0U, 0U, 0U, 0U, 0U);
     history_entry(4U, 1U, 2U, 5000U, 30U, 0U, 1U, 1U, 2U, 0U, 0U, 0U);
+    history_entry(5U, 1U, 2U, 4000U, 11U, 3U, 3U, 4U, 20U, 0U, 0U, 9U);  /* a faulted run: an alarm */
+    history_entry(6U, 1U, 1U, 1000U, 10U, 0U, 1U, 1U, 1U, 0U, 0U, 0U);   /* on a valid clock */
+    history_fixture.entries[6].wall_state = 1U;
+    history_fixture.entries[6].wall_ms = INT64_C(1795163400000);         /* 2026-11-20 08:30 */
+    history_entry(7U, 1U, 1U, 500U, 77U, 7U, 1U, 0U, 0U, 0U, 0U, 0U);    /* unknown event and severity */
+    history_fixture.logs[0].truncated = true;
     history_fixture.logs[0].state = FURNACE_HMI_HISTORY_LOG_READ;
     history_fixture.logs[1].state = FURNACE_HMI_HISTORY_LOG_READ;
     history_fixture.logs[2].state = FURNACE_HMI_HISTORY_LOG_UNAVAILABLE;
@@ -1962,9 +1968,13 @@ static int diagnostics_checks(const char **failure)
         return failed(failure, "The history could not be shown.", 906);
     }
     if (!log_shows("Run 12: started") || !log_shows("Run 12, stage 2: target reached") ||
-        !log_shows(formatted(FURNACE_HMI_UI_STRING_CTRL_LOG_UNKNOWN_FORMAT, 99U)) ||
         !log_shows(formatted(FURNACE_HMI_UI_STRING_CTRL_LOG_BOOT_FORMAT, 2U))) {
         return failed(failure, "The controller's entries are not listed with their texts.", 907);
+    }
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_UNKNOWN_FORMAT), 99U,
+                   furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_SEVERITY_0));
+    if (!log_shows(text)) {
+        return failed(failure, "An unknown event is not listed by its number and severity.", 924);
     }
     (void)snprintf(text, sizeof(text), "%s: %s", furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_FAULT_TRANSITION_1));
@@ -1978,14 +1988,26 @@ static int diagnostics_checks(const char **failure)
     }
     (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_UNAVAILABLE_FORMAT),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_NAME_3));
-    if (!tree_contains(screens.root, text)) {
-        return failed(failure, "An unavailable log is not said to be.", 910);
+    if (!tree_contains(screens.root, text) || !page_says(FURNACE_HMI_UI_STRING_CTRL_LOG_OLDER_NOT_SHOWN)) {
+        return failed(failure, "An unavailable log, or older entries not shown, are not said.", 910);
+    }
+    (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_UNKNOWN_FORMAT), 77U,
+                   formatted(FURNACE_HMI_UI_STRING_CTRL_SEVERITY_FORMAT, 7U));
+    if (!log_shows(text) || !log_shows("Controller ready") ||
+        log_shows("+0:00:01")) { /* on a valid clock: its clock time, not the time since its start */
+        return failed(failure, "An unknown severity, or an entry on a valid clock, is not shown as it is.", 922);
     }
     click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_ALARMS)));
     lv_refr_now(NULL);
-    if (tree_contains(screens.root, "Run 12: started") ||
-        !tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1))) {
+    if (log_shows("Run 12: started") || !log_shows(furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1)) ||
+        !log_shows("Run 9: faulted, heating stopped")) {
         return failed(failure, "Alarms does not list only the alarms.", 911);
+    }
+    click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_PROGRAMS)));
+    lv_refr_now(NULL);
+    if (!log_shows("Run 12: started") || log_shows("Run 9: faulted, heating stopped") ||
+        log_shows(furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1))) {
+        return failed(failure, "Programs lists more than the runs, or a faulted run.", 923);
     }
     click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_MAINTENANCE)));
     lv_refr_now(NULL);
@@ -2015,6 +2037,8 @@ static int diagnostics_checks(const char **failure)
     health_fixture.overall = FURNACE_HMI_HEALTH_WARNING;
     health_fixture.uptime_ms = 3723000U;
     health_fixture.boot_count = 7U;
+    health_fixture.reset_cause_known = true;
+    health_fixture.reset_cause = 0x2U;
     health_fixture.subsystem_count = 3U;
     health_fixture.subsystems[0] = (furnace_hmi_controller_subsystem_t){1U, FURNACE_HMI_HEALTH_WARNING, 3U};
     health_fixture.subsystems[1] = (furnace_hmi_controller_subsystem_t){3U, FURNACE_HMI_HEALTH_UNKNOWN, 0U};
@@ -2036,7 +2060,7 @@ static int diagnostics_checks(const char **failure)
     }
     (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_DETAIL_FORMAT), 2U, 3U);
     if (!tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_FORMAT, 1U)) ||
-        !tree_contains(screens.root, text) || !tree_contains(screens.root, "7") ||
+        !tree_contains(screens.root, text) || !tree_contains(screens.root, "0x2") ||
         !tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_SERVICE_FORMAT, 2U))) {
         return failed(failure, "The fault counts, starts or service hours are not shown.", 918);
     }

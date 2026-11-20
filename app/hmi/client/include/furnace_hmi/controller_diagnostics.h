@@ -18,6 +18,14 @@ extern "C" {
 #define FURNACE_HMI_CLIENT_HEALTH_INTERVAL_MS 5000U
 /** A history page refused as BUSY is asked again after this long; provisional HMI value. */
 #define FURNACE_HMI_CLIENT_HISTORY_BUSY_MS 1000U
+/*
+ * A history page is asked again only after the controller's own read deadline
+ * (10 s, interface "Diagnostics"), so a slow answer is never superseded by its
+ * own repeat; after this many unanswered or BUSY attempts the log is given up as
+ * failed. Provisional HMI values (review, M21-7c).
+ */
+#define FURNACE_HMI_CLIENT_HISTORY_TIMEOUT_MS 12000U
+#define FURNACE_HMI_CLIENT_HISTORY_ATTEMPTS 5U
 /** Entries the controller puts in one EVENT_HISTORY_PAGE. */
 #define FURNACE_HMI_CONTROLLER_HISTORY_PAGE 12U
 
@@ -35,6 +43,7 @@ typedef struct {
     uint8_t history_step;
     uint8_t history_log;
     uint8_t history_pages;
+    uint8_t history_attempts;
     uint16_t history_log_start;
     uint32_t history_cursor;
     uint32_t history_request_id;

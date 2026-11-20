@@ -453,11 +453,11 @@ const PRESENTATION_CHOICE = `(()=>{
     assert.strictEqual(await evaluate('(()=>{const l=document.querySelector(".log-list"),first=l.firstElementChild;return first.classList.contains("log-day")&&/\\(today\\)/.test(first.textContent)&&l.scrollHeight<=l.clientHeight+1&&l.querySelectorAll(".log-row").length>=3})()'), true);
     assert.strictEqual(await evaluate('["display-started","program-saved","program-deleted","maintenance-done"].every(type=>deviceLog.some(e=>e.type===type&&e.at>=wallMinutes(clockNow())-60))'), true);
     const recent = await evaluate('simulateHistory().filter(x=>x.at>=wallMinutes(clockNow())-60).map(historyText).join("|")');
-    assert.ok(recent.split('|').every(s => /^(Operator display (connected|link lost)|Run \d+: (started|stopped|completed|paused|resumed|stopped by a fault))$/.test(s)) &&
+    assert.ok(recent.split('|').every(s => /^(Operator display (connected|link lost)|Run \d+: (started|stopped|completed|paused|resumed|faulted, heating stopped))$/.test(s)) &&
               recent.split('|').filter(s => /^Run \d+: started$/.test(s)).length >= 2, recent);
     assert.strictEqual(await evaluate('document.querySelector(".log-row .log-text").textContent === historyText(simulateHistory()[0])'), true);
     await evaluate('[...document.querySelectorAll(".log-toolbar button")].find(b=>b.textContent==="Alarms").click()');
-    assert.strictEqual(await evaluate('[...document.querySelectorAll(".log-row .log-text")].every(e=>/^Run \\d+: stopped by a fault$/.test(e.textContent))&&document.querySelectorAll(".log-row").length>0'), true);
+    assert.strictEqual(await evaluate('[...document.querySelectorAll(".log-row .log-text")].every(e=>/^Run \\d+: faulted, heating stopped$/.test(e.textContent))&&document.querySelectorAll(".log-row").length>0'), true);
     await evaluate('[...document.querySelectorAll(".log-toolbar button")].find(b=>b.textContent==="Maintenance").click()');
     assert.strictEqual(await evaluate('document.querySelector(".log-list").textContent'), 'The controller does not record maintenance yet.');
     await evaluate('logFilter="all";devicePage=0;render();document.querySelector(".log-row").click()');

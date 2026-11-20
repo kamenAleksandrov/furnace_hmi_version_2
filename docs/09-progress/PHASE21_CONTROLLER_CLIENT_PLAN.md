@@ -244,7 +244,8 @@ controller's limits (CTRL-LIMITS). The program graph still draws a ramp from 25 
 - Program durations at creation come from an assumed ambient temperature the operator sets;
   a Start uses the actual reading. This is the controller's planning reference already (furnace
   PROG-12, PROG-13, PROG-14; owner 2026-11-04): an operator setting, default 23.0 C, settable
-  5.0 to 40.0 C, read and changed with `SETTINGS` and `SETTING_CHANGE`, and stored with every
+  within the controller's reported range (5.0 to 40.0 C today, a provisional firmware fixture until
+  T-08), read and changed with `SETTINGS` and `SETTING_CHANGE`, and stored with every
   program's estimate. The HMI has not shown or changed it yet: M21-7d.
 
 ### M21-7c, the Device log and health
@@ -275,12 +276,13 @@ Started 2026-11-20 (owner: "begin M21-7c"). Furnace WI-H12, ADR-0020, controller
 2. **The screens** (both presentations, parity):
    - **Device log** shows the controller's history when the screens are on the controller:
      every entry with its text, tone and filter.
-     - Filters: Programs (category RUN), Alarms (FAULT, SENSOR, ACTUATOR, and anything of
-       severity ERROR or above), System (SYSTEM, DIAG, COMM, CONFIG).
+     - Filters: Programs (category RUN below severity ERROR), Alarms (FAULT, SENSOR, ACTUATOR,
+       and anything of severity ERROR or above, a faulted run included), System (everything else:
+       SYSTEM, DIAG, COMM, CONFIG; CONTROL traces are not stored).
      - Maintenance shows that the controller does not record maintenance yet (CTRL-MAINTENANCE).
      - A time from a valid or adjusted wall clock is shown as date and time. Without one (the
-       simulated controller has no clock), the entry is grouped under its controller start and
-       shown as the time since that start; no date is invented.
+       firmware's simulated controller, `link_pty`, has no clock), the entry is grouped under its
+       controller start and shown as the time since that start; no date is invented.
      - Run entries name the run by its ID: the controller does not record the program's name
        (new backlog gap, CTRL-EVENT-NAMES).
      - An event this HMI does not know is listed by its ID and severity, never dropped.

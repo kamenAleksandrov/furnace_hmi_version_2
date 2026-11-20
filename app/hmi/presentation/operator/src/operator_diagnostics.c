@@ -174,8 +174,10 @@ static void config_text(const furnace_hmi_controller_history_entry_t *e, char *b
     if (action >= 1U && action <= CONFIG_ACTIONS) {
         (void)snprintf(buffer, capacity, "%s", text_of(actions[action - 1U]));
     } else {
+        char severity[32];
+
         (void)snprintf(buffer, capacity, text_of(FURNACE_HMI_UI_STRING_CTRL_LOG_UNKNOWN_FORMAT),
-                       (unsigned int)e->event_id);
+                       (unsigned int)e->event_id, operator_severity_text(e->severity, severity, sizeof(severity)));
     }
 }
 
@@ -251,11 +253,28 @@ void operator_history_text(const furnace_hmi_controller_history_entry_t *e, char
         (void)snprintf(buffer, capacity, "%s",
                        text_of(FURNACE_HMI_UI_STRING_CTRL_LOG_COUNTER_WRITE_FAILED));
         return;
-    default:
+    default: {
+        char severity[32];
+
         (void)snprintf(buffer, capacity, text_of(FURNACE_HMI_UI_STRING_CTRL_LOG_UNKNOWN_FORMAT),
-                       (unsigned int)e->event_id);
+                       (unsigned int)e->event_id, operator_severity_text(e->severity, severity, sizeof(severity)));
         return;
     }
+    }
+}
+
+const char *operator_severity_text(uint8_t severity, char *buffer, size_t capacity)
+{
+    static const furnace_hmi_ui_string_id_t severities[OPERATOR_DIAG_SEVERITY_COUNT] = {
+        FURNACE_HMI_UI_STRING_CTRL_SEVERITY_0, FURNACE_HMI_UI_STRING_CTRL_SEVERITY_1,
+        FURNACE_HMI_UI_STRING_CTRL_SEVERITY_2, FURNACE_HMI_UI_STRING_CTRL_SEVERITY_3,
+    };
+
+    if (severity < OPERATOR_DIAG_SEVERITY_COUNT) {
+        return text_of(severities[severity]);
+    }
+    (void)snprintf(buffer, capacity, text_of(FURNACE_HMI_UI_STRING_CTRL_SEVERITY_FORMAT), (unsigned int)severity);
+    return buffer;
 }
 
 void operator_history_since_start(uint64_t mono_ms, char *buffer, size_t capacity)

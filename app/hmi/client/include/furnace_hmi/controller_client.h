@@ -203,8 +203,8 @@ uint32_t furnace_hmi_controller_client_library_generation(
 
 /**
  * Read the controller's event history (M21-7c): the newest entries of each log,
- * merged when the read ends. A read in progress goes on. Returns false, and
- * reads nothing, when the link is not current.
+ * merged when the read ends. A read in progress goes on. Returns false when the
+ * link is not current: the read then starts once it is.
  */
 bool furnace_hmi_controller_client_read_history(furnace_hmi_controller_client_t *client);
 

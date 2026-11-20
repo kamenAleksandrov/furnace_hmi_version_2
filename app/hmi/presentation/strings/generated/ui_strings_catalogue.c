@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 1034 of 1034 strings; missing entries are NULL and fall back to English. */
+/* en: 1036 of 1036 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -718,9 +718,9 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_17] = "resumed",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_18] = "completed",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_19] = "stopped",
-    [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_20] = "stopped by a fault",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_20] = "faulted, heating stopped",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_21] = "protective trip",
-    [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_22] = "stage began off its target",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_22] = "stage began away from its planned start",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_23] = "operator decision required",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_24] = "continued by the operator",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_RUN_25] = "no decision in time",
@@ -785,9 +785,9 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_CTRL_LOG_WALL_CLOCK] = "Controller clock set or changed",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_CONTROLLER_STARTED] = "Controller ready",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_BOOT_FORMAT] = "Controller started (start %u)",
-    [FURNACE_HMI_UI_STRING_CTRL_LOG_BOOT_RESET_FORMAT] = "Controller started after an unexpected reset (start %u)",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_BOOT_RESET_FORMAT] = "Controller started after an unusual reset (start %u)",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_COUNTER_WRITE_FAILED] = "Start counter could not be saved",
-    [FURNACE_HMI_UI_STRING_CTRL_LOG_UNKNOWN_FORMAT] = "Controller event %u",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_UNKNOWN_FORMAT] = "Controller event %u (%s)",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_SINCE_START_FORMAT] = "+%u:%02u:%02u",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_START_HEADING_FORMAT] = "Controller start %u, no clock",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_READING] = "Reading the controller's log\xE2\x80\xA6",
@@ -799,7 +799,8 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_CTRL_LOG_NAME_3] = "Configuration log",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_UNAVAILABLE_FORMAT] = "%s unavailable.",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_FAILED_FORMAT] = "%s not read completely.",
-    [FURNACE_HMI_UI_STRING_CTRL_LOG_EVICTED_FORMAT] = "%u entries removed while reading.",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_EVICTED_FORMAT] = "%u older entries missing.",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_OLDER_NOT_SHOWN] = "Older entries not shown.",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_MAINTENANCE_NOT_RECORDED] = "The controller does not record maintenance yet.",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_REFRESH] = "Refresh",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_DETAIL_FORMAT] = "%s\n\n%s, entry %u\nController start %u, %s after start\n%s\nEvent %u, parameters: %s",
@@ -807,6 +808,7 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_CTRL_SEVERITY_1] = "Warning",
     [FURNACE_HMI_UI_STRING_CTRL_SEVERITY_2] = "Error",
     [FURNACE_HMI_UI_STRING_CTRL_SEVERITY_3] = "Critical",
+    [FURNACE_HMI_UI_STRING_CTRL_SEVERITY_FORMAT] = "Severity %u",
     [FURNACE_HMI_UI_STRING_HEALTH_TITLE] = "Controller health",
     [FURNACE_HMI_UI_STRING_HEALTH_STATE_0] = "Unknown",
     [FURNACE_HMI_UI_STRING_HEALTH_STATE_1] = "OK",
@@ -840,7 +842,7 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_HEALTH_DETAIL_LOST_FORMAT] = "%u records lost",
     [FURNACE_HMI_UI_STRING_HEALTH_DETAIL_FLAGS_FORMAT] = "Detail 0x%X",
     [FURNACE_HMI_UI_STRING_HEALTH_NOT_REPORTED] = "The controller has not reported its health yet.",
-    [FURNACE_HMI_UI_STRING_HEALTH_STALE] = "Last reported, not current. The controller keeps recording.",
+    [FURNACE_HMI_UI_STRING_HEALTH_STALE] = "Last reported, not current.",
     [FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_TODAY_FORMAT] = "%s (today)",
     [FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_YESTERDAY_FORMAT] = "%s (yesterday)",
     [FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_AGO_FORMAT] = "%s (%u days ago)",

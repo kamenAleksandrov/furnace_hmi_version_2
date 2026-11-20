@@ -40,6 +40,9 @@ operator_history_group_t operator_history_group(const furnace_hmi_controller_his
 void operator_history_text(const furnace_hmi_controller_history_entry_t *entry, char *buffer,
                            size_t capacity);
 
+/* A severity's name; an unknown one is named by its number, never as information. */
+const char *operator_severity_text(uint8_t severity, char *buffer, size_t capacity);
+
 /* Time since the controller start, "+h:mm:ss". */
 void operator_history_since_start(uint64_t mono_ms, char *buffer, size_t capacity);
 

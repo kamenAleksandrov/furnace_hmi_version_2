@@ -79,6 +79,8 @@ typedef struct {
     } logs[3];
     /* Pages answered BUSY before the next one is served. */
     uint8_t busy_pages;
+    /* The scripted controller serves this many entries before from_sequence again. */
+    uint8_t overlap;
 } fixture_t;
 
 static fixture_t fx;
@@ -2722,6 +2724,7 @@ static void answer_history(void)
         p->next_sequence = fx.logs[index].next;
         s = (q->from_sequence < fx.logs[index].first) ? fx.logs[index].first : q->from_sequence;
         p->evicted = s - q->from_sequence;
+        s = (s >= fx.logs[index].first + fx.overlap) ? s - fx.overlap : fx.logs[index].first;
         while (s < fx.logs[index].next && p->entries_count < q->max_entries) {
             struct furnace_wire_history_entry *e = &p->entries[p->entries_count++];
 
@@ -2872,7 +2875,7 @@ static void history_busy_and_lost_pages(void)
     EXPECT(fx.history_sent == 2U && h->retries == 1U, "asked again after the BUSY wait");
     first_id = fx.last_history.envelope.request_id;
     fx.history_served = fx.history_sent; /* this one is lost */
-    keep_current(FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS + 200U);
+    keep_current(FURNACE_HMI_CLIENT_HISTORY_TIMEOUT_MS + 200U);
     EXPECT(fx.history_sent == 3U && fx.last_history.envelope.request_id != first_id &&
                h->retries == 2U,
            "a lost page asked again under a new request");
@@ -2961,9 +2964,112 @@ static void history_keeps_the_newest_of_a_growing_log(void)
     end();
 }
 
+/* Review 1: an answer to an earlier request is ignored; repeated entries are kept once (probes C11, C17). */
+static void history_ignores_stale_and_repeated(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+    uint32_t probe_id;
+
+    begin_diagnostics("history ignores stale answers and repeated entries");
+    script_log(1U, 0U, 20U, 0U, 1000U);
+    script_log(2U, 0U, 0U, 0U, 1000U);
+    script_log(3U, 0U, 0U, 0U, 1000U);
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    probe_id = fx.last_history.envelope.request_id;
+    answer_history(); /* the extent; the first page is asked */
+    /* A late copy of the probe's answer, under its old request ID, with other entries. */
+    start_out(FURNACE_WIRE_MSG_EVENT_HISTORY_PAGE);
+    fx.out.u.event_history_page.request_id = probe_id;
+    fx.out.u.event_history_page.log = 1U;
+    fx.out.u.event_history_page.next_sequence = 20U;
+    fx.out.u.event_history_page.entries_count = 1U;
+    fx.out.u.event_history_page.entries[0].log_sequence = 19U;
+    send_out();
+    advance(10U);
+    fx.overlap = 3U; /* every page repeats three entries already served */
+    fx.history_served = fx.history_sent - 1U;
+    serve_history();
+    EXPECT(h->state == FURNACE_HMI_HISTORY_READ && h->count == 20U, "each entry once");
+    for (uint16_t i = 1U; i < h->count; i++) {
+        if (h->entries[i].log_sequence + 1U != h->entries[i - 1U].log_sequence) {
+            fail("entries in sequence, none repeated");
+            break;
+        }
+    }
+    end();
+}
+
+/* Review 2: a log the controller never answers is given up; the read ends. */
+static void history_gives_up_an_unanswered_log(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+    size_t asked;
+
+    begin_diagnostics("history gives up an unanswered log");
+    script_log(2U, 0U, 2U, 0U, 1000U);
+    script_log(3U, 0U, 2U, 0U, 1000U);
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    keep_current(FURNACE_HMI_CLIENT_HISTORY_ATTEMPTS * (FURNACE_HMI_CLIENT_HISTORY_TIMEOUT_MS + 200U));
+    asked = fx.history_sent;
+    EXPECT(asked == FURNACE_HMI_CLIENT_HISTORY_ATTEMPTS + 1U, "asked again a bounded number of times");
+    fx.history_served = fx.history_sent - 1U;
+    serve_history();
+    EXPECT(h->state == FURNACE_HMI_HISTORY_READ && !h->reading, "the read ends");
+    EXPECT(h->logs[0].state == FURNACE_HMI_HISTORY_LOG_FAILED && h->logs[1].state == FURNACE_HMI_HISTORY_LOG_READ &&
+               h->count == 4U,
+           "the silent log failed, the others read");
+    end();
+}
+
+/* Review 3: a read asked for while the link is lost starts once it is current again. */
+static void history_asked_while_silent(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+
+    begin_diagnostics("history asked while the link is silent");
+    script_log(1U, 0U, 2U, 0U, 1000U);
+    script_log(2U, 0U, 0U, 0U, 1000U);
+    script_log(3U, 0U, 0U, 0U, 1000U);
+    advance(3200U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
+    EXPECT(!furnace_hmi_controller_client_read_history(&fx.client), "not current");
+    advance(100U);
+    EXPECT(fx.history_sent == 0U, "nothing sent while silent");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_status(30U, 1250, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_list(obs()->snapshot_request_id, 30U, 0U, 0U, 0U);
+    send_snapshot_end(obs()->snapshot_request_id, 30U, 3U, 5U);
+    advance(10U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "connected again");
+    serve_history();
+    EXPECT(h->state == FURNACE_HMI_HISTORY_READ && h->count == 2U, "read once current");
+    end();
+}
+
+/* A refused read is asked again later, and a refusal for the link says HELLO (probe C16). */
+static void history_read_refused(void)
+{
+    size_t mark;
+
+    begin_diagnostics("history read refused");
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    mark = fx.sent_count;
+    send_command_rejected(fx.last_history.envelope.request_id, REJECT_NOT_CONNECTED);
+    advance(10U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_HELLO) >= 1U, "HELLO after NOT_CONNECTED");
+    end();
+}
+
 int controller_client_tests_run(void)
 {
     failures = 0;
+    history_ignores_stale_and_repeated();
+    history_gives_up_an_unanswered_log();
+    history_asked_while_silent();
+    history_read_refused();
     health_reported();
     health_follows_the_link();
     history_read_newest();

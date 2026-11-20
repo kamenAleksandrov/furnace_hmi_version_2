@@ -1903,11 +1903,9 @@ void furnace_hmi_controller_client_poll(furnace_hmi_controller_client_t *client,
 
 bool furnace_hmi_controller_client_read_history(furnace_hmi_controller_client_t *client)
 {
-    if (client->observation.link != FURNACE_HMI_LINK_CONNECTED) {
-        return false;
-    }
+    /* Asked while the link is not current, it starts once it is (review 3). */
     furnace_hmi_diagnostics_request_history(&client->diagnostics);
-    return true;
+    return client->observation.link == FURNACE_HMI_LINK_CONNECTED;
 }
 
 const furnace_hmi_controller_health_t *furnace_hmi_controller_client_health(

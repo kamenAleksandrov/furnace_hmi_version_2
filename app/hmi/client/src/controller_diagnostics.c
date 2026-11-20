@@ -224,6 +224,7 @@ static void history_next_log(furnace_hmi_controller_diagnostics_t *d)
     d->history_log_start = d->reading.count;
     d->history_wait_busy = false;
     d->history_ready = true;
+    d->history_attempts = 0U;
 }
 
 static void history_start(furnace_hmi_controller_diagnostics_t *d)
@@ -237,13 +238,14 @@ static void history_start(furnace_hmi_controller_diagnostics_t *d)
     d->history_log_start = 0U;
     d->history_wait_busy = false;
     d->history_ready = true;
+    d->history_attempts = 0U;
     d->history.reading = true;
     changed(d);
 }
 
+/* A read in progress ends with the link; one asked for and not begun stays asked (review 3). */
 static void history_stop(furnace_hmi_controller_diagnostics_t *d)
 {
-    d->history_wanted = false;
     if (d->history_step == HISTORY_IDLE) {
         return;
     }
@@ -267,11 +269,17 @@ static bool history_due(furnace_hmi_controller_diagnostics_t *d, uint32_t now)
     }
     if (!elapsed(now, d->history_sent_ms,
                  d->history_wait_busy ? FURNACE_HMI_CLIENT_HISTORY_BUSY_MS
-                                      : FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS)) {
+                                      : FURNACE_HMI_CLIENT_HISTORY_TIMEOUT_MS)) {
         return false;
     }
     saturating_increment(&d->history.retries);
     changed(d);
+    if (++d->history_attempts >= FURNACE_HMI_CLIENT_HISTORY_ATTEMPTS) {
+        /* Never answered, or always BUSY: this log is given up, the read goes on (review 2). */
+        d->reading.logs[d->history_log].state = FURNACE_HMI_HISTORY_LOG_FAILED;
+        history_next_log(d);
+        return d->history_step != HISTORY_IDLE;
+    }
     return true;
 }
 
@@ -340,6 +348,7 @@ void furnace_hmi_diagnostics_on_history_page(furnace_hmi_controller_diagnostics_
         d->history_wait_busy = true; /* asked again after FURNACE_HMI_CLIENT_HISTORY_BUSY_MS */
         return;
     }
+    d->history_attempts = 0U;
     if (p->result == HISTORY_UNAVAILABLE) {
         l->state = FURNACE_HMI_HISTORY_LOG_UNAVAILABLE;
         history_next_log(d);
@@ -382,10 +391,8 @@ void furnace_hmi_diagnostics_on_history_page(furnace_hmi_controller_diagnostics_
         d->history_ready = true;
         return; /* the next page is due at once */
     }
-    if (p->next_sequence > l->next_sequence) {
-        l->next_sequence = p->next_sequence;
-    }
-    l->state = FURNACE_HMI_HISTORY_LOG_READ;
+    /* Stopped with more to read: its newest entries are missing, so the log is not complete. */
+    l->state = p->more ? FURNACE_HMI_HISTORY_LOG_FAILED : FURNACE_HMI_HISTORY_LOG_READ;
     history_next_log(d);
 }
 
