@@ -421,6 +421,36 @@ save dialogs) on M21-7d-1, so each stays reviewable.
   HMI is unresolved; the HMI does not poll `SETTINGS`.
 - Seen, not changed: the Display card "Default Running view" overlaps its value on the HMI.
 
+**M21-7d-2 done (2026-11-20, draft), stacked on M21-7d-1:**
+- **The labs' simulated controller answers a Start as the controller does** (furnace `core/run`
+  start selection and start transaction; SIMULATION ONLY): the first stage the measured
+  temperature allows (a Heating stage below its target, a Hold within 5.0 C of its target, the
+  firmware's fixture profile A), the estimate from there, the advisory duration and the maximum.
+  The first stage within the advisory duration starts at once; a later stage, or a longer
+  estimate, is a proposal; a run active, no valid temperature, no eligible stage or a longer
+  estimate than the maximum is refused with the controller's reason.
+- **One Start path in the screens:** Start, Start again, Confirm and Cancel go through the
+  controller's command slot in the labs too (`answered_by_controller`); the labs show the same
+  "sending" notice, proposal panel, refusal dialog and duration acknowledgement as against the
+  controller. The program becomes recent when the run starts, not when Start is pressed.
+- **The save acknowledgement:** above the advisory duration the labs ask, as the controller
+  does, to acknowledge exactly the estimate before saving (one dialog, shared with the
+  controller path). Closing the question saves nothing.
+- **The labs' advisory duration is 12 h**, their own: the firmware's `link_pty` has none, so a
+  controller workflow never asks. The screens' limits now carry `recommended_curing_minutes`
+  (0 when the controller reports none or one above the maximum).
+- A run started at a later stage runs from the measured temperature (the first ramp's minutes
+  recomputed from it; a Hold holds at its target).
+
+**Not in M21-7d-2, recorded:**
+- The labs do not re-evaluate an open proposal (no new revision, no invalidation while it is
+  open); a scenario change closes it without a message.
+- A Start at the first stage runs the authored plan from the labs' start (the UI lab's 25 C, the
+  web demo's planning reference), not from the measured temperature.
+- Seen, not changed: the web demo offers no program Start from Program details while a stopped
+  run cools (only Start again); the UI lab does. The furnace register's HMI-DIFF-01/-02 still
+  describe the labs as starting at once; they are the firmware repository's to update.
+
 ### M21-7e, the controller's clock (firmware and HMI)
 
 Added 2026-11-20 (owner): the furnace controller keeps the time, in universal time (UTC); the HMI

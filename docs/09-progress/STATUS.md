@@ -1,5 +1,21 @@
 # Project status
 
+**Fact (2026-11-20, Phase 21 M21-7d-2, draft):** the labs' Start and save dialogs are the
+controller's. Stacked on M21-7d-1; choices and gaps in the Phase 21 plan ("M21-7d-2 done").
+- **Simulated controller (UI lab and web demo, SIMULATION ONLY):** a Start is answered by the
+  controller's rules: start stage at the measured temperature, estimate, advisory duration,
+  maximum; a proposal or a refusal with the controller's reason; Confirm runs from the proposed
+  stage; the save asks to acknowledge an estimate above the labs' 12 h advisory duration.
+- **Screens:** Start, Start again, Confirm and Cancel use the controller's command path in the labs
+  too; the save acknowledgement is one dialog for both; the screens' limits carry the advisory
+  duration.
+- **Evidence:** host GCC, MSVC core, desktop and UI lab (with the hot-start, refusal and
+  acknowledgement steps and a `start-proposal` capture), Zephyr Twister, the operator workflows
+  against firmware `link_pty`, the web smoke test. Counts in the pull request.
+- **Open:** the labs do not re-evaluate an open proposal; M21-7e (the controller's clock) next,
+  starting with the furnace plan (owner answers 2026-11-20 recorded in the plan).
+- **Next:** M21-7e.
+
 **Fact (2026-11-20, Phase 21 M21-7d-1, draft):** the editors, Manual and Settings take the
 controller's program limits and its planning reference (owner 2026-11-20: the limits must be the
 furnace's; the assumed start temperature is the operator's setting). Stacked on M21-7c; design,
@@ -19,7 +35,7 @@ choices and gaps in the Phase 21 plan ("M21-7d").
 - **Reviews:** three AI reviews in the HMI roles, not the required human reviews; fixed test-first.
 - **Open:** M21-7d-2 (the labs' Start and save dialogs); M21-7e (the controller's clock, firmware
   and HMI) waits for the owner's approval of its proposal.
-- **Next:** M21-7d-2.
+- **Next:** M21-7d-2 (in draft above).
 
 **Fact (2026-11-20, Phase 21 M21-7c, draft):** the Device log and a new Health category show the
 controller's history and health (furnace WI-H12, ADR-0020). Stacked on M21-7b; design, owner
