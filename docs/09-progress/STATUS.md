@@ -12,7 +12,10 @@ controller's. Stacked on M21-7d-1; choices and gaps in the Phase 21 plan ("M21-7
 - **Evidence:** host GCC, MSVC core, desktop and UI lab (with the hot-start, refusal and
   acknowledgement steps and a `start-proposal` capture), Zephyr Twister, the operator workflows
   against firmware `link_pty`, the web smoke test. Counts in the pull request.
-- **Open:** the labs do not re-evaluate an open proposal; M21-7e (the controller's clock) next,
+- **Reviews:** three AI reviews in the HMI roles, not the required human reviews; fixed test-first
+  (a Start again bug after a refused Start, the simulator's reasons, BUSY and Confirm-time
+  evaluation, the withdrawal reason and the accepted duration on both paths).
+- **Open:** the labs evaluate an open proposal only at Confirm; M21-7e (the controller's clock) next,
   starting with the furnace plan (owner answers 2026-11-20 recorded in the plan).
 - **Next:** M21-7e.
 

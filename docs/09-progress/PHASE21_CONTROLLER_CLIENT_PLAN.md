@@ -439,14 +439,30 @@ save dialogs) on M21-7d-1, so each stays reviewable.
 - **The labs' advisory duration is 12 h**, their own: the firmware's `link_pty` has none, so a
   controller workflow never asks. The screens' limits now carry `recommended_curing_minutes`
   (0 when the controller reports none or one above the maximum).
-- A run started at a later stage runs from the measured temperature (the first ramp's minutes
-  recomputed from it; a Hold holds at its target).
+- Every run starts from the measured temperature, as the controller's does (the first ramp's
+  minutes recomputed from it; a Hold holds at its target).
+- **Review fixes** (three AI reviews in the HMI roles, not the required human reviews; fixed
+  test-first):
+  - A refused or cancelled Start no longer changes the program a stopped run's Start again
+    restarts: the program becomes the running one when its run starts (both paths).
+  - The simulated controller validates the program first (PROGRAM_INVALID instead of "a run is
+    active"; a first target at or below 25 C is valid), answers BUSY while a transaction is open,
+    TRANSACTION_MISMATCH and PROPOSAL_MISMATCH as the firmware, keeps the transaction when a
+    Confirm is refused, and evaluates the live data at Confirm: a failure withdraws the proposal,
+    a material change publishes a new revision. The web demo does the same at Confirm.
+  - A Confirm refused because the proposal was withdrawn shows the controller's reason for it
+    (both paths); a late Confirm tap no longer erases the withdrawal notice.
+  - Confirm accepts the estimate the panel drew, not a newer one it did not show (both paths).
+  - The web demo's proposal state cannot outlive its panel (Escape works on other dialogs; a
+    reset clears it); an Acknowledge with no draft left closes its dialog.
 
 **Not in M21-7d-2, recorded:**
-- The labs do not re-evaluate an open proposal (no new revision, no invalidation while it is
-  open); a scenario change closes it without a message.
-- A Start at the first stage runs the authored plan from the labs' start (the UI lab's 25 C, the
-  web demo's planning reference), not from the measured temperature.
+- The labs evaluate an open proposal again only at Confirm, not while it is open; a scenario
+  change closes it without a message.
+- The UI lab's Cancel goes through the command slot with a sending notice; the web demo's is
+  immediate. Reason 34 (a run active) cannot be provoked through the labs' screens.
+- An open proposal is reopened over an alert that came meanwhile (both paths; the alert is lost
+  after one observation).
 - Seen, not changed: the web demo offers no program Start from Program details while a stopped
   run cools (only Start again); the UI lab does. The furnace register's HMI-DIFF-01/-02 still
   describe the labs as starting at once; they are the firmware repository's to update.
