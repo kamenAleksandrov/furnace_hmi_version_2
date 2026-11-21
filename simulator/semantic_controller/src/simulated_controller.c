@@ -604,6 +604,12 @@ void furnace_hmi_simulator_set_scenario(
 #define SIM_MAX_PROGRAM_TEMPERATURE_C 180
 #define SIM_MAX_RATE_TENTHS 30
 
+/* Where the run starts: the measured temperature of a hot start, else the simulation's 25 C. */
+static int32_t program_start_c(const furnace_hmi_sim_program_t *program)
+{
+    return program->hot_start ? program->start_c : SIM_START_TEMPERATURE_C;
+}
+
 static uint32_t program_curing_seconds(const furnace_hmi_sim_program_t *program)
 {
     uint32_t seconds = 0U;
@@ -615,7 +621,7 @@ static uint32_t program_curing_seconds(const furnace_hmi_sim_program_t *program)
 
 static int32_t program_stage_target(const furnace_hmi_sim_program_t *program, uint8_t index)
 {
-    int32_t target = SIM_START_TEMPERATURE_C;
+    int32_t target = program_start_c(program);
     for (uint8_t stage = 0U; stage <= index && stage < program->stage_count; ++stage) {
         if (!program->stages[stage].hold) {
             target = program->stages[stage].target_c;
@@ -646,7 +652,7 @@ static uint32_t program_cooling_seconds(const furnace_hmi_sim_program_t *program
 static int32_t program_planned_at(const furnace_hmi_sim_program_t *program, uint32_t seconds)
 {
     uint32_t start = 0U;
-    int32_t from = SIM_START_TEMPERATURE_C;
+    int32_t from = program_start_c(program);
     for (uint8_t index = 0U; index < program->stage_count; ++index) {
         const uint32_t length = program->stages[index].minutes * 60U;
         const int32_t to = program_stage_target(program, index);
@@ -788,7 +794,7 @@ static bool program_is_valid(const furnace_hmi_sim_program_t *program)
     if (program == NULL || program->stage_count == 0U || program->stage_count > FURNACE_HMI_SIM_MAX_STAGES) {
         return false;
     }
-    int32_t start = SIM_START_TEMPERATURE_C;
+    int32_t start = program_start_c(program);
     for (uint8_t index = 0U; index < program->stage_count; ++index) {
         const furnace_hmi_sim_stage_t *stage = &program->stages[index];
         if (stage->minutes == 0U ||
@@ -837,6 +843,352 @@ bool furnace_hmi_simulator_start_program(
     return true;
 }
 
+/* ---- Program Start, as the controller answers it (furnace core/run; M21-7d-2) -------------
+ * SIMULATION ONLY: the labs show the controller's proposal, acknowledgement and refusals. The
+ * reasons and warnings are the controller's codes (furnace_start_reason, START_PROPOSAL). An
+ * open proposal is evaluated again when it is confirmed, as the controller does; it is not
+ * re-evaluated in between. */
+
+#define SIM_START_REASON_BUSY 6U
+#define SIM_START_REASON_NOT_PENDING 8U
+#define SIM_START_REASON_TRANSACTION_MISMATCH 9U
+#define SIM_START_REASON_PROPOSAL_OUTDATED 10U
+#define SIM_START_REASON_PROPOSAL_MISMATCH 11U
+#define SIM_START_REASON_PROPOSAL_INVALIDATED 12U
+#define SIM_START_REASON_MEASUREMENT_INVALID 23U
+#define SIM_START_REASON_PROGRAM_INVALID 26U
+#define SIM_START_REASON_NO_ELIGIBLE_STAGE 27U
+#define SIM_START_REASON_DURATION_EXCEEDS_LIMIT 28U
+#define SIM_START_REASON_DURATION_NOT_ACKNOWLEDGED 33U
+#define SIM_START_REASON_SESSION_ACTIVE 34U
+#define SIM_START_WARNING_TREATMENT_INCOMPLETE 1U
+#define SIM_START_WARNING_HOLD_SKIPPED 2U
+
+static void start_answer(furnace_hmi_simulator_t *simulator, uint32_t submission,
+                         furnace_hmi_feedback_state_t answer, uint8_t reason)
+{
+    simulator->state.command_feedback = (furnace_hmi_command_feedback_t) {
+        .submission = submission, .state = answer, .reason = reason,
+    };
+    simulator->state.state_revision += 1U;
+}
+
+/* The controller's start selection (furnace_start_select): the first stage in program order that
+ * the measured temperature allows. */
+static bool start_stage_select(const furnace_hmi_sim_program_t *program, int32_t measured_dc,
+                               int32_t tolerance_dc, uint8_t *stage)
+{
+    int64_t hold_target = 0;
+    for (uint8_t index = 0U; index < program->stage_count; ++index) {
+        const furnace_hmi_sim_stage_t *candidate = &program->stages[index];
+        bool eligible;
+        if (!candidate->hold) {
+            hold_target = (int64_t)candidate->target_c * 10;
+            eligible = measured_dc < hold_target;
+        } else {
+            const int64_t difference = (int64_t)measured_dc - hold_target;
+            eligible = (difference < 0 ? -difference : difference) <= tolerance_dc;
+        }
+        if (eligible) {
+            *stage = index;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The controller's remaining estimate (sum_curing_seconds): from the start stage at the measured
+ * temperature; a later Heating stage from the previous target, rounded up to a second; a Hold its
+ * minutes. The program is valid (every rate at least 1). */
+static uint64_t start_remaining_seconds(const furnace_hmi_sim_program_t *program, uint8_t start,
+                                        int32_t measured_dc)
+{
+    int64_t from = measured_dc;
+    uint64_t sum = 0U;
+    for (uint8_t index = 0U; index < program->stage_count; ++index) {
+        const furnace_hmi_sim_stage_t *stage = &program->stages[index];
+        if (stage->hold) {
+            sum += index >= start ? (uint64_t)stage->minutes * 60U : 0U;
+            continue;
+        }
+        const int64_t target = (int64_t)stage->target_c * 10;
+        const int64_t rate = stage->rate_tenths_c_per_minute;
+        if (index == start) {
+            from = measured_dc;
+        }
+        if (index >= start && target > from) {
+            sum += (uint64_t)(((target - from) * 60 + rate - 1) / rate);
+        }
+        from = target;
+    }
+    return sum;
+}
+
+/*
+ * The controller's evaluation of a Start (furnace start_transaction evaluate): no valid
+ * temperature, no eligible stage or an estimate above the maximum is a reason; otherwise the
+ * proposal it would publish (without its transaction and revision). Returns the reason, 0 none.
+ */
+static uint8_t start_evaluate(const furnace_hmi_dashboard_state_t *state, const furnace_hmi_sim_program_t *program,
+                              const furnace_hmi_sim_start_rules_t *rules, furnace_hmi_start_proposal_view_t *p)
+{
+    memset(p, 0, sizeof(*p));
+    if (state->availability != FURNACE_HMI_STATE_AVAILABILITY_CURRENT ||
+        state->current_temperature_c.validity != FURNACE_HMI_VALUE_VALIDITY_CURRENT) {
+        return SIM_START_REASON_MEASUREMENT_INVALID;
+    }
+    const int32_t measured_dc = state->current_temperature_c.value * 10;
+    uint8_t stage = 0U;
+    if (!start_stage_select(program, measured_dc, rules->hold_entry_tolerance_decicelsius, &stage)) {
+        return SIM_START_REASON_NO_ELIGIBLE_STAGE;
+    }
+    const uint64_t maximum = (uint64_t)rules->curing_max_minutes * 60U;
+    const uint64_t recommended = rules->recommended_curing_minutes == 0U ||
+                                         rules->recommended_curing_minutes > rules->curing_max_minutes
+        ? maximum : (uint64_t)rules->recommended_curing_minutes * 60U;
+    const uint64_t remaining = start_remaining_seconds(program, stage, measured_dc);
+    if (remaining > maximum || maximum > UINT32_MAX) {
+        return SIM_START_REASON_DURATION_EXCEEDS_LIMIT;
+    }
+    p->measured_valid = true;
+    p->measured_decicelsius = measured_dc;
+    p->proposed_stage = stage;
+    p->skipped_count = stage;
+    bool hold_skipped = false;
+    int32_t target = 0;
+    for (uint8_t index = 0U; index < stage && index < FURNACE_HMI_DASHBOARD_MAX_SKIPPED_STAGES; ++index) {
+        const furnace_hmi_sim_stage_t *skipped = &program->stages[index];
+        target = skipped->hold ? target : skipped->target_c * 10;
+        hold_skipped = hold_skipped || skipped->hold;
+        p->skipped[index] = (furnace_hmi_skipped_stage_t) {
+            .index = index, .hold = skipped->hold, .target_decicelsius = target,
+            .hold_minutes = skipped->hold ? skipped->minutes : 0U,
+        };
+    }
+    p->remaining_curing_s = (uint32_t)remaining;
+    p->duration_ack_required = remaining > recommended;
+    p->recommended_s = (uint32_t)recommended;
+    p->maximum_s = (uint32_t)maximum;
+    if (stage > 0U) {
+        p->warnings[p->warnings_count++] = SIM_START_WARNING_TREATMENT_INCOMPLETE;
+    }
+    if (hold_skipped) {
+        p->warnings[p->warnings_count++] = SIM_START_WARNING_HOLD_SKIPPED;
+    }
+    return 0U;
+}
+
+/* What makes a proposal change materially (start_transaction proposal_differs, START-16). */
+static bool start_proposal_differs(const furnace_hmi_start_proposal_view_t *a, const furnace_hmi_start_proposal_view_t *b)
+{
+    return a->proposed_stage != b->proposed_stage || a->skipped_count != b->skipped_count ||
+           a->duration_ack_required != b->duration_ack_required;
+}
+
+/* The program as the controller validates it before it selects a stage, within the simulation's
+ * own bounds: stages, minutes, rates, rising Heating targets. */
+static bool start_program_valid(const furnace_hmi_sim_program_t *program)
+{
+    if (program->stage_count == 0U || program->stage_count > FURNACE_HMI_SIM_MAX_STAGES) {
+        return false;
+    }
+    bool heated = false;
+    int32_t previous = 0;
+    for (uint8_t index = 0U; index < program->stage_count; ++index) {
+        const furnace_hmi_sim_stage_t *stage = &program->stages[index];
+        if (stage->minutes == 0U) {
+            return false;
+        }
+        if (stage->hold) {
+            if (!heated) {
+                return false;
+            }
+            continue;
+        }
+        if ((heated && stage->target_c <= previous) || stage->target_c > SIM_MAX_PROGRAM_TEMPERATURE_C ||
+            stage->rate_tenths_c_per_minute < 1 || stage->rate_tenths_c_per_minute > SIM_MAX_RATE_TENTHS) {
+            return false;
+        }
+        heated = true;
+        previous = stage->target_c;
+    }
+    return true;
+}
+
+/* Start the run at `stage`, from the measured temperature (the controller ramps from it): the
+ * stages before it are left out, a Heating stage there ramps from the measured temperature
+ * (whole minutes, at least one), a Hold there holds at its target. */
+static bool start_run_at(furnace_hmi_simulator_t *simulator, const furnace_hmi_sim_program_t *program,
+                         uint8_t stage, int32_t measured_dc)
+{
+    furnace_hmi_sim_program_t run;
+    memset(&run, 0, sizeof(run));
+    (void)snprintf(run.name, sizeof(run.name), "%s", program->name);
+    int32_t held = 0;
+    for (uint8_t index = 0U; index < program->stage_count; ++index) {
+        if (!program->stages[index].hold && index < stage) {
+            held = program->stages[index].target_c;
+        }
+        if (index >= stage) {
+            run.stages[run.stage_count++] = program->stages[index];
+        }
+    }
+    run.hot_start = true;
+    run.start_c = run.stages[0].hold ? held : (int32_t)(measured_dc / 10);
+    if (!run.stages[0].hold) {
+        /* The first ramp from the measured temperature, in whole minutes (at least one). */
+        const int64_t seconds = (((int64_t)run.stages[0].target_c * 10 - measured_dc) * 60 +
+                                 run.stages[0].rate_tenths_c_per_minute - 1) /
+                                run.stages[0].rate_tenths_c_per_minute;
+        run.stages[0].minutes = seconds > 60 ? (uint32_t)((seconds + 59) / 60) : 1U;
+    }
+    return furnace_hmi_simulator_start_program(simulator, &run);
+}
+
+/* No transaction is open any more. */
+static void start_close(furnace_hmi_simulator_t *simulator)
+{
+    memset(&simulator->state.start_proposal, 0, sizeof(simulator->state.start_proposal));
+    simulator->state.start_pending_transaction_id = 0U;
+    simulator->state.start_pending_revision = 0U;
+}
+
+void furnace_hmi_simulator_request_start(furnace_hmi_simulator_t *simulator, uint32_t submission,
+                                         const furnace_hmi_sim_program_t *program,
+                                         const furnace_hmi_sim_start_rules_t *rules)
+{
+    if (simulator == NULL || program == NULL || rules == NULL) {
+        return;
+    }
+    furnace_hmi_dashboard_state_t *state = &simulator->state;
+    if (state->start_proposal.state == FURNACE_HMI_START_PROPOSAL_OPEN) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_BUSY);
+        return;
+    }
+    if (!start_program_valid(program)) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_PROGRAM_INVALID);
+        return;
+    }
+    const bool executing = state->mode != FURNACE_HMI_MACHINE_MODE_IDLE &&
+        (state->run_state == FURNACE_HMI_RUN_STATE_FAULT ||
+         ((state->run_state == FURNACE_HMI_RUN_STATE_RUNNING || state->run_state == FURNACE_HMI_RUN_STATE_PAUSED) &&
+          state->run_phase != FURNACE_HMI_RUN_PHASE_COOLING));
+    if (executing) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_SESSION_ACTIVE);
+        return;
+    }
+    furnace_hmi_start_proposal_view_t proposal;
+    const uint8_t reason = start_evaluate(state, program, rules, &proposal);
+    if (reason != 0U) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, reason);
+        return;
+    }
+    if (proposal.proposed_stage == 0U && !proposal.duration_ack_required) {
+        /* Authorized by the request itself (START-12): the run starts. */
+        if (!start_run_at(simulator, program, 0U, proposal.measured_decicelsius)) {
+            start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_SESSION_ACTIVE);
+            return;
+        }
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+        return;
+    }
+    /* A proposal, which the operator confirms or cancels (START-05, START-16). */
+    simulator->next_transaction_id += 1U;
+    simulator->proposed_program = *program;
+    simulator->proposed_rules = *rules;
+    proposal.state = FURNACE_HMI_START_PROPOSAL_OPEN;
+    proposal.transaction_id = simulator->next_transaction_id;
+    proposal.proposal_revision = 1U;
+    state->start_proposal = proposal;
+    state->start_pending_transaction_id = proposal.transaction_id;
+    state->start_pending_revision = proposal.proposal_revision;
+    start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_PROPOSED, 0U);
+}
+
+void furnace_hmi_simulator_confirm_start(furnace_hmi_simulator_t *simulator, uint32_t submission,
+                                         uint32_t transaction_id, uint32_t proposal_revision,
+                                         uint8_t proposed_stage, uint32_t accepted_duration_s)
+{
+    if (simulator == NULL) {
+        return;
+    }
+    furnace_hmi_dashboard_state_t *state = &simulator->state;
+    furnace_hmi_start_proposal_view_t *p = &state->start_proposal;
+    if (p->state != FURNACE_HMI_START_PROPOSAL_OPEN) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED,
+                     p->state == FURNACE_HMI_START_PROPOSAL_INVALIDATED && p->transaction_id == transaction_id
+                         ? SIM_START_REASON_PROPOSAL_INVALIDATED : SIM_START_REASON_NOT_PENDING);
+        return;
+    }
+    if (p->transaction_id != transaction_id) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_TRANSACTION_MISMATCH);
+        return;
+    }
+    /* The live data first (as the controller): a failure withdraws the proposal; a material
+     * change publishes a new revision, which this confirmation does not name. */
+    furnace_hmi_start_proposal_view_t now;
+    const uint8_t reason = start_evaluate(state, &simulator->proposed_program, &simulator->proposed_rules, &now);
+    if (reason != 0U) {
+        p->state = FURNACE_HMI_START_PROPOSAL_INVALIDATED;
+        p->invalidation_reason = reason;
+        state->start_pending_transaction_id = 0U;
+        state->start_pending_revision = 0U;
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_PROPOSAL_INVALIDATED);
+        return;
+    }
+    if (start_proposal_differs(&now, p)) {
+        now.state = FURNACE_HMI_START_PROPOSAL_OPEN;
+        now.transaction_id = p->transaction_id;
+        now.proposal_revision = p->proposal_revision + 1U;
+        *p = now;
+        state->start_pending_revision = p->proposal_revision;
+    } else {
+        /* Temperature and estimate are not material: refreshed under the same revision. */
+        p->measured_decicelsius = now.measured_decicelsius;
+        p->remaining_curing_s = now.remaining_curing_s;
+    }
+    if (proposal_revision < p->proposal_revision) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_PROPOSAL_OUTDATED);
+        return;
+    }
+    if (proposal_revision != p->proposal_revision || proposed_stage != p->proposed_stage) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_PROPOSAL_MISMATCH);
+        return;
+    }
+    if (p->duration_ack_required &&
+        (accepted_duration_s < p->remaining_curing_s || accepted_duration_s > p->maximum_s)) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_DURATION_NOT_ACKNOWLEDGED);
+        return;
+    }
+    /* The run starts; the transaction stays open if it cannot (its program already checked). */
+    const furnace_hmi_sim_program_t program = simulator->proposed_program;
+    if (!start_run_at(simulator, &program, p->proposed_stage, p->measured_decicelsius)) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_SESSION_ACTIVE);
+        return;
+    }
+    start_close(simulator);
+    start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+}
+
+void furnace_hmi_simulator_cancel_start(furnace_hmi_simulator_t *simulator, uint32_t submission,
+                                        uint32_t transaction_id)
+{
+    if (simulator == NULL) {
+        return;
+    }
+    const furnace_hmi_start_proposal_view_t *p = &simulator->state.start_proposal;
+    if (p->state != FURNACE_HMI_START_PROPOSAL_OPEN) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_NOT_PENDING);
+        return;
+    }
+    if (p->transaction_id != transaction_id) {
+        start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_REJECTED, SIM_START_REASON_TRANSACTION_MISMATCH);
+        return;
+    }
+    start_close(simulator);
+    start_answer(simulator, submission, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+}
+
 bool furnace_hmi_simulator_set_paused(furnace_hmi_simulator_t *simulator, bool paused)
 {
     if (simulator == NULL || simulator->state.availability != FURNACE_HMI_STATE_AVAILABILITY_CURRENT ||
@@ -862,7 +1214,7 @@ bool furnace_hmi_simulator_set_paused(furnace_hmi_simulator_t *simulator, bool p
 static void program_cut(furnace_hmi_sim_program_t *program, uint32_t minutes)
 {
     uint32_t elapsed = 0U;
-    int32_t start = SIM_START_TEMPERATURE_C;
+    int32_t start = program_start_c(program);
     uint8_t count = 0U;
     for (uint8_t index = 0U; index < program->stage_count && elapsed < minutes; ++index) {
         furnace_hmi_sim_stage_t stage = program->stages[index];
