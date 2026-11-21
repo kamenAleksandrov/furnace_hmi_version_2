@@ -1716,6 +1716,16 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL) || !pump_controller_requests(context) ||
         context->explorer.proposal_open || context->explorer.modal != NULL ||
         context->explorer.state->run_phase != FURNACE_HMI_RUN_PHASE_COOLING ||
+        /* The temperature lost before Confirm: the proposal is withdrawn with the reason. */
+        !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_AGAIN) || !pump_controller_requests(context) ||
+        !context->explorer.proposal_open ||
+        ((void)(context->simulator.state.current_temperature_c.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE),
+         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM)) || !pump_controller_requests(context) ||
+        !modal_shows(context, FURNACE_HMI_UI_STRING_UI_LAB_START_INVALIDATED_TITLE) ||
+        find_label(context->explorer.modal,
+                   "The furnace temperature is not valid. Start again for a new proposal.") == NULL ||
+        ((void)(context->simulator.state.current_temperature_c.validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT),
+         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) ||
         /* Confirm runs it from that stage: five stages, from the Hold. */
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_AGAIN) || !pump_controller_requests(context) ||
         !context->explorer.proposal_open ||
@@ -1733,6 +1743,16 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
         context->explorer.state->mode != FURNACE_HMI_MACHINE_MODE_PROGRAM ||
         context->explorer.state->run_phase != FURNACE_HMI_RUN_PHASE_COOLING) {
         fprintf(stderr, "Program run pause/resume/stop failed\n"); return 3;
+    }
+    /* A refused Start of another program leaves the stopped run's program as it is: Start again
+     * still means the third program (M21-7d-2 review). At 90 C the first program cannot start. */
+    context->explorer.selected_program = 0U;
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
+        !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM) ||
+        !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM) || !pump_controller_requests(context) ||
+        !modal_shows(context, FURNACE_HMI_UI_STRING_UI_LAB_START_REJECTED_TITLE) ||
+        !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) || context->explorer.running_program != 2U) {
+        fprintf(stderr, "Refused Start changed the running program\n"); return 3;
     }
     /* Stage dialog over the program editor: add after, move by position,
      * delete with confirmation; Discard restores every stage, Save keeps them
@@ -1849,6 +1869,86 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
             return 3;                                                         \
         }                                                                     \
     } while (0)
+    /* The simulated controller's other answers, by its interface (M21-7d-2 review): the reasons
+     * the screens cannot easily provoke, each as the firmware's start transaction gives it. */
+    {
+        static furnace_hmi_simulator_t sim;
+        const furnace_hmi_sim_start_rules_t rules = { 50, 720U, 2880U };
+        furnace_hmi_sim_program_t program;
+        memset(&program, 0, sizeof(program));
+        program.stage_count = 2U;
+        program.stages[0] = (furnace_hmi_sim_stage_t) { false, 90, 10, 67 };
+        program.stages[1] = (furnace_hmi_sim_stage_t) { true, 90, 0, 60 };
+        const char *answers = "Simulated controller answers";
+#define SIM_ANSWER(state_, reason_) \
+    (sim.state.command_feedback.state == (state_) && sim.state.command_feedback.reason == (reason_))
+        furnace_hmi_simulator_initialize(&sim, FURNACE_HMI_SIM_SCENARIO_IDLE);
+        sim.state.current_temperature_c.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
+        furnace_hmi_simulator_request_start(&sim, 1U, &program, &rules);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 23U) &&
+                                 sim.state.command_feedback.submission == 1U);
+        furnace_hmi_simulator_initialize(&sim, FURNACE_HMI_SIM_SCENARIO_IDLE);
+        const furnace_hmi_sim_start_rules_t short_maximum = { 50, 0U, 60U };
+        furnace_hmi_simulator_request_start(&sim, 2U, &program, &short_maximum);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 28U));
+        furnace_hmi_sim_program_t empty = program;
+        empty.stage_count = 0U;
+        furnace_hmi_simulator_request_start(&sim, 3U, &empty, &rules);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 26U));
+        /* A first target at the simulation's own 25 C is the operator's valid program: it runs. */
+        furnace_hmi_sim_program_t low = program;
+        low.stages[0].target_c = 25;
+        low.stages[1].target_c = 25;
+        furnace_hmi_simulator_request_start(&sim, 4U, &low, &rules);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) && sim.program_run);
+        UI_LAB_STEP(answers, furnace_hmi_simulator_close_run(&sim));
+        /* At 90 C the Hold is proposed; a second Start while it is open is BUSY. */
+        sim.state.current_temperature_c.value = 90;
+        furnace_hmi_simulator_request_start(&sim, 5U, &program, &rules);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_PROPOSED, 0U));
+        const uint32_t transaction = sim.state.start_proposal.transaction_id;
+        furnace_hmi_simulator_request_start(&sim, 6U, &program, &rules);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 6U) &&
+                                 sim.state.start_proposal.transaction_id == transaction);
+        furnace_hmi_simulator_confirm_start(&sim, 7U, transaction + 1U, 1U, 1U, 0U);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 9U));
+        furnace_hmi_simulator_confirm_start(&sim, 8U, transaction, 2U, 1U, 0U);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 11U));
+        furnace_hmi_simulator_confirm_start(&sim, 9U, transaction, 1U, 0U, 0U);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 11U));
+        furnace_hmi_simulator_cancel_start(&sim, 10U, transaction + 1U);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 9U) &&
+                                 sim.state.start_proposal.state == FURNACE_HMI_START_PROPOSAL_OPEN);
+        furnace_hmi_simulator_confirm_start(&sim, 11U, transaction, 1U, 1U, 0U);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) && sim.program_run &&
+                                 sim.state.start_pending_transaction_id == 0U);
+        furnace_hmi_simulator_cancel_start(&sim, 12U, transaction);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 8U));
+        /* The run started from the furnace's 90 C at the Hold. */
+        UI_LAB_STEP(answers, sim.program.hot_start && sim.program.start_c == 90 && sim.program.stage_count == 1U &&
+                                 sim.program.stages[0].hold);
+        /* Confirm evaluates the live data first: the furnace cooled to 40 C, so the first ramp
+         * is proposed now (a new revision; the confirmed one is outdated); then the temperature
+         * is lost, and the proposal is withdrawn with the reason. */
+        UI_LAB_STEP(answers, furnace_hmi_simulator_close_run(&sim));
+        sim.state.current_temperature_c.value = 90;
+        furnace_hmi_simulator_request_start(&sim, 13U, &program, &rules);
+        const uint32_t second = sim.state.start_proposal.transaction_id;
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_PROPOSED, 0U) && second != transaction);
+        sim.state.current_temperature_c.value = 40;
+        furnace_hmi_simulator_confirm_start(&sim, 14U, second, 1U, 1U, 0U);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 10U) &&
+                                 sim.state.start_proposal.state == FURNACE_HMI_START_PROPOSAL_OPEN &&
+                                 sim.state.start_proposal.proposal_revision == 2U &&
+                                 sim.state.start_proposal.proposed_stage == 0U && !sim.program_run);
+        sim.state.current_temperature_c.validity = FURNACE_HMI_VALUE_VALIDITY_UNAVAILABLE;
+        furnace_hmi_simulator_confirm_start(&sim, 15U, second, 2U, 0U, 0U);
+        UI_LAB_STEP(answers, SIM_ANSWER(FURNACE_HMI_FEEDBACK_REJECTED, 12U) &&
+                                 sim.state.start_proposal.state == FURNACE_HMI_START_PROPOSAL_INVALIDATED &&
+                                 sim.state.start_proposal.invalidation_reason == 23U &&
+                                 sim.state.start_pending_transaction_id == 0U);
+#undef SIM_ANSWER
+    }
     context->explorer.selected_program = 0U;
     context->explorer.programs[0].stages[3].minutes = 13 * 60;
     const char *advisory = "Advisory duration save/start";

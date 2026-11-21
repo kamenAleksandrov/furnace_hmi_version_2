@@ -81,6 +81,7 @@ typedef struct {
     furnace_hmi_fault_entry_t kept_faults[FURNACE_HMI_DASHBOARD_MAX_FAULTS];
     /* The open start transaction's program (state.start_proposal is its proposal; M21-7d-2). */
     furnace_hmi_sim_program_t proposed_program;
+    furnace_hmi_sim_start_rules_t proposed_rules;
     uint32_t next_transaction_id;
 } furnace_hmi_simulator_t;
 
@@ -124,8 +125,10 @@ bool furnace_hmi_simulator_start_program(
  * from there. A Start at the first stage within the advisory duration runs at once (ACCEPTED);
  * one at a later stage, or longer than the advisory duration, is proposed (PROPOSED, with
  * state.start_proposal open); otherwise it is refused (REJECTED with the controller's reason:
- * a run active, no valid temperature, no eligible stage, longer than the maximum). The answer
- * is state.command_feedback under `submission`. The proposal is not re-evaluated while open.
+ * a transaction already open, an invalid program, a run active, no valid temperature, no
+ * eligible stage, longer than the maximum). The answer is state.command_feedback under
+ * `submission`. Every run starts from the measured temperature. The open proposal is evaluated
+ * again only when it is confirmed.
  */
 void furnace_hmi_simulator_request_start(furnace_hmi_simulator_t *simulator, uint32_t submission,
                                          const furnace_hmi_sim_program_t *program,
@@ -133,8 +136,11 @@ void furnace_hmi_simulator_request_start(furnace_hmi_simulator_t *simulator, uin
 
 /*
  * Confirm exactly the open proposal (its transaction, revision and stage, and when it asks for
- * one an accepted duration from its estimate to the maximum): the run starts at that stage
- * from the measured temperature. Cancel closes the transaction. Answered as the controller does.
+ * one an accepted duration from its estimate to the maximum): the live data are evaluated
+ * first; a failure withdraws the proposal (INVALIDATED, PROPOSAL_INVALIDATED) and a material
+ * change publishes a new revision (PROPOSAL_OUTDATED); otherwise the run starts at that stage
+ * from the measured temperature. A refused Confirm leaves the transaction open. Cancel closes
+ * the transaction. Answered as the controller does.
  */
 void furnace_hmi_simulator_confirm_start(furnace_hmi_simulator_t *simulator, uint32_t submission,
                                          uint32_t transaction_id, uint32_t proposal_revision,

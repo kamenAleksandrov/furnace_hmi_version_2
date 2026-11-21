@@ -1600,8 +1600,9 @@ function startDemo(){
 // core/run start selection and start transaction), so the demo shows the controller's Start dialogs. The run starts at
 // the first stage the measured temperature allows (a Heating stage below its target, a Hold within 5.0 C of its target:
 // fixture profile A); the estimate runs from there. The first stage within the advisory duration starts at once; a later
-// stage, or a longer estimate, is proposed for Confirm or Cancel; otherwise the controller's reason refuses it. The
-// proposal is not re-evaluated while it is open. Temperatures in tenths; codes are the controller's.
+// stage, or a longer estimate, is proposed for Confirm or Cancel; otherwise the controller's reason refuses it. Every
+// run starts from the measured temperature. An open proposal is evaluated again only when it is confirmed (withdrawn
+// with the reason, or shown again as a new revision). Temperatures in tenths; codes are the controller's.
 const START_HOLD_TOLERANCE=50;
 let startProposal=null,startTransactions=0,proposalGuard=false;
 function secondsAsMinutes(seconds){return t('UI_LAB_VALUE_FORMAT_MINUTES',Math.ceil(seconds/60));}
@@ -1614,7 +1615,7 @@ function startEvaluation(p,measured){
  if(stage<0)return {reason:27};
  let from=measured,seconds=0;
  p.stages.forEach((s,i)=>{if(s.kind==='Hold'){if(i>=stage)seconds+=s.minutes*60;return;}const target=s.target*10;if(i===stage)from=measured;if(i>=stage&&target>from&&s.rateTenths>0)seconds+=Math.floor(((target-from)*60+s.rateTenths-1)/s.rateTenths);from=target;});
- const limits=controllerLimits(),maximum=limits.maxCuringMinutes*60,recommended=limits.recommendedMinutes?limits.recommendedMinutes*60:maximum;
+ const limits=controllerLimits(),maximum=limits.maxCuringMinutes*60,recommended=limits.recommendedMinutes&&limits.recommendedMinutes<=limits.maxCuringMinutes?limits.recommendedMinutes*60:maximum;
  if(seconds>maximum)return {reason:28};
  let target=0;const skipped=p.stages.slice(0,stage).map((s,index)=>{if(s.kind!=='Hold')target=s.target*10;return {index,hold:s.kind==='Hold',target,minutes:s.kind==='Hold'?s.minutes:0};});
  const warnings=[];if(stage>0)warnings.push(1);if(skipped.some(s=>s.hold))warnings.push(2);
@@ -1624,11 +1625,14 @@ function answerStart(id){const answer=startEvaluation(programCatalogue[id],demoF
  if(answer.reason){tell('UI_LAB_START_REJECTED_TITLE','UI_LAB_START_REASON_'+answer.reason);return false;}
  if(answer.stage===0&&!answer.ack){startProgramAt(id,answer);return true;}
  startProposal={id,transaction:++startTransactions,...answer};showProposal();return false;}
-function startProgramAt(id,answer){demoRun=null;manualRun=null;beginDemoRun(id,0,answer.stage?answer:null);}
-// The proposal panel, as on the controller: only Confirm start or Cancel start end it.
+function startProgramAt(id,answer){demoRun=null;manualRun=null;beginDemoRun(id,0,answer);}
+// The proposal panel is shown (its buttons are in the dialog), not another dialog over a stale proposal.
+function proposalShown(){return !!startProposal&&!!$('message-actions').querySelector('[data-proposal]');}
+// The proposal panel, as on the controller: only Confirm start or Cancel start end it. Escape does not close it; if the
+// browser closes it anyway, that is a Cancel.
 function showProposal(){
  const s=startProposal,dialog=$('message');if(touchKeyboard)closeTouchKeyboard(false);if(dialog.open)dialog.close();
- if(!proposalGuard){dialog.addEventListener('cancel',e=>{if(startProposal)e.preventDefault();});proposalGuard=true;}
+ if(!proposalGuard){dialog.addEventListener('cancel',e=>{if(proposalShown())e.preventDefault();});dialog.addEventListener('close',()=>{if(!dialog.open&&proposalShown()){startProposal=null;render();}});proposalGuard=true;}
  dialog.classList.remove('alert-dialog','alert-fault','alert-link','alert-ok');delete dialog.dataset.alert;
  $('message-title').textContent=t('UI_LAB_START_PROPOSAL_TITLE_FORMAT',programCatalogue[s.id].name);
  const lines=[node('p',t('UI_LAB_START_PROPOSAL_MEASURED_FORMAT',tenthsText(s.measured),s.stage+1))];
@@ -1636,13 +1640,22 @@ function showProposal(){
  lines.push(node('p',t('UI_LAB_START_PROPOSAL_CURING_FORMAT',secondsAsMinutes(s.remaining))));
  if(s.ack)lines.push(node('p',t('UI_LAB_START_PROPOSAL_DURATION_FORMAT',secondsAsMinutes(s.recommended),secondsAsMinutes(s.maximum),secondsAsMinutes(s.remaining)),'warning'));
  for(const w of s.warnings)lines.push(node('p',t('UI_LAB_START_WARNING_'+w),'warning'));
+ if(s.note)lines.push(node('p',t(s.note),'warning'));
  $('message-text').replaceChildren(...lines);
- $('message-actions').replaceChildren(button('UI_LAB_START_CANCEL',cancelProposal,'danger'),button('UI_LAB_START_CONFIRM',confirmProposal,'primary'));dialog.showModal();}
+ const cancel=button('UI_LAB_START_CANCEL',cancelProposal,'danger'),confirm=button('UI_LAB_START_CONFIRM',confirmProposal,'primary');cancel.dataset.proposal=confirm.dataset.proposal='1';
+ $('message-actions').replaceChildren(cancel,confirm);dialog.showModal();}
 function cancelProposal(){startProposal=null;$('message').close();render();}
-// Confirm names exactly the proposal shown (and accepts its estimate when it asks): the run starts at its stage.
-function confirmProposal(){const s=startProposal;if(!s||controller.pending)return;startProposal=null;$('message').close();controllerRequest('UI_LAB_START_PROGRAM',()=>{startProgramAt(s.id,s);return true;});}
-// A Start at a later stage of a hot furnace: the stages before it are left out; a Heating stage there ramps from the
-// measured temperature (whole minutes, at least one), a Hold there holds at its target.
+// Confirm names exactly the proposal shown (and accepts its estimate when it asks). The live data are evaluated first,
+// as the controller does: a failure withdraws the proposal with its reason; a material change shows the new revision
+// with why (the operator confirms that one); otherwise the run starts at its stage from the measured temperature.
+function confirmProposal(){const s=startProposal;if(!s||controller.pending)return;
+ const now=startEvaluation(programCatalogue[s.id],demoFurnaceTenths());
+ if(now.reason){startProposal=null;$('message').close();tell('UI_LAB_START_INVALIDATED_TITLE',t('UI_LAB_START_INVALIDATED_FORMAT',t('UI_LAB_START_REASON_'+now.reason)));return;}
+ if(now.stage!==s.stage||now.skipped.length!==s.skipped.length||now.ack!==s.ack){startProposal={id:s.id,transaction:s.transaction,revision:(s.revision||1)+1,...now,note:'UI_LAB_START_REASON_10'};showProposal();return;}
+ startProposal=null;$('message').close();controllerRequest('UI_LAB_START_PROGRAM',()=>{startProgramAt(s.id,now);return true;});}
+// A run from the measured temperature (the controller ramps from it): the stages before its start stage are left out;
+// a Heating stage there ramps from the measured temperature (whole minutes, at least one), a Hold there holds at its
+// target.
 function hotProgram(p,start){const stages=structuredClone(p.stages.slice(start.stage));let held=0;p.stages.slice(0,start.stage).forEach(s=>{if(s.kind!=='Hold')held=s.target;});const first=stages[0];
  if(first.kind!=='Hold'&&first.rateTenths>0)first.minutes=Math.max(1,Math.ceil(Math.floor(((first.target*10-start.measured)*60+first.rateTenths-1)/first.rateTenths)/60));
  return normalizeProgram({...structuredClone(p),stages,startC:first.kind==='Hold'?held:Math.floor(start.measured/10)});}
@@ -1924,7 +1937,7 @@ function setBlackout(on){const blackout=$('power-blackout');if(blackout)blackout
 function stopScenario(){if(!scenarioPlayer)return;window.clearInterval(scenarioPlayer.timer);scenarioPlayer=null;}
 // Back to an idle furnace on Home: no run, fault, link loss, open dialog, keyboard or editor session.
 function resetDemoState(){
- stopScenario();setBlackout(false);if($('message').open)$('message').close();if(touchKeyboard)closeTouchKeyboard(false);
+ stopScenario();setBlackout(false);startProposal=null;if($('message').open)$('message').close();if(touchKeyboard)closeTouchKeyboard(false);
  hideStageDialog();stageSession=null;programEditor=null;demoRun=null;manualRun=null;runNotice=false;
  demoFault=null;demoLinkLost=false;linkLostMinutes=0;demoFixtures.device='current';
  controller.requestId++;controller.pending=null;controller.phase='idle';candidate={...saved};demoFrozen=false;

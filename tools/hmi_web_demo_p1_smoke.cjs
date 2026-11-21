@@ -256,7 +256,8 @@ const PRESENTATION_CHOICE = `(()=>{
     assert.strictEqual(await evaluate('(()=>{const before=demoRun.coolingTemperature;advanceDemo(10);return demoRun.coolingTemperature<before&&demoRun.coolingElapsed===10})()'), true);
     await evaluate('[...document.querySelectorAll(".run-controls>button")].find(b=>b.textContent==="Start again").click()');
     await waitFor('!controller.pending && !!demoRun && !demoRun.stopped && demoRun.phase === "curing"');
-    assert.strictEqual(await evaluate('demoRun.elapsed+"|"+demoRun.program.minutes+"|"+demoRun.program.name'), '0|95|Customer cure A');
+    // Every run starts from the measured temperature (M21-7d-2 review): the ramp to 120 C is shorter from the warm furnace.
+    assert.strictEqual(await evaluate('demoRun.elapsed+"|"+demoRun.program.name+"|"+(demoRun.program.startC>30)+"|"+(demoRun.program.minutes===Math.ceil(Math.floor(((1200-demoRun.program.startC*10)*60+9)/10)/60))'), '0|Customer cure A|true|true');
     // Return Home leaves the stopped run cooling: navigation never ends the final cooling (Phase 21 M21-2b).
     await evaluate('stopDemo();[...document.querySelectorAll(".run-controls>button")].find(b=>b.textContent==="Return Home").click()');
     assert.strictEqual(await evaluate('demoRun!==null&&demoRun.stopped&&demoRun.phase==="cooling"&&mainPage==="home"'), true);
@@ -281,7 +282,20 @@ const PRESENTATION_CHOICE = `(()=>{
     assert.strictEqual(await evaluate('(()=>{const m=document.getElementById("message");m.dispatchEvent(new Event("cancel",{cancelable:true}));return m.open})()'), true);
     await evaluate('[...document.querySelectorAll("#message-actions button")].find(b=>b.textContent==="Cancel start").click()');
     assert.strictEqual(await evaluate('!document.getElementById("message").open&&startProposal===null&&demoRun.stopped&&demoRun.phase==="cooling"'), true);
-    await evaluate('[...document.querySelectorAll(".run-controls>button")].find(b=>b.textContent==="Start again").click()');
+    // Confirm evaluates the live data first. Cooled to 85 C meanwhile: the first ramp is proposed now, shown with why.
+    const startAgain = '[...document.querySelectorAll(".run-controls>button")].find(b=>b.textContent==="Start again").click()';
+    const confirmStart = '[...document.querySelectorAll("#message-actions button")].find(b=>b.textContent==="Confirm start").click()';
+    await evaluate(startAgain);
+    await waitFor('!controller.pending && document.getElementById("message").open');
+    await evaluate('window.heldTemperature=demoRun.coolingTemperature;demoRun.coolingTemperature=85;' + confirmStart);
+    assert.strictEqual(await evaluate('document.getElementById("message").open&&startProposal.revision===2&&startProposal.stage===0&&' + messageText + '.startsWith("The furnace is at 85.0 °C. The run starts at stage 1.")&&' + messageText + '.endsWith("The proposal changed meanwhile. Check the new one.")'), true);
+    // The temperature lost before Confirm: the proposal is withdrawn with the reason, nothing starts.
+    await evaluate('demoFixtures.device="unavailable";' + confirmStart);
+    assert.strictEqual(await evaluate('document.getElementById("message-title").textContent+"|"+' + messageText + '+"|"+(startProposal===null)+"|"+demoRun.stopped'), 'Start proposal withdrawn|The furnace temperature is not valid. Start again for a new proposal.|true|true');
+    // Escape works again on other dialogs once no proposal is shown.
+    assert.strictEqual(await evaluate('(()=>{const m=document.getElementById("message");m.dispatchEvent(new Event("cancel",{cancelable:true}));return !proposalShown()})()'), true);
+    await evaluate('document.getElementById("message").close();demoFixtures.device="current";demoRun.coolingTemperature=heldTemperature;render()');
+    await evaluate(startAgain);
     await waitFor('!controller.pending && document.getElementById("message").open');
     await evaluate('[...document.querySelectorAll("#message-actions button")].find(b=>b.textContent==="Confirm start").click()');
     await waitFor('!controller.pending && !!demoRun && !demoRun.stopped && demoRun.phase === "curing"');
@@ -464,7 +478,8 @@ const PRESENTATION_CHOICE = `(()=>{
     assert.strictEqual(await evaluate('demoRun.phase + "|" + mainPage'), 'cooling|manual-running');
     assert.strictEqual(await evaluate('[...document.querySelectorAll(".manual-actions button")].map(b=>b.textContent).join("|")'), 'Exit|Start new');
     assert.strictEqual(await evaluate('(()=>{const s=document.querySelector(".manual-readings");return s.querySelector(".manual-state").textContent+"|"+[...s.querySelectorAll(".run-reading small")].map(e=>e.textContent).join(",")+"|"+[...document.querySelectorAll(".manual-control button")].every(b=>b.disabled)})()'), 'Cooling|Elapsed,Cooling,Est. remaining,Current °C,Target °C|true');
-    assert.strictEqual(await evaluate('(()=>{const before=demoRun.temperature;advanceDemo(20);return demoRun.temperature<before&&demoRun.coolingElapsed===20&&switchMain("home")===undefined&&mainPage==="manual-running"})()'), true);
+    // A demo-clock tick may come before this step: the step's own 20 minutes are measured.
+    assert.strictEqual(await evaluate('(()=>{const before=demoRun.temperature,elapsed=demoRun.coolingElapsed;advanceDemo(20);return demoRun.temperature<before&&demoRun.coolingElapsed===elapsed+20&&switchMain("home")===undefined&&mainPage==="manual-running"})()'), true);
     await evaluate('[...document.querySelectorAll(".manual-actions button")].find(b=>b.textContent==="Start new").click()');
     assert.strictEqual(await evaluate('demoRun===null&&mainPage==="manual"&&manualDraft.target===121&&manualDraft.rate===1.9&&deviceLog.some(e=>e.type==="manual-stopped")'), true);
 

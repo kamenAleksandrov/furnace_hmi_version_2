@@ -9546,11 +9546,6 @@ static bool run_was_stopped(const furnace_hmi_operator_screens_t *explorer)
         state->program_id == explorer->stopped_program_id;
 }
 
-/*
- * Hand an operator request to the host for the controller (web
- * controllerRequest). Stop has its own slot. Without simulated answers the
- * slot then awaits the controller's outcome (M21-5b).
- */
 static bool is_start_request(furnace_hmi_operator_request_kind_t kind);
 
 /*
@@ -9564,6 +9559,11 @@ static bool answered_by_controller(const furnace_hmi_operator_screens_t *explore
     return !explorer->simulated_responses || is_start_request(kind);
 }
 
+/*
+ * Hand an operator request to the host for the controller (web
+ * controllerRequest). Stop has its own slot. A request answered_by_controller
+ * then awaits the controller's outcome (M21-5b).
+ */
 static void post_request(furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_request_kind_t kind)
 {
     if (kind == FURNACE_HMI_OPERATOR_REQUEST_STOP) {
@@ -9586,7 +9586,8 @@ static void post_request(furnace_hmi_operator_screens_t *explorer, furnace_hmi_o
         copy_text_bounded(explorer->request.program_name, sizeof(explorer->request.program_name),
                           program_name_text(explorer, explorer->selected_program));
         explorer->request.program = *selected_program_entry(explorer);
-        explorer->running_program = explorer->selected_program;
+        /* Its run is the running program only once the controller has started it. */
+        explorer->start_program_slot = explorer->selected_program;
     }
     if (kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START || kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET) {
         explorer->request.target_c = explorer->manual_target_c;
@@ -10742,6 +10743,7 @@ static bool open_proposal(furnace_hmi_operator_screens_t *explorer)
     explorer->proposal_open = true;
     explorer->proposal_shown_transaction = p->transaction_id;
     explorer->proposal_shown_revision = p->proposal_revision;
+    explorer->proposal_shown_remaining_s = p->remaining_curing_s;
     (void)snprintf(title, sizeof(title), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_TITLE_FORMAT),
                    start_program_name(explorer, p->program_id));
     bool built = panel_text(dialog, title, &furnace_hmi_font_semibold_20, OPERATOR_TEXT) != NULL;
@@ -10923,11 +10925,14 @@ static void start_change_done(furnace_hmi_operator_screens_t *explorer, furnace_
     case FURNACE_HMI_FEEDBACK_ACCEPTED: {
         clear_modal(explorer);
         if (kind != FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL) {
-            /* The run started: it is the most recent program (the labs' programs have no
-             * controller ID: the one the Start named). */
-            const size_t slot = explorer->simulated_responses
-                ? explorer->running_program
+            /* The run started: it is the running and the most recent program. The controller's
+             * by its ID; the labs' programs have none: the one the Start named. */
+            size_t slot = explorer->simulated_responses
+                ? FURNACE_HMI_OPERATOR_MAX_PROGRAMS
                 : library_slot_of(explorer->programs, explorer->library_request.program_id);
+            if (slot >= FURNACE_HMI_OPERATOR_MAX_PROGRAMS) {
+                slot = explorer->start_program_slot;
+            }
             explorer->run_stopped = false;
             if (slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS) {
                 explorer->running_program = (uint8_t)slot;
@@ -10947,6 +10952,16 @@ static void start_change_done(furnace_hmi_operator_screens_t *explorer, furnace_
             /* The proposal still stands (for example in a newer revision): shown again, with why. */
             copy_text_bounded(explorer->modal_note, sizeof(explorer->modal_note), text);
             (void)open_proposal(explorer);
+            return;
+        }
+        if (kind == FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM &&
+            state->start_proposal.state == FURNACE_HMI_START_PROPOSAL_INVALIDATED) {
+            /* Withdrawn at the confirmation: the controller's reason for it, not only "withdrawn". */
+            char detail[192];
+            (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_INVALIDATED_FORMAT),
+                           start_reason_text(state->start_proposal.invalidation_reason, reason, sizeof(reason)));
+            (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_INVALIDATED_TITLE), detail,
+                              OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
             return;
         }
         if (kind == FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM && feedback->reason == START_REASON_BUSY &&
@@ -11007,7 +11022,10 @@ static void answer_proposal(furnace_hmi_operator_screens_t *explorer, operator_a
         return;
     }
     if (p->state != FURNACE_HMI_START_PROPOSAL_OPEN) {
-        clear_modal(explorer);
+        /* A late tap: the proposal ended meanwhile, and what is shown now says why (review R1). */
+        if (explorer->proposal_open) {
+            clear_modal(explorer);
+        }
         return;
     }
     if (!explorer->proposal_open || p->transaction_id != explorer->proposal_shown_transaction ||
@@ -11029,16 +11047,18 @@ static void answer_proposal(furnace_hmi_operator_screens_t *explorer, operator_a
         change.kind = FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM;
         change.proposal_revision = p->proposal_revision;
         change.proposed_stage = p->proposed_stage;
-        /* The operator accepts the controller's estimate shown (START-16: within it and the maximum). */
-        change.accepted_duration_s = p->duration_ack_required ? p->remaining_curing_s : 0U;
+        /* The operator accepts the estimate the panel shows (START-16: at least the controller's
+         * current estimate, at most the maximum; a longer one now is refused and shown again). */
+        change.accepted_duration_s = p->duration_ack_required ? explorer->proposal_shown_remaining_s : 0U;
     }
     send_controller_change(explorer, &change);
 }
 
 /*
- * After each observation (no simulated answers): the decision panel opens while
- * the controller awaits a decision and closes when it no longer does; its
- * countdown follows; an open Faults dialog follows the controller's list.
+ * After each observation (also the labs' simulated ones): the decision panel opens
+ * while the controller awaits a decision and closes when it no longer does; its
+ * countdown follows; an open Faults dialog follows the controller's list; the
+ * Start proposal follows (follow_start).
  */
 static void follow_modals(furnace_hmi_operator_screens_t *explorer)
 {
@@ -12189,6 +12209,8 @@ static void apply_action(
                 explorer->library_request.acknowledged_duration_s > 0U) {
                 explorer->library_request.kind = FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE;
                 commit_program_editor(explorer);
+            } else {
+                clear_modal(explorer); /* the draft is gone: nothing to save */
             }
             break;
         }

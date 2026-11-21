@@ -712,6 +712,10 @@ struct furnace_hmi_operator_screens {
     bool proposal_open;
     uint32_t proposal_shown_transaction;
     uint32_t proposal_shown_revision;
+    /* M21-7d-2 review: the curing estimate the panel drew, which a Confirm accepts, and the
+     * program a Start names, which becomes the running program only when its run starts. */
+    uint32_t proposal_shown_remaining_s;
+    uint8_t start_program_slot;
     bool start_waiting_open;
     uint32_t start_waiting_shown;
     bool settings_saved_24_hour;
@@ -749,7 +753,7 @@ struct furnace_hmi_operator_screens {
      * programs the operator created. `library_count` is how many delivered
      * programs are listed (all of them, or none). */
     furnace_hmi_operator_program_t programs[FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
-    /* The program a confirmed start or a run belongs to. */
+    /* The program the run belongs to, from the start the controller accepted. */
     uint8_t running_program;
     /* The operator stopped the run with this controller program id: it cools
      * on Running with Start again and Return Home. */
