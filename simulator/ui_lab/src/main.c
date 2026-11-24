@@ -842,6 +842,10 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
     context->explorer.device_tab = 4U;
     if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
         capture_frame(display, context, directory, "device-info")) { return 6; }
+    /* M21-7c: the controller's health, simulated as the controller reports it. */
+    context->explorer.device_tab = 5U;
+    if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
+        capture_frame(display, context, directory, "device-health")) { return 6; }
     furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
     furnace_hmi_dashboard_state_t stale_state =
         *furnace_hmi_simulator_state(&context->simulator);
@@ -1891,10 +1895,11 @@ static int run_smoke_test(lv_display_t *display, ui_lab_context_t *context)
     }
     if (!tap_device_category(context, FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LOG) ||
         find_button(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_MAINTENANCE)) == NULL ||
-        !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_DISPLAY_STARTED)) ||
+        /* M21-7c: the simulated log in the controller's form; the display's start is its link. */
+        !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_LINK_UP)) ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_ALARMS) || context->explorer.log_filter != 2U ||
-        find_label(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_DISPLAY_STARTED)) != NULL ||
+        find_label(context->explorer.content, ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_LINK_UP)) != NULL ||
         !tap(context, FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_ALL) ||
         !tap_device_category(context, FURNACE_HMI_UI_STRING_UI_LAB_MAINTENANCE) ||
         maintenance_card_count(context) != 6U ||

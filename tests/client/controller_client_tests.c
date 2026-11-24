@@ -63,6 +63,24 @@ typedef struct {
     /* What the scripted STATUS reports besides its defaults (M21-7a). */
     uint32_t status_library_revision;
     struct furnace_wire_start_status status_start;
+    /* Diagnostic reads (M21-7c), which the client sends by itself: the newest of each. */
+    size_t health_sent;
+    uint32_t last_health_id;
+    size_t history_sent;
+    size_t history_served;
+    struct furnace_wire_event_history_request last_history;
+    /* The scripted logs (index = log - 1): sequences first..next-1 at mono_base + s * mono_step. */
+    struct {
+        uint32_t first;
+        uint32_t next;
+        uint8_t result;
+        uint64_t mono_base;
+        uint64_t mono_step;
+    } logs[3];
+    /* Pages answered BUSY before the next one is served. */
+    uint8_t busy_pages;
+    /* The scripted controller serves this many entries before from_sequence again. */
+    uint8_t overlap;
 } fixture_t;
 
 static fixture_t fx;
@@ -131,6 +149,14 @@ static void drain_client(void)
                 fx.last_read = fx.in.u.program_read_request;
                 fx.last_read_type = frame.msg_type;
                 fx.reads_sent++;
+                break;
+            case FURNACE_WIRE_MSG_HEALTH_REQUEST:
+                fx.last_health_id = fx.in.u.health_request.envelope.request_id;
+                fx.health_sent++;
+                break;
+            case FURNACE_WIRE_MSG_EVENT_HISTORY_REQUEST:
+                fx.last_history = fx.in.u.event_history_request;
+                fx.history_sent++;
                 break;
             default:
                 if (!fx.commands_allowed) {
@@ -202,7 +228,8 @@ static void begin(const char *name)
 static void end(void)
 {
     EXPECT(!fx.forbidden_sent,
-           "only HELLO, HEARTBEAT, SNAPSHOT_REQUEST, CAPABILITIES_REQUEST and library reads");
+           "only HELLO, HEARTBEAT, SNAPSHOT_REQUEST, CAPABILITIES_REQUEST, library and "
+           "diagnostic reads");
 }
 
 /* ---- the scripted controller ------------------------------------------------------------ */
@@ -2612,9 +2639,444 @@ static void program_start_rejected(void)
     end();
 }
 
+/* ---- diagnostics: health and history (M21-7c) ---------------------------------------------- */
+
+#define HISTORY_PAGE_OK 0U
+#define HISTORY_PAGE_UNAVAILABLE 1U
+#define HISTORY_PAGE_BUSY 3U
+#define HISTORY_PAGE_READ_FAILED 4U
+
+static const furnace_hmi_controller_health_t *health(void)
+{
+    return furnace_hmi_controller_client_health(&fx.client);
+}
+
+static const furnace_hmi_controller_history_t *history(void)
+{
+    return furnace_hmi_controller_client_history(&fx.client);
+}
+
+static void begin_diagnostics(const char *name)
+{
+    begin(name);
+    status_sequence = 10U;
+    synchronize(SESSION_A, status_sequence);
+}
+
+static void send_health(uint32_t request_id, uint8_t session, uint8_t overall)
+{
+    struct furnace_wire_health *h = &fx.out.u.health;
+
+    start_out(FURNACE_WIRE_MSG_HEALTH);
+    h->request_id = request_id;
+    (void)memset(h->session_id, session, FURNACE_WIRE_SESSION_ID_SIZE);
+    h->uptime_ms = 123456U;
+    h->boot_count = 7U;
+    h->overall = overall;
+    h->reset_cause_known = true;
+    h->reset_cause = 0x2U;
+    h->subsystems_count = 2U;
+    h->subsystems[0].subsystem = 1U;
+    h->subsystems[0].state = FURNACE_HMI_HEALTH_OK;
+    h->subsystems[1].subsystem = 3U;
+    h->subsystems[1].state = FURNACE_HMI_HEALTH_UNKNOWN;
+    h->subsystems[1].detail = 0x5U;
+    h->faults_active = 1U;
+    h->faults_latched = 2U;
+    h->faults_unacknowledged = 3U;
+    h->service_s = 3600U;
+    h->service_valid = true;
+    send_out();
+    advance(10U);
+}
+
+static void script_log(uint8_t log, uint32_t first, uint32_t next, uint64_t mono_base,
+                       uint64_t mono_step)
+{
+    fx.logs[log - 1U].first = first;
+    fx.logs[log - 1U].next = next;
+    fx.logs[log - 1U].result = HISTORY_PAGE_OK;
+    fx.logs[log - 1U].mono_base = mono_base;
+    fx.logs[log - 1U].mono_step = mono_step;
+}
+
+/* Answer the history request the client sent last, as the controller's paging does. */
+static void answer_history(void)
+{
+    const struct furnace_wire_event_history_request *q = &fx.last_history;
+    struct furnace_wire_event_history_page *p = &fx.out.u.event_history_page;
+    const uint8_t index = (uint8_t)((q->log >= 1U && q->log <= 3U) ? q->log - 1U : 0U);
+    uint32_t s;
+
+    start_out(FURNACE_WIRE_MSG_EVENT_HISTORY_PAGE);
+    p->request_id = q->envelope.request_id;
+    p->log = q->log;
+    if (fx.busy_pages > 0U) {
+        fx.busy_pages--;
+        p->result = HISTORY_PAGE_BUSY;
+        send_out();
+        advance(10U);
+        return;
+    }
+    p->result = fx.logs[index].result;
+    if (p->result == HISTORY_PAGE_OK) {
+        p->first_retained = fx.logs[index].first;
+        p->next_sequence = fx.logs[index].next;
+        s = (q->from_sequence < fx.logs[index].first) ? fx.logs[index].first : q->from_sequence;
+        p->evicted = s - q->from_sequence;
+        s = (s >= fx.logs[index].first + fx.overlap) ? s - fx.overlap : fx.logs[index].first;
+        while (s < fx.logs[index].next && p->entries_count < q->max_entries) {
+            struct furnace_wire_history_entry *e = &p->entries[p->entries_count++];
+
+            e->log_sequence = s;
+            e->boot_id = 1U;
+            e->mono_ms = fx.logs[index].mono_base + (uint64_t)s * fx.logs[index].mono_step;
+            e->event_id = (uint16_t)(10U + q->log);
+            e->category = 1U;
+            e->params_count = 1U;
+            e->params[0].type = 6U;
+            e->params[0].value = s;
+            s++;
+        }
+        p->scanned_to = s;
+        p->more = s < fx.logs[index].next;
+    }
+    send_out();
+    advance(10U);
+}
+
+/* Answer every history request until the client asks no more. */
+static void serve_history(void)
+{
+    for (int guard = 0; guard < 200 && fx.history_served < fx.history_sent; guard++) {
+        fx.history_served = fx.history_sent;
+        answer_history();
+    }
+}
+
+static void health_reported(void)
+{
+    uint32_t generation;
+
+    begin_diagnostics("health reported");
+    EXPECT(fx.health_sent == 1U && !health()->valid, "asked for at once, nothing yet");
+    generation = furnace_hmi_controller_client_diagnostics_generation(&fx.client);
+    send_health(fx.last_health_id, SESSION_B, FURNACE_HMI_HEALTH_OK);
+    EXPECT(!health()->valid, "another session's report ignored");
+    send_health(fx.last_health_id + 1U, SESSION_A, FURNACE_HMI_HEALTH_OK);
+    EXPECT(!health()->valid, "an answer to another request ignored");
+    send_health(fx.last_health_id, SESSION_A, FURNACE_HMI_HEALTH_WARNING);
+    EXPECT(health()->valid && health()->current, "reported and current");
+    EXPECT(furnace_hmi_controller_client_diagnostics_generation(&fx.client) != generation,
+           "generation changed");
+    EXPECT(health()->overall == FURNACE_HMI_HEALTH_WARNING && health()->uptime_ms == 123456U &&
+               health()->boot_count == 7U && health()->reset_cause_known &&
+               health()->reset_cause == 0x2U,
+           "identity and overall");
+    EXPECT(health()->subsystem_count == 2U && health()->subsystems[1].subsystem == 3U &&
+               health()->subsystems[1].state == FURNACE_HMI_HEALTH_UNKNOWN &&
+               health()->subsystems[1].detail == 0x5U,
+           "subsystems as received, unknown kept");
+    EXPECT(health()->faults_active == 1U && health()->faults_latched == 2U &&
+               health()->faults_unacknowledged == 3U && health()->service_s == 3600U &&
+               health()->service_valid,
+           "counts and service hours");
+    keep_current(FURNACE_HMI_CLIENT_HEALTH_INTERVAL_MS - 200U);
+    EXPECT(fx.health_sent == 1U, "not again within the interval");
+    keep_current(400U);
+    EXPECT(fx.health_sent == 2U, "again after the interval");
+    keep_current(FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS + 200U);
+    EXPECT(fx.health_sent == 3U && health()->retries == 1U, "an unanswered request asked again");
+    EXPECT(health()->valid, "the last report stays");
+    end();
+}
+
+static void health_follows_the_link(void)
+{
+    begin_diagnostics("health follows the link");
+    send_health(fx.last_health_id, SESSION_A, FURNACE_HMI_HEALTH_OK);
+    keep_current(2U * FURNACE_HMI_CLIENT_HEALTH_INTERVAL_MS + 400U);
+    EXPECT(health()->valid && !health()->current, "not current without a report");
+    send_health(fx.last_health_id, SESSION_A, FURNACE_HMI_HEALTH_OK);
+    EXPECT(health()->current, "current again");
+    advance(3200U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
+    EXPECT(health()->valid && !health()->current, "kept, not current");
+    send_hello_ack(HELLO_OK, SESSION_B);
+    advance(10U);
+    EXPECT(!health()->valid, "a new controller session discards it");
+    end();
+}
+
+static void history_read_newest(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+
+    begin_diagnostics("history read, newest of each log");
+    /* Critical: 100 entries, 1 s apart; general: 10 entries, 10 s apart; audit: none. */
+    script_log(1U, 0U, 100U, 0U, 1000U);
+    script_log(2U, 0U, 10U, 0U, 10000U);
+    fx.logs[2].result = HISTORY_PAGE_UNAVAILABLE;
+    EXPECT(h->state == FURNACE_HMI_HISTORY_NONE && !h->reading, "nothing read");
+    EXPECT(fx.history_sent == 0U, "nothing asked by itself");
+    EXPECT(furnace_hmi_controller_client_read_history(&fx.client), "a read starts");
+    advance(10U);
+    EXPECT(fx.history_sent == 1U && h->reading && h->state == FURNACE_HMI_HISTORY_NONE,
+           "reading");
+    EXPECT(fx.last_history.log == 1U && fx.last_history.from_sequence == 0U &&
+               fx.last_history.max_entries == 1U && fx.last_history.categories == 0x3FEU &&
+               fx.last_history.boot_id == 0U && fx.last_history.min_severity == 0U,
+           "the first request gives the extent of the critical log");
+    answer_history();
+    EXPECT(fx.last_history.log == 1U && fx.last_history.from_sequence == 60U &&
+               fx.last_history.max_entries == 12U,
+           "then pages from its newest entries");
+    serve_history();
+    EXPECT(!h->reading && h->state == FURNACE_HMI_HISTORY_READ, "read");
+    EXPECT(h->logs[0].state == FURNACE_HMI_HISTORY_LOG_READ && h->logs[0].truncated &&
+               h->logs[0].first_retained == 0U && h->logs[0].next_sequence == 100U,
+           "critical: read, more held than read");
+    EXPECT(h->logs[1].state == FURNACE_HMI_HISTORY_LOG_READ && !h->logs[1].truncated,
+           "general: read whole");
+    EXPECT(h->logs[2].state == FURNACE_HMI_HISTORY_LOG_UNAVAILABLE, "audit: unavailable");
+    /* The window starts at the oldest critical entry read, 60 s: general 60 s to 90 s. */
+    EXPECT(h->count == 44U, "40 critical and 4 general entries in the window");
+    EXPECT(h->entries[0].log == 1U && h->entries[0].log_sequence == 99U, "newest first");
+    EXPECT(h->entries[h->count - 1U].mono_ms == 60000U, "oldest at the window's start");
+    for (uint16_t i = 1U; i < h->count; i++) {
+        if (h->entries[i].mono_ms > h->entries[i - 1U].mono_ms) {
+            fail("entries newest first");
+            break;
+        }
+    }
+    EXPECT(h->entries[0].event_id == 11U && h->entries[0].param_count == 1U &&
+               h->entries[0].param_types[0] == 6U && h->entries[0].param_values[0] == 99U,
+           "entry content as stored");
+    end();
+}
+
+static void history_busy_and_lost_pages(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+    uint32_t first_id;
+
+    begin_diagnostics("history: busy and lost pages");
+    script_log(1U, 0U, 5U, 0U, 1000U);
+    script_log(2U, 0U, 5U, 500U, 1000U);
+    script_log(3U, 0U, 0U, 0U, 1000U);
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    fx.busy_pages = 1U;
+    answer_history();
+    fx.history_served = fx.history_sent;
+    advance(FURNACE_HMI_CLIENT_HISTORY_BUSY_MS - 100U);
+    EXPECT(fx.history_sent == 1U, "BUSY: not asked again at once");
+    advance(200U);
+    EXPECT(fx.history_sent == 2U && h->retries == 1U, "asked again after the BUSY wait");
+    first_id = fx.last_history.envelope.request_id;
+    fx.history_served = fx.history_sent; /* this one is lost */
+    keep_current(FURNACE_HMI_CLIENT_HISTORY_TIMEOUT_MS + 200U);
+    EXPECT(fx.history_sent == 3U && fx.last_history.envelope.request_id != first_id &&
+               h->retries == 2U,
+           "a lost page asked again under a new request");
+    serve_history();
+    EXPECT(h->state == FURNACE_HMI_HISTORY_READ && h->count == 10U, "read after all");
+    EXPECT(h->logs[2].state == FURNACE_HMI_HISTORY_LOG_READ && h->logs[2].next_sequence == 0U,
+           "an empty log is read");
+    EXPECT(h->entries[0].log == 2U && h->entries[1].log == 1U, "logs merged by time");
+    end();
+}
+
+static void history_read_failed_keeps_what_came(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+
+    begin_diagnostics("history: a failed page keeps what came");
+    script_log(1U, 0U, 30U, 0U, 1000U);
+    script_log(2U, 0U, 3U, 0U, 1000U);
+    script_log(3U, 0U, 3U, 0U, 1000U);
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    answer_history(); /* the extent */
+    answer_history(); /* entries 0..11 */
+    fx.logs[0].result = HISTORY_PAGE_READ_FAILED;
+    answer_history();
+    serve_history();
+    EXPECT(h->state == FURNACE_HMI_HISTORY_READ && h->logs[0].state == FURNACE_HMI_HISTORY_LOG_FAILED,
+           "critical failed");
+    EXPECT(h->count == 18U, "12 critical entries kept, 3 general, 3 audit");
+    end();
+}
+
+static void history_kept_until_replaced(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+
+    begin_diagnostics("history kept until replaced");
+    script_log(1U, 0U, 3U, 0U, 1000U);
+    script_log(2U, 0U, 3U, 0U, 1000U);
+    script_log(3U, 0U, 3U, 0U, 1000U);
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    serve_history();
+    EXPECT(h->count == 9U, "first read");
+    script_log(1U, 0U, 5U, 0U, 1000U);
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    answer_history();
+    EXPECT(h->reading && h->count == 9U, "the first read shown while the second runs");
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    serve_history();
+    EXPECT(!h->reading && h->count == 11U, "replaced when the second ends");
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    advance(3200U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
+    EXPECT(!h->reading && h->interrupted && h->count == 11U,
+           "a read stopped by the link keeps the previous one");
+    EXPECT(!furnace_hmi_controller_client_read_history(&fx.client), "no read while not current");
+    send_hello_ack(HELLO_OK, SESSION_B);
+    advance(10U);
+    EXPECT(h->state == FURNACE_HMI_HISTORY_NONE && h->count == 0U,
+           "a new controller session discards it");
+    end();
+}
+
+/* A log that grows past its capacity while it is read keeps its newest entries. */
+static void history_keeps_the_newest_of_a_growing_log(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+
+    begin_diagnostics("history keeps the newest of a growing log");
+    script_log(1U, 0U, 30U, 0U, 1000U);
+    script_log(2U, 0U, 0U, 0U, 1000U);
+    script_log(3U, 0U, 0U, 0U, 1000U);
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    answer_history(); /* the extent: 30, all of it read */
+    fx.logs[0].next = 30U + FURNACE_HMI_CONTROLLER_HISTORY_PER_LOG; /* written meanwhile */
+    serve_history();
+    EXPECT(h->count == FURNACE_HMI_CONTROLLER_HISTORY_PER_LOG && h->logs[0].truncated,
+           "at capacity, marked as more held than read");
+    EXPECT(h->entries[0].log_sequence == 30U + FURNACE_HMI_CONTROLLER_HISTORY_PER_LOG - 1U,
+           "the newest kept");
+    end();
+}
+
+/* Review 1: an answer to an earlier request is ignored; repeated entries are kept once (probes C11, C17). */
+static void history_ignores_stale_and_repeated(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+    uint32_t probe_id;
+
+    begin_diagnostics("history ignores stale answers and repeated entries");
+    script_log(1U, 0U, 20U, 0U, 1000U);
+    script_log(2U, 0U, 0U, 0U, 1000U);
+    script_log(3U, 0U, 0U, 0U, 1000U);
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    probe_id = fx.last_history.envelope.request_id;
+    answer_history(); /* the extent; the first page is asked */
+    /* A late copy of the probe's answer, under its old request ID, with other entries. */
+    start_out(FURNACE_WIRE_MSG_EVENT_HISTORY_PAGE);
+    fx.out.u.event_history_page.request_id = probe_id;
+    fx.out.u.event_history_page.log = 1U;
+    fx.out.u.event_history_page.next_sequence = 20U;
+    fx.out.u.event_history_page.entries_count = 1U;
+    fx.out.u.event_history_page.entries[0].log_sequence = 19U;
+    send_out();
+    advance(10U);
+    fx.overlap = 3U; /* every page repeats three entries already served */
+    fx.history_served = fx.history_sent - 1U;
+    serve_history();
+    EXPECT(h->state == FURNACE_HMI_HISTORY_READ && h->count == 20U, "each entry once");
+    for (uint16_t i = 1U; i < h->count; i++) {
+        if (h->entries[i].log_sequence + 1U != h->entries[i - 1U].log_sequence) {
+            fail("entries in sequence, none repeated");
+            break;
+        }
+    }
+    end();
+}
+
+/* Review 2: a log the controller never answers is given up; the read ends. */
+static void history_gives_up_an_unanswered_log(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+    size_t asked;
+
+    begin_diagnostics("history gives up an unanswered log");
+    script_log(2U, 0U, 2U, 0U, 1000U);
+    script_log(3U, 0U, 2U, 0U, 1000U);
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    keep_current(FURNACE_HMI_CLIENT_HISTORY_ATTEMPTS * (FURNACE_HMI_CLIENT_HISTORY_TIMEOUT_MS + 200U));
+    asked = fx.history_sent;
+    EXPECT(asked == FURNACE_HMI_CLIENT_HISTORY_ATTEMPTS + 1U, "asked again a bounded number of times");
+    fx.history_served = fx.history_sent - 1U;
+    serve_history();
+    EXPECT(h->state == FURNACE_HMI_HISTORY_READ && !h->reading, "the read ends");
+    EXPECT(h->logs[0].state == FURNACE_HMI_HISTORY_LOG_FAILED && h->logs[1].state == FURNACE_HMI_HISTORY_LOG_READ &&
+               h->count == 4U,
+           "the silent log failed, the others read");
+    end();
+}
+
+/* Review 3: a read asked for while the link is lost starts once it is current again. */
+static void history_asked_while_silent(void)
+{
+    const furnace_hmi_controller_history_t *h = history();
+
+    begin_diagnostics("history asked while the link is silent");
+    script_log(1U, 0U, 2U, 0U, 1000U);
+    script_log(2U, 0U, 0U, 0U, 1000U);
+    script_log(3U, 0U, 0U, 0U, 1000U);
+    advance(3200U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_SILENT, "silent");
+    EXPECT(!furnace_hmi_controller_client_read_history(&fx.client), "not current");
+    advance(100U);
+    EXPECT(fx.history_sent == 0U, "nothing sent while silent");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_status(30U, 1250, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_list(obs()->snapshot_request_id, 30U, 0U, 0U, 0U);
+    send_snapshot_end(obs()->snapshot_request_id, 30U, 3U, 5U);
+    advance(10U);
+    EXPECT(obs()->link == FURNACE_HMI_LINK_CONNECTED, "connected again");
+    serve_history();
+    EXPECT(h->state == FURNACE_HMI_HISTORY_READ && h->count == 2U, "read once current");
+    end();
+}
+
+/* A refused read is asked again later, and a refusal for the link says HELLO (probe C16). */
+static void history_read_refused(void)
+{
+    size_t mark;
+
+    begin_diagnostics("history read refused");
+    (void)furnace_hmi_controller_client_read_history(&fx.client);
+    advance(10U);
+    mark = fx.sent_count;
+    send_command_rejected(fx.last_history.envelope.request_id, REJECT_NOT_CONNECTED);
+    advance(10U);
+    EXPECT(sent_since(mark, FURNACE_WIRE_MSG_HELLO) >= 1U, "HELLO after NOT_CONNECTED");
+    end();
+}
+
 int controller_client_tests_run(void)
 {
     failures = 0;
+    history_ignores_stale_and_repeated();
+    history_gives_up_an_unanswered_log();
+    history_asked_while_silent();
+    history_read_refused();
+    health_reported();
+    health_follows_the_link();
+    history_read_newest();
+    history_busy_and_lost_pages();
+    history_read_failed_keeps_what_came();
+    history_kept_until_replaced();
+    history_keeps_the_newest_of_a_growing_log();
     names_are_checked();
     library_listed_and_read();
     library_paged();

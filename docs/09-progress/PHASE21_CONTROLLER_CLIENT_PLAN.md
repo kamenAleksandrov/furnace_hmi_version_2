@@ -74,7 +74,7 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 | M21-4 | Merged into M21-3 | Owner decision 2026-11-10: the end-to-end link is part of M21-3 |
 | M21-5 | Run, Manual and fault workflows (WI-H03, WI-H04) | Each workflow runs against the controller; the same behavior in the web demo, simulated |
 | M21-6 | Controller 20d (firmware) | A controller-side plan with its open decisions for the product owner and the controller's reviewers (for example the health rules still proposed); the messages built test-first with the controller's verification; the HMI resynced to the new revision in lockstep, ADR-0007 checked against its reopen triggers, before M21-7. **2026-11-19:** firmware 20d in #56–#60 (merged) and drafts #63–#65; pin moved to `a96d138` with the codec byte-identical; ADR-0007 trigger not met (result values only, no layout change; STATUS) |
-| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b (screens) in draft, stacked on it; M21-7c follows |
+| M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b (screens) in draft, stacked on it; **2026-11-20:** M21-7c (Device log and health) in draft, stacked on M21-7b; M21-7d (the controller's limits and the planning reference) added; M21-7e (the controller's clock, firmware and HMI) added |
 | M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria |
 
 ### M21-2b design
@@ -237,6 +237,141 @@ delete at once: no proposal, acknowledgement, refusal, inexact or waiting view (
 REQ-FUN-018 to -023). The font has no Cyrillic glyphs (ADR-0012), so a Cyrillic name is held
 and sent whole but not drawn. The editors' own bounds (180 C, 3.0 C/min) are not yet the
 controller's limits (CTRL-LIMITS). The program graph still draws a ramp from 25 C.
+
+**Owner answers on the M21-7b report (2026-11-20):**
+- Cyrillic glyphs wait (ADR-0012); nothing changes in M21-7c or M21-7d.
+- The editors must take the controller's limits: M21-7d (below).
+- Program durations at creation come from an assumed ambient temperature the operator sets;
+  a Start uses the actual reading. This is the controller's planning reference already (furnace
+  PROG-12, PROG-13, PROG-14; owner 2026-11-04): an operator setting, default 23.0 C, settable
+  within the controller's reported range (5.0 to 40.0 C today, a provisional firmware fixture until
+  T-08), read and changed with `SETTINGS` and `SETTING_CHANGE`, and stored with every
+  program's estimate. The HMI has not shown or changed it yet: M21-7d.
+
+### M21-7c, the Device log and health
+
+Started 2026-11-20 (owner: "begin M21-7c"). Furnace WI-H12, ADR-0020, controller interface
+"Diagnostics" (20d-4). One draft pull request, stacked on M21-7b, three steps:
+
+1. **The client reads health and history** (`app/hmi/client`, module `controller_diagnostics`):
+   - **Health:** `HEALTH_REQUEST` while the link is current, every
+     `FURNACE_HMI_CLIENT_HEALTH_INTERVAL_MS` (5 s, provisional) and again after
+     `FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS` without an answer. The newest report is kept with its
+     controller session; a report naming another session is ignored, a new session discards it,
+     and a link that is not current marks it stale (ADR-0020: never implied that recording stopped).
+   - **History, on request:** the screens ask for a read (the Device log opened, or Refresh). The
+     client reads the critical, general and audit logs one after the other, one request at a
+     time: a first page gives `first_retained` and `next_sequence`; the reading then starts at
+     the newest `FURNACE_HMI_CONTROLLER_HISTORY_PER_LOG` entries (provisional) and follows
+     `scanned_to` while `more` is set. `BUSY` is asked again after
+     `FURNACE_HMI_CLIENT_HISTORY_BUSY_MS`; an unanswered page after the sync timeout.
+     `UNAVAILABLE` and `READ_FAILED` are kept per log and shown, with what was read.
+   - **One window:** the logs are merged newest first by controller start and monotonic time.
+     When a log held more than was read, entries older than its oldest one read are left out of
+     every log, so the window shown is complete in every log (a run's general entries never
+     appear without its critical ones).
+   - **Kept until replaced:** a finished read stays until the next one ends; a new controller
+     session discards it; a link that is not current stops a read in progress (the previous
+     read stays, marked as not current).
+2. **The screens** (both presentations, parity):
+   - **Device log** shows the controller's history when the screens are on the controller:
+     every entry with its text, tone and filter.
+     - Filters: Programs (every RUN entry), Alarms (FAULT, SENSOR, ACTUATOR, and anything of
+       severity ERROR or above), so a faulted run is in both (owner 2026-11-20); System (everything
+       else: SYSTEM, DIAG, COMM, CONFIG; CONTROL traces are not stored).
+     - Maintenance shows that the controller does not record maintenance yet (CTRL-MAINTENANCE).
+     - A time from a valid or adjusted wall clock is shown as date and time. Without one (the
+       firmware's simulated controller, `link_pty`, has no clock), the entry is grouped under its
+       controller start and shown as the time since that start; no date is invented.
+     - Run entries name the run by its ID: the controller does not record the program's name
+       (new backlog gap, CTRL-EVENT-NAMES).
+     - An event this HMI does not know is listed by its ID and severity, never dropped.
+     - Refresh reads again. "Updating" while a read is in progress; evicted entries and a log
+       that is unavailable or failed are said, not hidden.
+   - **Health:** a new Device rail category. It shows the overall state, each subsystem with its
+     state and detail, the fault counts, uptime, controller starts, the reset cause and service
+     hours. `UNKNOWN` is shown as unknown, never as healthy (DIAG-09). Stale when the link is not
+     current. The HMI's own link state is shown beside it, not merged (ADR-0020).
+   - **Tab availability:** each Device category is available when its data is: Device log and
+     Health from the controller; Overview, Maintenance, Service history and Device info stay
+     unavailable on the controller until it reports them (CTRL-MAINTENANCE, CTRL-HEALTH).
+   - **The labs** (UI lab, web demo) simulate the controller's entries and health in the same
+     form, so both presentations draw the same rows.
+3. **Verification:** client scenarios against the scripted controller (host and Zephyr), the
+   screens' content checks, the lab captures, the web smoke test, and a workflow against
+   firmware `link_pty` (#66): the controller start, a Manual or program run and a fault appear
+   in the Device log, and the health is reported.
+
+**Done (2026-11-20, draft):** as above, with these choices made in the work:
+- Health is the sixth Device category, after Device info (the lab's capture numbers stay).
+- The Device log draws only the controller's form. The labs map their simulated events to what a
+  controller records, so they lose program names, library changes, maintenance and display
+  settings, as the controller does (CTRL-EVENT-NAMES, CTRL-MAINTENANCE). Their health is
+  simulated as the controller reports it: the health thread is never judged, so the whole is never
+  OK.
+- Review fixes (three AI reviews in the HMI roles, not the required human reviews): a page is asked
+  again only after 12 s, beyond the controller's 10 s read deadline; a log unanswered five times is
+  given up as failed; a read asked while the link is down starts once it is current; an unknown
+  severity is named by its number; a stale report is drawn neutral and claims nothing about
+  recording; older entries left out by the window are said; texts of `RUN_FAULTED` and the stage
+  deviation corrected.
+
+**Not in M21-7c, recorded:** filters by time, run or severity, export, occurrence counts and active
+versus historical faults (ADR-0020, Phase 25); recording schedules (WI-I09). The labs' health
+simulates no latched or unacknowledged fault counts (shown as 0).
+
+**Questions for the owner (M21-7c review), answered 2026-11-20:**
+- A faulted run appears under Programs and under Alarms. Changed in M21-7c (both presentations).
+- The controller keeps the time as universal time (UTC), and the operator sets it from the display
+  (M21-7e). The Device log shows it as the controller gives it.
+- An `ADJUSTED` wall clock looks the same as a valid one (as built).
+
+**Proposed in M21-7c, the owner may change:** the 5 s health period; reading the logs on
+request instead of following new entries; the complete-window rule; Health as its own Device
+category; run entries named by run ID.
+
+### M21-7d, the controller's limits and the planning reference
+
+Added 2026-11-20 (owner: the editors' limits must be the furnace's). After M21-7c, one draft
+pull request stacked on it:
+- **Limits from `CAPABILITIES`** (CTRL-LIMITS, furnace API-07, CFG-06): the program and stage
+  editors and Manual take `max_stages`, the allowed stage kinds, `target_min`/`target_max`,
+  `rate_min`/`rate_max`, `curing_max_minutes`, `recommended_curing_minutes` and the name limits
+  from the controller session. An unconfigured controller (limits 0) offers no editor. The
+  HMI's own constants stay only as the lab's simulated capabilities. The controller still
+  validates every request; the HMI never raises a limit.
+- **The planning reference** (furnace PROG-12, PROG-13): Settings shows the controller's value
+  and lets the operator change it within `planning_reference_min` to `planning_reference_max`;
+  the controller's answer decides (`APPLIED`, `OUT_OF_RANGE`, `SESSION_ACTIVE`, `BUSY`). The
+  program graph and the editor's preview ramp from it, labelled as an estimate (interface:
+  "No assumed temperature"); the 25 C start goes. A program's card keeps showing the
+  controller's stored estimate and the reference it used.
+- **Lab parity** (open since M21-7b): the UI lab and the web demo simulate the controller's
+  proposal, acknowledgement and refusals, so they show the same Start and save dialogs as the
+  controller.
+- **Two small text fixes:** an information dialog is dismissed with "Close", not "Cancel"; one
+  stage reads "1 stage".
+
+Owner 2026-11-20: the lab parity stays for now (it may be removed later); the text fixes are
+quality and are required; the planning reference's range is the controller's, not the HMI's.
+
+### M21-7e, the controller's clock (firmware and HMI)
+
+Added 2026-11-20 (owner): the furnace controller keeps the time, in universal time (UTC); the HMI
+only shows it and changes it when the operator asks; the Device log uses it. Today the controller has
+no time source (furnace HW-BLOCK-013, WI-K08), and interface 0.16 has no message to read or set the
+time: "clock set" is planned as a new message type (interface Q15, WI-H09). The firmware's
+diagnostics can already hold a wall clock (`furnace_diag_set_wall_clock`, the `WALL_CLOCK` event,
+`wall_state` `ADJUSTED` after a change). Proposed, for the owner's approval before it starts:
+- **Firmware (a furnace plan and draft first):** a time read in `STATUS` or its own message, and
+  `CLOCK_SET` (UTC milliseconds), validated by the controller, refused during execution or not
+  (owner question), recorded as `WALL_CLOCK` in the audit log; the time is `UNKNOWN` after every
+  start until set, while no hardware clock keeps it (HW-BLOCK-013 stays open). Monotonic time keeps
+  every deadline (RUN-14). An interface minor version; the HMI's codec resynced (ADR-0007 check).
+- **HMI:** Settings' Date & time shows the controller's time and sets it; Home's clock and the
+  Device log take it; without a valid time nothing is invented (as now).
+- **Owner questions:** is the time shown in UTC or in a local time zone the operator chooses on the
+  display; may the time be set during a run; must the controller ask for the time after a restart.
 
 ### M21-5 design
 

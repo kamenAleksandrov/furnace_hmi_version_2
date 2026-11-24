@@ -9,14 +9,14 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 378 |
-| Git-tracked files | 378 |
+| Repository files | 384 |
+| Git-tracked files | 384 |
 | Git-untracked files | 0 |
-| Manually maintained files | 349 |
+| Manually maintained files | 355 |
 | Generated files | 29 |
 | Modules | 41 |
 | Build targets | 120 |
-| Compile units | 60 |
+| Compile units | 62 |
 | Boards | 1 |
 
 ## Inputs
@@ -45,10 +45,10 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `.codex/agents` | 10 | agent-configuration |
 | `.codex/config.toml` | 1 | agent-configuration |
 | `.vscode` | 5 | configuration |
-| `app/hmi/client` | 9 | build, header, source |
+| `app/hmi/client` | 12 | build, header, source |
 | `app/hmi/foundation` | 3 | build, header, source |
-| `app/hmi/model` | 4 | build, header, source |
-| `app/hmi/presentation` | 99 | build, configuration, documentation, header, other, source |
+| `app/hmi/model` | 5 | build, header, source |
+| `app/hmi/presentation` | 101 | build, configuration, documentation, header, other, source |
 | `app/hmi/protocol` | 9 | build, configuration, documentation, header, source |
 | `app/hmi/transport` | 4 | build, header, source |
 | `app/zephyr` | 14 | board, build, configuration, header, source |
@@ -80,7 +80,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Target | Type | Configuration | Repository sources | External sources |
 | --- | --- | --- | ---: | ---: |
-| `furnace_hmi_client` | STATIC_LIBRARY | `Debug` | 3 | 0 |
+| `furnace_hmi_client` | STATIC_LIBRARY | `Debug` | 4 | 0 |
 | `furnace_hmi_foundation` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_model` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 2 | 0 |
@@ -94,7 +94,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `furnace_hmi_icons` | STATIC_LIBRARY | `Debug` | 2 | 0 |
 | `lvgl` | STATIC_LIBRARY | `Debug` | 0 | 531 |
 | `furnace_hmi_operator_content_checks` | STATIC_LIBRARY | `Debug` | 1 | 0 |
-| `furnace_hmi_operator_screens` | STATIC_LIBRARY | `Debug` | 2 | 0 |
+| `furnace_hmi_operator_screens` | STATIC_LIBRARY | `Debug` | 3 | 0 |
 | `furnace_hmi_state_availability_view` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_controller_client_tests` | EXECUTABLE | `Debug` | 3 | 0 |
 | `furnace_hmi_dashboard_model_smoke` | EXECUTABLE | `Debug` | 1 | 0 |
@@ -253,16 +253,20 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/client/include/furnace_hmi/controller_client.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/include/furnace_hmi/controller_command.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/include/furnace_hmi/controller_dashboard.h` | header | `app/hmi/client` | manual | tracked |
+| `app/hmi/client/include/furnace_hmi/controller_diagnostics.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/include/furnace_hmi/controller_library.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/include/furnace_hmi/controller_observation.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/src/controller_client.c` | source | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/src/controller_dashboard.c` | source | `app/hmi/client` | manual | tracked |
+| `app/hmi/client/src/controller_diagnostics.c` | source | `app/hmi/client` | manual | tracked |
+| `app/hmi/client/src/controller_diagnostics.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/src/controller_library.c` | source | `app/hmi/client` | manual | tracked |
 | `app/hmi/foundation/CMakeLists.txt` | build | `app/hmi/foundation` | manual | tracked |
 | `app/hmi/foundation/include/furnace_hmi/foundation.h` | header | `app/hmi/foundation` | manual | tracked |
 | `app/hmi/foundation/src/foundation.c` | source | `app/hmi/foundation` | manual | tracked |
 | `app/hmi/model/CMakeLists.txt` | build | `app/hmi/model` | manual | tracked |
 | `app/hmi/model/include/furnace_hmi/dashboard_model.h` | header | `app/hmi/model` | manual | tracked |
+| `app/hmi/model/include/furnace_hmi/diagnostics_model.h` | header | `app/hmi/model` | manual | tracked |
 | `app/hmi/model/include/furnace_hmi/hmi_state_availability.h` | header | `app/hmi/model` | manual | tracked |
 | `app/hmi/model/src/dashboard_model.c` | source | `app/hmi/model` | manual | tracked |
 | `app/hmi/presentation/dashboard/CMakeLists.txt` | build | `app/hmi/presentation` | manual | tracked |
@@ -345,6 +349,8 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/presentation/operator/CMakeLists.txt` | build | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/operator/include/furnace_hmi/operator_screens.h` | header | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/operator/include/furnace_hmi/operator_theme.h` | header | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/operator/src/operator_diagnostics.c` | source | `app/hmi/presentation` | manual | tracked |
+| `app/hmi/presentation/operator/src/operator_diagnostics.h` | header | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/operator/src/operator_screens.c` | source | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/operator/src/operator_theme.c` | source | `app/hmi/presentation` | manual | tracked |
 | `app/hmi/presentation/state_availability/CMakeLists.txt` | build | `app/hmi/presentation` | manual | tracked |

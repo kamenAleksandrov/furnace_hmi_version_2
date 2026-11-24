@@ -17,6 +17,8 @@
 
 #include <furnace_hmi/ui_strings.h>
 
+#include "operator_diagnostics.h"
+
 /* Colours are theme roles (operator_theme.h, app/hmi/presentation/theme);
  * never write a colour value here. */
 #define OPERATOR_BACKGROUND OPERATOR_THEME_PAGE
@@ -172,10 +174,11 @@ typedef enum {
     OPERATOR_ACTION_DEVICE_NOTICE,
     OPERATOR_ACTION_DEVICE_INFO,
     OPERATOR_ACTION_DEVICE_HISTORY,
-    OPERATOR_ACTION_DEVICE_LOG_EVENT,
     OPERATOR_ACTION_DEVICE_MAINTENANCE_DONE,
     OPERATOR_ACTION_LOG_FILTER,
     OPERATOR_ACTION_DEVICE_LOG_ALARMS,
+    OPERATOR_ACTION_CONTROLLER_LOG_ENTRY,
+    OPERATOR_ACTION_HISTORY_REFRESH,
     OPERATOR_ACTION_MANUAL_START,
     OPERATOR_ACTION_MANUAL_STOP,
     OPERATOR_ACTION_MANUAL_EXIT,
@@ -1245,7 +1248,6 @@ static bool rebuild_page(furnace_hmi_operator_screens_t *explorer);
 static bool update_manual_prediction(furnace_hmi_operator_screens_t *explorer);
 static bool update_manual_run_state(furnace_hmi_operator_screens_t *explorer);
 static void manual_value_changed(furnace_hmi_operator_screens_t *explorer);
-static const char *fault_title(uint8_t fault_id, char *buffer, size_t capacity);
 static bool settings_show_message(
     furnace_hmi_operator_screens_t *explorer,
     const char *title_text,
@@ -3444,7 +3446,7 @@ static bool open_alert(furnace_hmi_operator_screens_t *explorer, uint8_t alert)
     char name[48];
     const bool named = alert == OPERATOR_ALERT_FAULT && kind == FURNACE_HMI_FAULT_KIND_NONE &&
                        explorer->state->fault_id != 0U;
-    const char *title_text = named ? fault_title(explorer->state->fault_id, name, sizeof(name)) : ui_string(title);
+    const char *title_text = named ? operator_fault_title(explorer->state->fault_id, name, sizeof(name)) : ui_string(title);
     const char *detail_text = named ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ALERT_CONTROLLER_FAULT_DETAIL)
                                     : ui_string(detail);
     if (!open_dialog(explorer, title_text, detail_text, OPERATOR_ACTION_CLOSE_MODAL,
@@ -5772,6 +5774,8 @@ enum {
     OPERATOR_DEVICE_TAB_NOTIFICATIONS,
     OPERATOR_DEVICE_TAB_HISTORY,
     OPERATOR_DEVICE_TAB_INFO,
+    /* M21-7c: the controller's health (last, so the lab's tab numbers stay). */
+    OPERATOR_DEVICE_TAB_HEALTH,
     OPERATOR_DEVICE_TAB_COUNT,
 };
 
@@ -5804,9 +5808,14 @@ static const int32_t operator_grid_three[] = {
     LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST
 };
 
+static const int32_t operator_grid_four[] = {
+    LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST
+};
+
 static const int32_t *operator_grid_tracks(uint8_t count)
 {
-    return count <= 1U ? operator_grid_one : count == 2U ? operator_grid_two : operator_grid_three;
+    return count <= 1U ? operator_grid_one : count == 2U ? operator_grid_two
+         : count == 3U ? operator_grid_three : operator_grid_four;
 }
 
 typedef struct {
@@ -6036,7 +6045,7 @@ static void style_rail_button(lv_obj_t *button, furnace_hmi_icon_t icon)
 
 static const furnace_hmi_icon_t device_tab_icons[] = {
     FURNACE_HMI_ICON_GAUGE, FURNACE_HMI_ICON_LIST, FURNACE_HMI_ICON_WRENCH,
-    FURNACE_HMI_ICON_HISTORY, FURNACE_HMI_ICON_INFO,
+    FURNACE_HMI_ICON_HISTORY, FURNACE_HMI_ICON_INFO, FURNACE_HMI_ICON_CHECK_CIRCLE,
 };
 
 static const furnace_hmi_ui_string_id_t device_tab_ids[] = {
@@ -6045,6 +6054,7 @@ static const furnace_hmi_ui_string_id_t device_tab_ids[] = {
     FURNACE_HMI_UI_STRING_UI_LAB_MAINTENANCE,
     FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_SERVICE_HISTORY,
     FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_INFO,
+    FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_HEALTH,
 };
 
 static const furnace_hmi_ui_string_id_t device_history_title_ids[] = {
@@ -6394,31 +6404,6 @@ enum {
 #define OPERATOR_LOG_HEADING 22
 #define OPERATOR_LOG_GAP 4
 
-static const struct {
-    uint8_t kind;
-    furnace_hmi_icon_t icon;
-    operator_status_t tone;
-    furnace_hmi_ui_string_id_t text;
-    bool display;
-} log_types[FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT] = {
-    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_STARTED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PLAY, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_STARTED_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_COMPLETED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_CHECK_CIRCLE, OPERATOR_STATUS_OK, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_COMPLETED_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_STOPPED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_STOP, OPERATOR_STATUS_DUE, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_STOPPED_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_PAUSED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PAUSE, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_PAUSED_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_RESUMED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PLAY, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_RESUMED_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_SAVED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PENCIL, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_SAVED_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_PROGRAM_DELETED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_TRASH, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_PROGRAM_DELETED_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_MANUAL_STARTED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_PLAY, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_MANUAL_STARTED, false },
-    [FURNACE_HMI_OPERATOR_LOG_MANUAL_STOPPED] = { OPERATOR_LOG_PROGRAMS, FURNACE_HMI_ICON_STOP, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_MANUAL_STOPPED, false },
-    [FURNACE_HMI_OPERATOR_LOG_ALARM] = { OPERATOR_LOG_ALARMS, FURNACE_HMI_ICON_WARNING, OPERATOR_STATUS_FAULT, FURNACE_HMI_UI_STRING_UI_LAB_LOG_ALARM_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_MAINTENANCE_DONE] = { OPERATOR_LOG_MAINTENANCE, FURNACE_HMI_ICON_WRENCH, OPERATOR_STATUS_OK, FURNACE_HMI_UI_STRING_UI_LAB_LOG_MAINTENANCE_DONE_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_SERVICE_DUE] = { OPERATOR_LOG_MAINTENANCE, FURNACE_HMI_ICON_WRENCH, OPERATOR_STATUS_DUE, FURNACE_HMI_UI_STRING_UI_LAB_LOG_SERVICE_DUE_FORMAT, false },
-    [FURNACE_HMI_OPERATOR_LOG_DISPLAY_STARTED] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_POWER, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_DISPLAY_STARTED, true },
-    [FURNACE_HMI_OPERATOR_LOG_SETTINGS_SAVED] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_SLIDERS, OPERATOR_STATUS_NEUTRAL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_SETTINGS_SAVED, true },
-    [FURNACE_HMI_OPERATOR_LOG_LINK_LOST] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_SIGNAL, OPERATOR_STATUS_DUE, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_LOST_TITLE, true },
-    [FURNACE_HMI_OPERATOR_LOG_LINK_RESTORED] = { OPERATOR_LOG_SYSTEM, FURNACE_HMI_ICON_SIGNAL, OPERATOR_STATUS_OK, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_RESTORED_TITLE, true },
-};
-
 static const furnace_hmi_ui_string_id_t log_filter_ids[OPERATOR_LOG_FILTER_COUNT] = {
     FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_ALL, FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_PROGRAMS,
     FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_ALARMS, FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_MAINTENANCE,
@@ -6492,75 +6477,8 @@ static void log_add_named(furnace_hmi_operator_screens_t *explorer, uint8_t type
 }
 
 
-static void log_text(const furnace_hmi_operator_screens_t *explorer, const furnace_hmi_operator_log_event_t *event,
-                     char *buffer, size_t capacity)
-{
-    const furnace_hmi_ui_string_id_t format = log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].text;
-    const char *name = event->name[0] != '\0' ? event->name
-        : event->program < explorer->library_count && explorer->programs[event->program].library
-            ? ui_string((furnace_hmi_ui_string_id_t)explorer->programs[event->program].name_string) : "";
-    if (event->type == FURNACE_HMI_OPERATOR_LOG_ALARM) {
-        (void)snprintf(buffer, capacity, ui_string(format),
-                       ui_string(fault_alert_titles[event->fault < FURNACE_HMI_FAULT_KIND_COUNT ? event->fault : 0U]), name);
-    }
-    else if (event->type == FURNACE_HMI_OPERATOR_LOG_MAINTENANCE_DONE || event->type == FURNACE_HMI_OPERATOR_LOG_SERVICE_DUE) {
-        const bool known = event->component < explorer->device_catalogue.component_count &&
-            event->task < explorer->device_catalogue.components[event->component].task_count;
-        const furnace_hmi_operator_device_component_t *part = &explorer->device_catalogue.components[event->component];
-        (void)snprintf(buffer, capacity, ui_string(format), known ? part->name : "",
-                       known ? part->tasks[event->task].name : "");
-    }
-    else {
-        (void)snprintf(buffer, capacity, ui_string(format), name);
-    }
-}
-
 static void format_short_date(const furnace_hmi_operator_screens_t *explorer, char *buffer, size_t capacity,
                               const furnace_hmi_operator_clock_t *clock);
-
-static void log_time_text(const furnace_hmi_operator_screens_t *explorer, int32_t minute, char *buffer, size_t capacity)
-{
-    const furnace_hmi_operator_clock_t at = civil_from_minute(minute);
-    format_clock_time(buffer, capacity, &at, explorer->settings_candidate_24_hour);
-}
-
-static bool log_listed(const furnace_hmi_operator_screens_t *explorer, const furnace_hmi_operator_log_event_t *event)
-{
-    return explorer->log_filter == OPERATOR_LOG_ALL ||
-        log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].kind == explorer->log_filter;
-}
-
-/* Web logPages: the page of every listed event; a date heading starts every
- * page and every new day. Returns the page count. */
-static uint16_t log_paginate(const furnace_hmi_operator_screens_t *explorer, int32_t height, uint8_t *pages)
-{
-    uint16_t page = 0U;
-    int32_t used = 0;
-    int32_t day = INT32_MIN;
-    bool started = false;
-    for (uint16_t index = 0U; index < explorer->log_count; ++index) {
-        const furnace_hmi_operator_log_event_t *event = &explorer->log_events[index];
-        if (!log_listed(explorer, event)) {
-            continue;
-        }
-        const int32_t event_day = event->minute / 1440;
-        const int32_t need = OPERATOR_LOG_ROW + OPERATOR_LOG_GAP +
-            (started && event_day == day ? 0 : OPERATOR_LOG_HEADING + OPERATOR_LOG_GAP);
-        if (!started || used + need > height + OPERATOR_LOG_GAP) {
-            page = started ? (uint16_t)(page + 1U) : 0U;
-            started = true;
-            used = 0;
-            day = INT32_MIN;
-        }
-        if (event_day != day) {
-            used += OPERATOR_LOG_HEADING + OPERATOR_LOG_GAP;
-            day = event_day;
-        }
-        used += OPERATOR_LOG_ROW + OPERATOR_LOG_GAP;
-        pages[index] = (uint8_t)(page > UINT8_MAX ? UINT8_MAX : page);
-    }
-    return (uint16_t)(page + 1U);
-}
 
 static bool log_add_heading(const furnace_hmi_operator_screens_t *explorer, lv_obj_t *list, int32_t day)
 {
@@ -6591,14 +6509,10 @@ static bool log_add_heading(const furnace_hmi_operator_screens_t *explorer, lv_o
 
 /* One event row (web .log-row): the type icon and time, then the event text;
  * the left edge takes the event's tone. */
-static bool log_add_row(furnace_hmi_operator_screens_t *explorer, lv_obj_t *list, uint16_t index)
+static bool log_row(furnace_hmi_operator_screens_t *explorer, lv_obj_t *list, furnace_hmi_icon_t icon_id,
+                    operator_status_t tone, const char *time_text, const char *text, operator_action_t action,
+                    int value)
 {
-    const furnace_hmi_operator_log_event_t *event = &explorer->log_events[index];
-    const operator_status_t tone = log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].tone;
-    char time_text[24];
-    char text[2 * FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
-    log_time_text(explorer, event->minute, time_text, sizeof(time_text));
-    log_text(explorer, event, text, sizeof(text));
     lv_obj_t *row = create_panel(list, true);
     lv_obj_t *icon = row != NULL ? lv_image_create(row) : NULL;
     lv_obj_t *time_label = row != NULL ? create_label(row, time_text, &furnace_hmi_font_regular_13, OPERATOR_MUTED) : NULL;
@@ -6614,19 +6528,20 @@ static bool log_add_row(furnace_hmi_operator_screens_t *explorer, lv_obj_t *list
     lv_obj_set_style_pad_column(row, 8, LV_PART_MAIN);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_image_set_src(icon, furnace_hmi_icon_image(log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].icon, 18));
+    lv_image_set_src(icon, furnace_hmi_icon_image(icon_id, 18));
     lv_obj_set_style_image_recolor(icon, tone == OPERATOR_STATUS_NEUTRAL ? OPERATOR_THEME_AMBER_TEXT : status_color(tone),
                                    LV_PART_MAIN);
     lv_obj_set_style_image_recolor_opa(icon, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_width(time_label, 66);
+    lv_obj_set_width(time_label, LV_SIZE_CONTENT);
+    lv_obj_set_style_min_width(time_label, 66, LV_PART_MAIN);
     lv_obj_set_width(text_label, 0);
     lv_obj_set_flex_grow(text_label, 1);
     lv_label_set_long_mode(text_label, LV_LABEL_LONG_DOT);
     lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_USER_1);
     furnace_hmi_operator_action_slot_t *slot = &explorer->page_actions[explorer->page_action_count++];
     slot->explorer = explorer;
-    slot->action = (int)OPERATOR_ACTION_DEVICE_LOG_EVENT;
-    slot->value = (int)index;
+    slot->action = (int)action;
+    slot->value = value;
     lv_obj_add_event_cb(row, action_callback, LV_EVENT_CLICKED, slot);
     return true;
 }
@@ -6678,17 +6593,218 @@ static void log_observation(furnace_hmi_operator_screens_t *explorer, const furn
     }
 }
 
-static bool device_build_log(
-    furnace_hmi_operator_screens_t *explorer,
-    lv_obj_t *body
-)
+/* ---- M21-7c: the controller's Device log ------------------------------------------------------
+ * The controller's history (furnace_hmi_operator_screens_set_diagnostics), newest first: the
+ * filters of the lab's log, a heading per day on a valid clock or per controller start without
+ * one, and what the read could not give said above the list (plan, M21-7c). */
+
+static bool controller_log_listed(const furnace_hmi_operator_screens_t *explorer,
+                                  const furnace_hmi_controller_history_entry_t *entry)
 {
-    /* The filter tabs take the whole toolbar; the rail already names the page. */
+    switch (explorer->log_filter) {
+    case OPERATOR_LOG_ALL:
+        return true;
+    case OPERATOR_LOG_PROGRAMS:
+        return operator_history_listed(entry, OPERATOR_HISTORY_PROGRAMS);
+    case OPERATOR_LOG_ALARMS:
+        return operator_history_listed(entry, OPERATOR_HISTORY_ALARMS);
+    case OPERATOR_LOG_SYSTEM:
+        return operator_history_listed(entry, OPERATOR_HISTORY_SYSTEM);
+    default:
+        return false; /* Maintenance: the controller does not record it (CTRL-MAINTENANCE) */
+    }
+}
+
+/* A valid or adjusted wall clock (controller interface: wall_state VALID 1, ADJUSTED 2). */
+static bool controller_entry_dated(const furnace_hmi_controller_history_entry_t *entry)
+{
+    return entry->wall_state == 1U || entry->wall_state == 2U;
+}
+
+static int32_t controller_entry_minute(const furnace_hmi_controller_history_entry_t *entry)
+{
+    const int64_t minute = entry->wall_ms / 60000;
+    return minute > INT32_MAX ? INT32_MAX : minute < INT32_MIN ? INT32_MIN : (int32_t)minute;
+}
+
+/* Entries under one heading: one day on a valid clock, or one controller start without one. */
+static int64_t controller_log_group(const furnace_hmi_controller_history_entry_t *entry)
+{
+    return controller_entry_dated(entry) ? (int64_t)controller_entry_minute(entry) / 1440
+                                         : -1 - (int64_t)entry->boot_id;
+}
+
+static uint16_t controller_log_paginate(const furnace_hmi_operator_screens_t *explorer, int32_t height,
+                                        uint8_t *pages)
+{
+    const furnace_hmi_controller_history_t *history = explorer->history;
+    const uint16_t count = history->count < FURNACE_HMI_CONTROLLER_HISTORY_CAPACITY
+        ? history->count : FURNACE_HMI_CONTROLLER_HISTORY_CAPACITY;
+    uint16_t page = 0U;
+    int32_t used = 0;
+    int64_t group = INT64_MIN;
+    bool started = false;
+    for (uint16_t index = 0U; index < count; ++index) {
+        const furnace_hmi_controller_history_entry_t *entry = &history->entries[index];
+        if (!controller_log_listed(explorer, entry)) {
+            continue;
+        }
+        const int64_t entry_group = controller_log_group(entry);
+        const int32_t need = OPERATOR_LOG_ROW + OPERATOR_LOG_GAP +
+            (started && entry_group == group ? 0 : OPERATOR_LOG_HEADING + OPERATOR_LOG_GAP);
+        if (!started || used + need > height + OPERATOR_LOG_GAP) {
+            page = started ? (uint16_t)(page + 1U) : 0U;
+            started = true;
+            used = 0;
+            group = INT64_MIN;
+        }
+        if (entry_group != group) {
+            used += OPERATOR_LOG_HEADING + OPERATOR_LOG_GAP;
+            group = entry_group;
+        }
+        used += OPERATOR_LOG_ROW + OPERATOR_LOG_GAP;
+        pages[index] = (uint8_t)(page > UINT8_MAX ? UINT8_MAX : page);
+    }
+    return (uint16_t)(page + 1U);
+}
+
+static void controller_entry_when(const furnace_hmi_operator_screens_t *explorer,
+                                  const furnace_hmi_controller_history_entry_t *entry, char *buffer,
+                                  size_t capacity)
+{
+    if (controller_entry_dated(entry)) {
+        const furnace_hmi_operator_clock_t at = civil_from_minute(controller_entry_minute(entry));
+        format_clock_time(buffer, capacity, &at, explorer->settings_candidate_24_hour);
+    }
+    else {
+        operator_history_since_start(entry->mono_ms, buffer, capacity);
+    }
+}
+
+static bool controller_log_heading(furnace_hmi_operator_screens_t *explorer, lv_obj_t *list,
+                                   const furnace_hmi_controller_history_entry_t *entry)
+{
+    if (controller_entry_dated(entry) && explorer->clock_known) {
+        return log_add_heading(explorer, list, controller_entry_minute(entry) / 1440);
+    }
+    char text[96];
+    if (controller_entry_dated(entry)) {
+        const furnace_hmi_operator_clock_t date = civil_from_minute(controller_entry_minute(entry));
+        format_short_date(explorer, text, sizeof(text), &date);
+    }
+    else {
+        (void)snprintf(text, sizeof(text), ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_START_HEADING_FORMAT),
+                       (unsigned int)entry->boot_id);
+    }
+    lv_obj_t *heading = create_label(list, text, &furnace_hmi_font_regular_13, OPERATOR_MUTED);
+    if (heading == NULL) {
+        return false;
+    }
+    lv_obj_set_size(heading, lv_pct(100), OPERATOR_LOG_HEADING);
+    lv_obj_set_style_text_align(heading, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_pad_top(heading, 3, LV_PART_MAIN);
+    return true;
+}
+
+static bool controller_log_row(furnace_hmi_operator_screens_t *explorer, lv_obj_t *list, uint16_t index)
+{
+    const furnace_hmi_controller_history_entry_t *entry = &explorer->history->entries[index];
+    const operator_status_t tone = entry->severity >= OPERATOR_DIAG_SEVERITY_ERROR ? OPERATOR_STATUS_FAULT
+        : entry->severity == OPERATOR_DIAG_SEVERITY_WARNING ? OPERATOR_STATUS_DUE : OPERATOR_STATUS_NEUTRAL;
+    furnace_hmi_icon_t icon = FURNACE_HMI_ICON_POWER;
+    switch (entry->category) {
+    case OPERATOR_DIAG_CATEGORY_RUN:
+        icon = FURNACE_HMI_ICON_PLAY;
+        break;
+    case OPERATOR_DIAG_CATEGORY_FAULT:
+    case OPERATOR_DIAG_CATEGORY_SENSOR:
+    case OPERATOR_DIAG_CATEGORY_ACTUATOR:
+        icon = FURNACE_HMI_ICON_WARNING;
+        break;
+    case OPERATOR_DIAG_CATEGORY_COMM:
+        icon = FURNACE_HMI_ICON_SIGNAL;
+        break;
+    case OPERATOR_DIAG_CATEGORY_CONFIG:
+        icon = FURNACE_HMI_ICON_SLIDERS;
+        break;
+    case OPERATOR_DIAG_CATEGORY_DIAG:
+        icon = FURNACE_HMI_ICON_LIST;
+        break;
+    default:
+        break;
+    }
+    char time_text[24];
+    char text[160];
+    controller_entry_when(explorer, entry, time_text, sizeof(time_text));
+    operator_history_text(entry, text, sizeof(text));
+    return log_row(explorer, list, icon, tone, time_text, text, OPERATOR_ACTION_CONTROLLER_LOG_ENTRY, (int)index);
+}
+
+static const char *controller_log_name(uint8_t log)
+{
+    static const furnace_hmi_ui_string_id_t names[FURNACE_HMI_CONTROLLER_HISTORY_LOGS] = {
+        FURNACE_HMI_UI_STRING_CTRL_LOG_NAME_1, FURNACE_HMI_UI_STRING_CTRL_LOG_NAME_2,
+        FURNACE_HMI_UI_STRING_CTRL_LOG_NAME_3,
+    };
+    return ui_string(names[(log >= 1U && log <= FURNACE_HMI_CONTROLLER_HISTORY_LOGS) ? log - 1U : 0U]);
+}
+
+/* What the read could not give, and whether it is current: "" when nothing to say. */
+static void controller_log_notes(const furnace_hmi_operator_screens_t *explorer, char *buffer, size_t capacity)
+{
+    const furnace_hmi_controller_history_t *history = explorer->history;
+    size_t used = 0U;
+    uint32_t evicted = 0U;
+    char part[96];
+
+    buffer[0] = '\0';
+#define OPERATOR_NOTE(text)                                                                       \
+    do {                                                                                          \
+        const int written = snprintf(buffer + used, capacity - used, "%s%s", used > 0U ? " " : "", \
+                                     (text));                                                     \
+        used = written < 0 ? used : (size_t)written >= capacity - used ? capacity - 1U            \
+                                                                        : used + (size_t)written; \
+    } while (0)
+    if (history->state == FURNACE_HMI_HISTORY_READ && history->reading) {
+        OPERATOR_NOTE(ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_READING));
+    }
+    if (history->state == FURNACE_HMI_HISTORY_READ &&
+        (history->interrupted ||
+         (explorer->state != NULL && explorer->state->availability != FURNACE_HMI_STATE_AVAILABILITY_CURRENT))) {
+        OPERATOR_NOTE(ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_NOT_CURRENT));
+    }
+    for (uint8_t log = 1U; history->state == FURNACE_HMI_HISTORY_READ && log <= FURNACE_HMI_CONTROLLER_HISTORY_LOGS;
+         ++log) {
+        const furnace_hmi_controller_history_log_t *l = &history->logs[log - 1U];
+        if (l->state == FURNACE_HMI_HISTORY_LOG_UNAVAILABLE || l->state == FURNACE_HMI_HISTORY_LOG_FAILED) {
+            (void)snprintf(part, sizeof(part),
+                           ui_string(l->state == FURNACE_HMI_HISTORY_LOG_UNAVAILABLE
+                                         ? FURNACE_HMI_UI_STRING_CTRL_LOG_UNAVAILABLE_FORMAT
+                                         : FURNACE_HMI_UI_STRING_CTRL_LOG_FAILED_FORMAT),
+                           controller_log_name(log));
+            OPERATOR_NOTE(part);
+        }
+        evicted = l->evicted > UINT32_MAX - evicted ? UINT32_MAX : evicted + l->evicted;
+    }
+    for (uint8_t log = 0U; history->state == FURNACE_HMI_HISTORY_READ && log < FURNACE_HMI_CONTROLLER_HISTORY_LOGS; ++log) {
+        if (history->logs[log].truncated) {
+            OPERATOR_NOTE(ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_OLDER_NOT_SHOWN));
+            break;
+        }
+    }
+    if (evicted > 0U) {
+        (void)snprintf(part, sizeof(part), ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_EVICTED_FORMAT),
+                       (unsigned int)evicted);
+        OPERATOR_NOTE(part);
+    }
+#undef OPERATOR_NOTE
+}
+
+static bool device_build_controller_log(furnace_hmi_operator_screens_t *explorer, lv_obj_t *body)
+{
+    const furnace_hmi_controller_history_t *history = explorer->history;
     lv_obj_t *toolbar = create_transparent_container(body);
-    lv_obj_t *list = create_transparent_container(body);
-    lv_obj_t *footer = create_transparent_container(body);
-    mark_edge_row(footer, OPERATOR_EDGE_TOP);
-    if (toolbar == NULL || list == NULL || footer == NULL) {
+    if (toolbar == NULL) {
         return false;
     }
     lv_obj_set_size(toolbar, lv_pct(100), 48);
@@ -6708,12 +6824,27 @@ static bool device_build_log(
         lv_obj_set_style_pad_hor(button, 6, LV_PART_MAIN);
         lv_obj_t *label = lv_obj_get_child(button, 0);
         if (label != NULL && lv_obj_check_type(label, &lv_label_class)) {
-            /* Web .log-toolbar: 14 px semibold on one line. */
             lv_obj_set_style_text_font(label, &furnace_hmi_font_semibold_14, LV_PART_MAIN);
             lv_obj_set_size(label, lv_pct(100), lv_font_get_line_height(&furnace_hmi_font_semibold_14));
             lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
             lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         }
+    }
+    char notes[256];
+    controller_log_notes(explorer, notes, sizeof(notes));
+    if (notes[0] != '\0') {
+        lv_obj_t *note = create_label(body, notes, &furnace_hmi_font_regular_13, OPERATOR_MUTED);
+        if (note == NULL) {
+            return false;
+        }
+        lv_obj_set_width(note, lv_pct(100));
+        lv_label_set_long_mode(note, LV_LABEL_LONG_DOT);
+    }
+    lv_obj_t *list = create_transparent_container(body);
+    lv_obj_t *footer = create_transparent_container(body);
+    mark_edge_row(footer, OPERATOR_EDGE_TOP);
+    if (list == NULL || footer == NULL) {
+        return false;
     }
     lv_obj_set_width(list, lv_pct(100));
     lv_obj_set_height(list, 0);
@@ -6726,34 +6857,42 @@ static bool device_build_log(
     lv_obj_set_style_pad_column(footer, 8, LV_PART_MAIN);
     lv_obj_update_layout(explorer->root);
 
-    static uint8_t pages[FURNACE_HMI_OPERATOR_LOG_CAPACITY];
-    const uint16_t page_count = log_paginate(explorer, lv_obj_get_content_height(list), pages);
+    static uint8_t pages[FURNACE_HMI_CONTROLLER_HISTORY_CAPACITY];
+    const uint16_t page_count = controller_log_paginate(explorer, lv_obj_get_content_height(list), pages);
     if (explorer->device_page >= page_count) {
         explorer->device_page = (uint8_t)(page_count - 1U);
     }
     uint16_t listed = 0U;
-    int32_t day = INT32_MIN;
-    for (uint16_t index = 0U; index < explorer->log_count; ++index) {
-        const furnace_hmi_operator_log_event_t *event = &explorer->log_events[index];
-        if (!log_listed(explorer, event)) {
+    int64_t group = INT64_MIN;
+    for (uint16_t index = 0U; index < history->count && index < FURNACE_HMI_CONTROLLER_HISTORY_CAPACITY; ++index) {
+        const furnace_hmi_controller_history_entry_t *entry = &history->entries[index];
+        if (!controller_log_listed(explorer, entry)) {
             continue;
         }
         ++listed;
         if (pages[index] != explorer->device_page) {
             continue;
         }
-        if (event->minute / 1440 != day) {
-            day = event->minute / 1440;
-            if (!log_add_heading(explorer, list, day)) {
+        if (controller_log_group(entry) != group) {
+            group = controller_log_group(entry);
+            if (!controller_log_heading(explorer, list, entry)) {
                 return false;
             }
         }
-        if (!log_add_row(explorer, list, index)) {
+        if (!controller_log_row(explorer, list, index)) {
             return false;
         }
     }
-    if (listed == 0U && !device_add_empty(list, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LOG_EMPTY))) {
-        return false;
+    if (listed == 0U) {
+        const furnace_hmi_ui_string_id_t empty = explorer->log_filter == OPERATOR_LOG_MAINTENANCE
+            ? FURNACE_HMI_UI_STRING_CTRL_LOG_MAINTENANCE_NOT_RECORDED
+            : history->state != FURNACE_HMI_HISTORY_READ
+                ? (history->reading ? FURNACE_HMI_UI_STRING_CTRL_LOG_READING : FURNACE_HMI_UI_STRING_CTRL_LOG_NOT_READ)
+                : history->count == 0U ? FURNACE_HMI_UI_STRING_CTRL_LOG_EMPTY
+                                       : FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LOG_EMPTY;
+        if (!device_add_empty(list, ui_string(empty))) {
+            return false;
+        }
     }
     char count[64];
     (void)snprintf(count, sizeof(count), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_EVENT_COUNT_FORMAT),
@@ -6761,13 +6900,338 @@ static bool device_build_log(
                    explorer->state != NULL && explorer->state->availability == FURNACE_HMI_STATE_AVAILABILITY_STALE
                        ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LAST_KNOWN_SUFFIX) : "");
     lv_obj_t *count_label = create_label(footer, count, &furnace_hmi_font_regular_13, OPERATOR_MUTED);
-    if (count_label == NULL) {
+    lv_obj_t *refresh = count_label != NULL
+        ? create_page_button(explorer, footer, ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_REFRESH),
+                             OPERATOR_TONE_QUIET, OPERATOR_ACTION_HISTORY_REFRESH, 0)
+        : NULL;
+    if (refresh == NULL) {
         return false;
     }
     lv_obj_set_width(count_label, 0);
     lv_obj_set_flex_grow(count_label, 1);
+    lv_obj_set_width(refresh, 104);
     return create_pager(explorer, footer, explorer->device_page, page_count,
                         OPERATOR_ACTION_DEVICE_PREVIOUS, OPERATOR_ACTION_DEVICE_NEXT, OPERATOR_EDGE_TOP) != NULL;
+}
+
+/* ---- M21-7c: the lab's simulation in the controller's form ----------------------------------
+ * The web demo does the same (simulateHistory, simulateHealth). What a controller records of
+ * each simulated event, the rest left out: it records no library change, maintenance or display
+ * setting (CTRL-EVENT-NAMES, CTRL-MAINTENANCE). Runs are numbered from the oldest; the lab's clock
+ * is valid; one controller start. */
+
+#define SIMULATED_BOOT 42U
+#define SIMULATED_UPTIME_MS UINT64_C(12300000)
+#define SIMULATED_SERVICE_S (128U * 3600U)
+
+static bool simulated_run_start(uint8_t type)
+{
+    return type == FURNACE_HMI_OPERATOR_LOG_PROGRAM_STARTED || type == FURNACE_HMI_OPERATOR_LOG_MANUAL_STARTED;
+}
+
+/* The controller's RUN event code of a simulated event, 0 when none (furnace core/run codes). */
+static uint32_t simulated_run_code(uint8_t type)
+{
+    switch (type) {
+    case FURNACE_HMI_OPERATOR_LOG_PROGRAM_STARTED:
+    case FURNACE_HMI_OPERATOR_LOG_MANUAL_STARTED:
+        return 1U;
+    case FURNACE_HMI_OPERATOR_LOG_PROGRAM_PAUSED:
+        return 16U;
+    case FURNACE_HMI_OPERATOR_LOG_PROGRAM_RESUMED:
+        return 17U;
+    case FURNACE_HMI_OPERATOR_LOG_PROGRAM_COMPLETED:
+        return 18U;
+    case FURNACE_HMI_OPERATOR_LOG_PROGRAM_STOPPED:
+    case FURNACE_HMI_OPERATOR_LOG_MANUAL_STOPPED:
+        return 19U;
+    case FURNACE_HMI_OPERATOR_LOG_ALARM:
+        return 20U;
+    default:
+        return 0U;
+    }
+}
+
+static void simulate_history(furnace_hmi_operator_screens_t *explorer)
+{
+    furnace_hmi_controller_history_t *history = &explorer->simulated_history;
+    uint32_t run = 0U;
+    (void)memset(history, 0, sizeof(*history));
+    history->state = FURNACE_HMI_HISTORY_READ;
+    for (uint8_t log = 0U; log < FURNACE_HMI_CONTROLLER_HISTORY_LOGS; ++log) {
+        history->logs[log].state = FURNACE_HMI_HISTORY_LOG_READ;
+    }
+    for (uint16_t index = 0U; index < explorer->log_count; ++index) {
+        run += simulated_run_start(explorer->log_events[index].type) ? 1U : 0U;
+    }
+    const int32_t oldest = explorer->log_count > 0U ? explorer->log_events[explorer->log_count - 1U].minute : 0;
+    /* Newest first: an event belongs to the newest run started at or before it. */
+    for (uint16_t index = 0U; index < explorer->log_count; ++index) {
+        const furnace_hmi_operator_log_event_t *event = &explorer->log_events[index];
+        const uint32_t code = simulated_run_code(event->type);
+        const bool link = event->type == FURNACE_HMI_OPERATOR_LOG_LINK_LOST ||
+                          event->type == FURNACE_HMI_OPERATOR_LOG_LINK_RESTORED ||
+                          event->type == FURNACE_HMI_OPERATOR_LOG_DISPLAY_STARTED;
+        if ((code != 0U || link) && history->count < FURNACE_HMI_CONTROLLER_HISTORY_CAPACITY) {
+            furnace_hmi_controller_history_entry_t *entry = &history->entries[history->count++];
+            entry->boot_id = SIMULATED_BOOT;
+            entry->log_sequence = (uint32_t)(explorer->log_count - index);
+            entry->mono_ms = (uint64_t)(event->minute - oldest) * 60000U;
+            entry->wall_state = 1U;
+            entry->wall_ms = (int64_t)event->minute * 60000;
+            if (code != 0U) {
+                entry->event_id = 11U;
+                entry->category = OPERATOR_DIAG_CATEGORY_RUN;
+                entry->severity = code == 20U ? 3U : 0U; /* RUN_FAULTED is CRITICAL */
+                entry->param_count = 4U;
+                entry->param_types[0] = 6U;
+                entry->param_values[0] = code;
+                entry->param_types[1] = 2U;
+                entry->param_types[2] = 1U;
+                entry->param_values[2] = code == 1U ? run : 0U; /* RUN_STARTED: the run ID */
+                entry->param_types[3] = 6U;
+                entry->param_values[3] = run;
+            }
+            else {
+                entry->event_id = 15U;
+                entry->category = OPERATOR_DIAG_CATEGORY_COMM;
+                entry->severity = event->type == FURNACE_HMI_OPERATOR_LOG_LINK_LOST ? OPERATOR_DIAG_SEVERITY_WARNING : 0U;
+                entry->param_count = 2U;
+                entry->param_types[0] = 2U;
+                entry->param_values[0] = event->type == FURNACE_HMI_OPERATOR_LOG_LINK_LOST ? 0U : 1U;
+                entry->param_types[1] = 6U;
+            }
+            /* The controller's logs: errors to the critical log, the rest to the general log. */
+            entry->log = entry->severity >= OPERATOR_DIAG_SEVERITY_ERROR ? 1U : 2U;
+        }
+        run -= simulated_run_start(event->type) && run > 0U ? 1U : 0U;
+    }
+}
+
+/* A report as the controller gives it: the health thread is never judged (UNKNOWN), so the
+ * whole is never OK (controller interface, 20d-4); a faulted run makes it a fault. */
+static void simulate_health(furnace_hmi_operator_screens_t *explorer)
+{
+    furnace_hmi_controller_health_t *health = &explorer->simulated_health;
+    const furnace_hmi_dashboard_state_t *state = explorer->state;
+    (void)memset(health, 0, sizeof(*health));
+    health->valid = true;
+    health->current = state_is_current(state);
+    health->overall = state != NULL && state->run_state == FURNACE_HMI_RUN_STATE_FAULT ? FURNACE_HMI_HEALTH_FAULT
+                                                                                     : FURNACE_HMI_HEALTH_UNKNOWN;
+    health->uptime_ms = SIMULATED_UPTIME_MS;
+    health->boot_count = SIMULATED_BOOT;
+    health->subsystem_count = FURNACE_HMI_CONTROLLER_HEALTH_SUBSYSTEMS;
+    for (uint8_t index = 0U; index < FURNACE_HMI_CONTROLLER_HEALTH_SUBSYSTEMS; ++index) {
+        health->subsystems[index].subsystem = (uint8_t)(index + 1U);
+        health->subsystems[index].state = index == 2U ? FURNACE_HMI_HEALTH_UNKNOWN : FURNACE_HMI_HEALTH_OK;
+    }
+    if (state != NULL && state->faults_known) {
+        health->faults_active = state->fault_count;
+    }
+    health->service_valid = true;
+    health->service_s = SIMULATED_SERVICE_S;
+}
+
+/* With simulated answers, the Device log and Health show the lab's simulation. */
+static void simulate_diagnostics(furnace_hmi_operator_screens_t *explorer)
+{
+    if (!explorer->simulated_responses || !explorer->log_known) {
+        return;
+    }
+    simulate_history(explorer);
+    simulate_health(explorer);
+    explorer->history = &explorer->simulated_history;
+    explorer->health = &explorer->simulated_health;
+}
+
+/* An entry's details: when, which log and entry, the controller start, severity and raw parameters. */
+static bool controller_log_show_entry(furnace_hmi_operator_screens_t *explorer, uint16_t index)
+{
+    if (explorer->history == NULL || index >= explorer->history->count ||
+        index >= FURNACE_HMI_CONTROLLER_HISTORY_CAPACITY) {
+        return false;
+    }
+    const furnace_hmi_controller_history_entry_t *entry = &explorer->history->entries[index];
+    char severity[32];
+    char text[160];
+    char when[96];
+    char since[24];
+    char parameters[160];
+    char detail[512];
+    operator_history_text(entry, text, sizeof(text));
+    operator_history_since_start(entry->mono_ms, since, sizeof(since));
+    operator_history_parameters(entry, parameters, sizeof(parameters));
+    if (controller_entry_dated(entry)) {
+        const furnace_hmi_operator_clock_t at = civil_from_minute(controller_entry_minute(entry));
+        char date[48];
+        char time_text[24];
+        format_short_date(explorer, date, sizeof(date), &at);
+        format_clock_time(time_text, sizeof(time_text), &at, explorer->settings_candidate_24_hour);
+        (void)snprintf(when, sizeof(when), "%s %s", date, time_text);
+    }
+    else {
+        (void)snprintf(when, sizeof(when), ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_START_HEADING_FORMAT),
+                       (unsigned int)entry->boot_id);
+    }
+    (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_DETAIL_FORMAT), when,
+                   controller_log_name(entry->log), (unsigned int)entry->log_sequence,
+                   (unsigned int)entry->boot_id, since,
+                   operator_severity_text(entry->severity, severity, sizeof(severity)),
+                   (unsigned int)entry->event_id, parameters);
+    return settings_show_message(explorer, text, detail);
+}
+
+/* ---- M21-7c: the controller's health ------------------------------------------------------- */
+
+static operator_status_t health_status(uint8_t state)
+{
+    return state == FURNACE_HMI_HEALTH_OK ? OPERATOR_STATUS_OK
+         : state == FURNACE_HMI_HEALTH_WARNING ? OPERATOR_STATUS_DUE
+         : state == FURNACE_HMI_HEALTH_FAULT ? OPERATOR_STATUS_FAULT : OPERATOR_STATUS_NEUTRAL;
+}
+
+/* Unknown is never shown as healthy (DIAG-09): an unknown code reads as unknown. */
+static const char *health_state_text(uint8_t state)
+{
+    static const furnace_hmi_ui_string_id_t states[] = {
+        FURNACE_HMI_UI_STRING_HEALTH_STATE_0, FURNACE_HMI_UI_STRING_HEALTH_STATE_1,
+        FURNACE_HMI_UI_STRING_HEALTH_STATE_2, FURNACE_HMI_UI_STRING_HEALTH_STATE_3,
+    };
+    return ui_string(states[state < sizeof(states) / sizeof(states[0]) ? state : 0U]);
+}
+
+/* One subsystem: its name and state on a line, its detail below; the edge takes its state. */
+static bool health_add_subsystem(lv_obj_t *parent, const furnace_hmi_controller_subsystem_t *subsystem, bool stale)
+{
+    char name_buffer[48];
+    char detail[64];
+    const operator_status_t status = stale ? OPERATOR_STATUS_NEUTRAL : health_status(subsystem->state);
+    lv_obj_t *row = create_panel(parent, false);
+    if (row == NULL) {
+        return false;
+    }
+    operator_theme_edge(row, status_tone(status), OPERATOR_EDGE_LEFT);
+    lv_obj_set_size(row, lv_pct(49), 40);
+    lv_obj_set_style_pad_hor(row, 10, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(row, 1, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(row, 0, LV_PART_MAIN);
+    lv_obj_set_layout(row, LV_LAYOUT_GRID);
+    static const int32_t columns[] = { LV_GRID_FR(1), LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST };
+    static const int32_t rows[] = { LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST };
+    lv_obj_set_grid_dsc_array(row, columns, rows);
+    operator_subsystem_detail(subsystem, detail, sizeof(detail));
+    lv_obj_t *name = create_label(row, operator_subsystem_name(subsystem->subsystem, name_buffer, sizeof(name_buffer)),
+                                  &furnace_hmi_font_semibold_14, OPERATOR_TEXT);
+    lv_obj_t *state = create_label(row, health_state_text(subsystem->state), &furnace_hmi_font_semibold_14,
+                                   status == OPERATOR_STATUS_NEUTRAL ? OPERATOR_MUTED : status_color(status));
+    lv_obj_t *caption = create_label(row, detail, &furnace_hmi_font_regular_13, OPERATOR_MUTED);
+    if (name == NULL || state == NULL || caption == NULL) {
+        return false;
+    }
+    lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+    lv_label_set_long_mode(caption, LV_LABEL_LONG_DOT);
+    lv_obj_set_grid_cell(name, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_CENTER, 0, 1);
+    lv_obj_set_grid_cell(state, LV_GRID_ALIGN_END, 1, 1, LV_GRID_ALIGN_CENTER, 0, 1);
+    lv_obj_set_grid_cell(caption, LV_GRID_ALIGN_STRETCH, 0, 2, LV_GRID_ALIGN_CENTER, 1, 1);
+    return true;
+}
+
+static bool device_build_health(furnace_hmi_operator_screens_t *explorer, lv_obj_t *body)
+{
+    const furnace_hmi_controller_health_t *health = explorer->health;
+    char overall[64];
+    if (health == NULL || !health->valid) {
+        return device_add_toolbar(explorer, body, ui_string(FURNACE_HMI_UI_STRING_HEALTH_TITLE), false, false, 0U) &&
+               device_add_empty(body, ui_string(FURNACE_HMI_UI_STRING_HEALTH_NOT_REPORTED));
+    }
+    (void)snprintf(overall, sizeof(overall), "%s: %s", ui_string(FURNACE_HMI_UI_STRING_HEALTH_TITLE),
+                   health_state_text(health->overall));
+    if (!device_add_toolbar(explorer, body, overall, false, false, 0U)) {
+        return false;
+    }
+    const bool stale = !health->current ||
+        (explorer->state != NULL && explorer->state->availability != FURNACE_HMI_STATE_AVAILABILITY_CURRENT);
+    if (stale && create_label(body, ui_string(FURNACE_HMI_UI_STRING_HEALTH_STALE), &furnace_hmi_font_regular_13,
+                              OPERATOR_MUTED) == NULL) {
+        return false;
+    }
+
+    char uptime[32];
+    char starts[16];
+    char reset[48];
+    char faults[32];
+    char faults_detail[64];
+    char faults_line[128];
+    char service[32];
+    const uint64_t minutes = health->uptime_ms / 60000U;
+    (void)snprintf(uptime, sizeof(uptime), ui_string(FURNACE_HMI_UI_STRING_HEALTH_UPTIME_FORMAT),
+                   (unsigned int)(minutes / 60U > UINT32_MAX ? UINT32_MAX : minutes / 60U),
+                   (unsigned int)(minutes % 60U));
+    (void)snprintf(starts, sizeof(starts), "%u", (unsigned int)health->boot_count);
+    if (health->reset_cause_known) {
+        (void)snprintf(reset, sizeof(reset), ui_string(FURNACE_HMI_UI_STRING_HEALTH_RESET_FORMAT),
+                       (unsigned int)health->reset_cause);
+    }
+    else {
+        (void)snprintf(reset, sizeof(reset), "%s", ui_string(FURNACE_HMI_UI_STRING_HEALTH_RESET_UNKNOWN));
+    }
+    (void)snprintf(faults, sizeof(faults), ui_string(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_FORMAT),
+                   (unsigned int)health->faults_active);
+    (void)snprintf(faults_detail, sizeof(faults_detail), ui_string(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_DETAIL_FORMAT),
+                   (unsigned int)health->faults_latched, (unsigned int)health->faults_unacknowledged);
+    if (health->service_valid) {
+        (void)snprintf(service, sizeof(service), ui_string(FURNACE_HMI_UI_STRING_HEALTH_SERVICE_FORMAT),
+                       (unsigned int)(health->service_s / 3600U));
+    }
+    else {
+        (void)snprintf(service, sizeof(service), "%s", ui_string(FURNACE_HMI_UI_STRING_HEALTH_SERVICE_UNKNOWN));
+    }
+    /* The fault counts on one line (the entries themselves are in the Faults dialog). */
+    (void)snprintf(faults_line, sizeof(faults_line), ui_string(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_LINE_FORMAT),
+                   ui_string(FURNACE_HMI_UI_STRING_HEALTH_FAULTS), faults, faults_detail);
+    if (create_label(body, faults_line, &furnace_hmi_font_regular_14,
+                     health->faults_active > 0U ? status_color(OPERATOR_STATUS_FAULT) : OPERATOR_TEXT) == NULL) {
+        return false;
+    }
+    lv_obj_t *grid = create_card_grid(body, 4U, 1U);
+    if (grid == NULL) {
+        return false;
+    }
+    lv_obj_set_flex_grow(grid, 0);
+    lv_obj_set_height(grid, 62);
+    const operator_card_t facts[] = {
+        { .label = ui_string(FURNACE_HMI_UI_STRING_HEALTH_UPTIME), .value = uptime, .edge = OPERATOR_TONE_FLAT,
+          .column = 0U, .value_font = &furnace_hmi_font_semibold_18 },
+        { .label = ui_string(FURNACE_HMI_UI_STRING_HEALTH_STARTS), .value = starts, .edge = OPERATOR_TONE_FLAT,
+          .column = 1U, .value_font = &furnace_hmi_font_semibold_18 },
+        { .label = ui_string(FURNACE_HMI_UI_STRING_HEALTH_RESET), .value = reset, .edge = OPERATOR_TONE_FLAT,
+          .column = 2U, .value_font = &furnace_hmi_font_semibold_18 },
+        { .label = ui_string(FURNACE_HMI_UI_STRING_HEALTH_SERVICE), .value = service, .edge = OPERATOR_TONE_FLAT,
+          .column = 3U, .value_font = &furnace_hmi_font_semibold_18 },
+    };
+    for (size_t index = 0U; index < sizeof(facts) / sizeof(facts[0]); ++index) {
+        if (create_card(explorer, grid, &facts[index]) == NULL) {
+            return false;
+        }
+    }
+    lv_obj_t *subsystems = create_transparent_container(body);
+    if (subsystems == NULL) {
+        return false;
+    }
+    lv_obj_set_width(subsystems, lv_pct(100));
+    lv_obj_set_height(subsystems, 0);
+    lv_obj_set_flex_grow(subsystems, 1);
+    lv_obj_set_flex_flow(subsystems, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(subsystems, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(subsystems, 4, LV_PART_MAIN);
+    for (uint8_t index = 0U; index < health->subsystem_count && index < FURNACE_HMI_CONTROLLER_HEALTH_SUBSYSTEMS;
+         ++index) {
+        if (!health_add_subsystem(subsystems, &health->subsystems[index], stale)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 
@@ -7176,6 +7640,15 @@ static bool device_build(
                      &furnace_hmi_font_regular_14, OPERATOR_MUTED) == NULL) {
         return false;
     }
+    /* M21-7c: the controller's log and health, each saying itself what it lacks. */
+    simulate_diagnostics(explorer);
+    if (explorer->history != NULL && explorer->device_tab == OPERATOR_DEVICE_TAB_COMPONENTS) {
+        return device_build_controller_log(explorer, body);
+    }
+    if (explorer->device_tab == OPERATOR_DEVICE_TAB_HEALTH) {
+        return explorer->health != NULL ? device_build_health(explorer, body)
+                                        : device_build_unavailable(explorer, body);
+    }
     /* Without the controller's catalogue and log there is nothing to verify: no assumed records. */
     if ((explorer->state != NULL &&
          explorer->state->availability == FURNACE_HMI_STATE_AVAILABILITY_UNAVAILABLE) ||
@@ -7185,8 +7658,8 @@ static bool device_build(
     switch (explorer->device_tab) {
     case OPERATOR_DEVICE_TAB_OVERVIEW:
         return device_build_overview(explorer, body);
-   case OPERATOR_DEVICE_TAB_COMPONENTS:
-        return device_build_log(explorer, body);
+    case OPERATOR_DEVICE_TAB_COMPONENTS:
+        return device_build_controller_log(explorer, body);
     case OPERATOR_DEVICE_TAB_NOTIFICATIONS:
         return device_build_maintenance(explorer, body);
     case OPERATOR_DEVICE_TAB_HISTORY:
@@ -9602,27 +10075,6 @@ static lv_obj_t *panel_actions(lv_obj_t *dialog)
     return actions;
 }
 
-/* A controller fault's name: the catalogue's text for its ID, or its number. */
-static const char *fault_title(uint8_t fault_id, char *buffer, size_t capacity)
-{
-    static const furnace_hmi_ui_string_id_t titles[] = {
-        FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1,  FURNACE_HMI_UI_STRING_UI_LAB_FAULT_2,
-        FURNACE_HMI_UI_STRING_UI_LAB_FAULT_3,  FURNACE_HMI_UI_STRING_UI_LAB_FAULT_4,
-        FURNACE_HMI_UI_STRING_UI_LAB_FAULT_5,  FURNACE_HMI_UI_STRING_UI_LAB_FAULT_6,
-        FURNACE_HMI_UI_STRING_UI_LAB_FAULT_7,  FURNACE_HMI_UI_STRING_UI_LAB_FAULT_8,
-        FURNACE_HMI_UI_STRING_UI_LAB_FAULT_9,  FURNACE_HMI_UI_STRING_UI_LAB_FAULT_10,
-        FURNACE_HMI_UI_STRING_UI_LAB_FAULT_11, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_12,
-        FURNACE_HMI_UI_STRING_UI_LAB_FAULT_13, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_14,
-        FURNACE_HMI_UI_STRING_UI_LAB_FAULT_15, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_16,
-        FURNACE_HMI_UI_STRING_UI_LAB_FAULT_17, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_18,
-    };
-    if (fault_id >= 1U && fault_id <= sizeof(titles) / sizeof(titles[0])) {
-        return ui_string(titles[fault_id - 1U]);
-    }
-    (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_TITLE_FORMAT), (unsigned int)fault_id);
-    return buffer;
-}
-
 /* What the Faults dialog shows; it is rebuilt only when this changes, so a tap is never lost. */
 static uint32_t faults_signature(const furnace_hmi_operator_screens_t *explorer)
 {
@@ -9682,7 +10134,7 @@ static bool add_fault_row(furnace_hmi_operator_screens_t *explorer, lv_obj_t *li
                    f->latched ? separator : "", f->latched ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_LATCHED) : "",
                    f->acknowledged ? separator : "",
                    f->acknowledged ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGED) : "");
-    if (panel_text(texts, fault_title(f->fault_id, name, sizeof(name)), &furnace_hmi_font_semibold_15,
+    if (panel_text(texts, operator_fault_title(f->fault_id, name, sizeof(name)), &furnace_hmi_font_semibold_15,
                    f->active ? OPERATOR_THEME_AMBER_TEXT : OPERATOR_TEXT) == NULL ||
         panel_text(texts, status, &furnace_hmi_font_regular_13, OPERATOR_MUTED) == NULL) {
         return false;
@@ -9812,7 +10264,7 @@ static bool open_decision(furnace_hmi_operator_screens_t *explorer)
     }
     else {
         (void)snprintf(title, sizeof(title), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE_FORMAT),
-                       fault_title(explorer->decision_shown_fault, name, sizeof(name)));
+                       operator_fault_title(explorer->decision_shown_fault, name, sizeof(name)));
     }
     format_decision_time(explorer, left, sizeof(left));
     lv_obj_t *time_label = NULL;
@@ -10282,6 +10734,14 @@ static bool action_connected(operator_action_t action)
     }
 }
 
+/* On the Device log with the controller's history: the host reads it (M21-7c). */
+static void ask_history_on_log(furnace_hmi_operator_screens_t *explorer)
+{
+    if (explorer->history != NULL && explorer->device_tab == OPERATOR_DEVICE_TAB_COMPONENTS) {
+        explorer->history_read_wanted = true;
+    }
+}
+
 static void apply_action(
     furnace_hmi_operator_screens_t *explorer,
     operator_action_t action,
@@ -10497,6 +10957,7 @@ static void apply_action(
             (void)settings_open_unsaved_dialog(explorer);
         }
         else {
+            ask_history_on_log(explorer);
             (void)furnace_hmi_operator_screens_navigate(explorer, FURNACE_HMI_OPERATOR_PAGE_DEVICE);
         }
         break;
@@ -10506,6 +10967,7 @@ static void apply_action(
             explorer->device_filter = OPERATOR_DEVICE_FILTER_ALL;
             explorer->device_page = 0U;
             explorer->device_component_selected = false;
+            ask_history_on_log(explorer);
             (void)rebuild_page(explorer);
         }
         break;
@@ -10586,25 +11048,6 @@ static void apply_action(
     case OPERATOR_ACTION_DEVICE_HISTORY:
         (void)device_show_history(explorer, (uint8_t)value);
         break;
-    case OPERATOR_ACTION_DEVICE_LOG_EVENT:
-        if (value >= 0 && value < (int)explorer->log_count) {
-            const furnace_hmi_operator_log_event_t *event = &explorer->log_events[value];
-            const furnace_hmi_operator_clock_t at = civil_from_minute(event->minute);
-            char text[2 * FURNACE_HMI_OPERATOR_DEVICE_TEXT_CAPACITY];
-            char date[48];
-            char time_text[24];
-            char detail[160];
-            log_text(explorer, event, text, sizeof(text));
-            format_short_date(explorer, date, sizeof(date), &at);
-            log_time_text(explorer, event->minute, time_text, sizeof(time_text));
-            (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_EVENT_DETAIL_FORMAT),
-                           date, time_text,
-                           ui_string(log_types[event->type % FURNACE_HMI_OPERATOR_LOG_TYPE_COUNT].display
-                                         ? FURNACE_HMI_UI_STRING_UI_LAB_SOURCE_HMI
-                                         : FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_CONTROL_CPU));
-            (void)settings_show_message(explorer, text, detail);
-        }
-        break;
     case OPERATOR_ACTION_LOG_FILTER:
         if (value >= 0 && value < OPERATOR_LOG_FILTER_COUNT) {
             explorer->log_filter = (uint8_t)value;
@@ -10617,7 +11060,16 @@ static void apply_action(
         explorer->log_filter = OPERATOR_LOG_ALARMS;
         explorer->device_page = 0U;
         explorer->device_component_selected = false;
+        ask_history_on_log(explorer);
         (void)rebuild_page(explorer);
+        break;
+    case OPERATOR_ACTION_CONTROLLER_LOG_ENTRY:
+        if (value >= 0 && value <= UINT16_MAX) {
+            (void)controller_log_show_entry(explorer, (uint16_t)value);
+        }
+        break;
+    case OPERATOR_ACTION_HISTORY_REFRESH:
+        ask_history_on_log(explorer);
         break;
     case OPERATOR_ACTION_SETTINGS:
         (void)furnace_hmi_operator_screens_navigate(explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS);
@@ -12053,6 +12505,32 @@ bool furnace_hmi_operator_screens_set_library(furnace_hmi_operator_screens_t *ex
     default:
         return true;
     }
+}
+
+bool furnace_hmi_operator_screens_set_diagnostics(furnace_hmi_operator_screens_t *explorer,
+                                                  const furnace_hmi_controller_health_t *health,
+                                                  const furnace_hmi_controller_history_t *history)
+{
+    if (explorer == NULL || explorer->root == NULL || health == NULL || history == NULL) {
+        return false;
+    }
+    explorer->health = health;
+    explorer->history = history;
+    /* Only what shows them is drawn again; an entry's details stay open. */
+    if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_DEVICE &&
+        (explorer->device_tab == OPERATOR_DEVICE_TAB_COMPONENTS || explorer->device_tab == OPERATOR_DEVICE_TAB_HEALTH)) {
+        return rebuild_page_keeping_modal(explorer);
+    }
+    return true;
+}
+
+bool furnace_hmi_operator_screens_take_history_read(furnace_hmi_operator_screens_t *explorer)
+{
+    if (explorer == NULL || !explorer->history_read_wanted) {
+        return false;
+    }
+    explorer->history_read_wanted = false;
+    return true;
 }
 
 void furnace_hmi_operator_screens_destroy(furnace_hmi_operator_screens_t *explorer)

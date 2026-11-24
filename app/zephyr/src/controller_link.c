@@ -3,10 +3,10 @@
 /*
  * The controller link on Zephyr (Phase 21 M21-3). The UART's receive interrupt
  * fills a ring (M21-7b); a thread of its own drains it into the portable client,
- * polls the client and publishes the observation, and since M21-7a
- * the library copy, to single-slot mailboxes: the latest value, never a queue
- * that could fall behind. Commands come from the GUI context through a two-slot
- * mailbox (M21-5). Only the GUI context reads the mailboxes, without waiting,
+ * polls the client and publishes the observation, since M21-7a the library
+ * copy and since M21-7c the health and history, to single-slot mailboxes: the
+ * latest value, never a queue that could fall behind. Commands come from the
+ * GUI context through a two-slot mailbox (M21-5); a history read through a flag. Only the GUI context reads the mailboxes, without waiting,
  * and only it touches LVGL (ADR-0005). Nothing here waits on the controller.
  */
 
@@ -40,6 +40,12 @@ static uint32_t mailbox_sequence;
 /* The library copy (M21-7a): published only when it changes, under the same lock. */
 static furnace_hmi_controller_library_t library_mailbox;
 static uint32_t library_sequence;
+/* The health and history (M21-7c): published when they change, under the same lock. */
+static furnace_hmi_controller_health_t health_mailbox;
+static furnace_hmi_controller_history_t history_mailbox;
+static uint32_t diagnostics_sequence;
+/* A history read the GUI asked for, taken by the link thread. */
+static atomic_t history_wanted;
 
 /* Commands from the GUI context to the link thread: one slot each for ordinary and Stop. */
 struct command_slot {
@@ -145,6 +151,15 @@ static void publish_library(const furnace_hmi_controller_library_t *library)
     (void)k_mutex_unlock(&mailbox_lock);
 }
 
+static void publish_diagnostics(void)
+{
+    (void)k_mutex_lock(&mailbox_lock, K_FOREVER);
+    health_mailbox = *furnace_hmi_controller_client_health(&client);
+    history_mailbox = *furnace_hmi_controller_client_history(&client);
+    diagnostics_sequence++;
+    (void)k_mutex_unlock(&mailbox_lock);
+}
+
 /* Submit what the GUI context handed over; the client reports each outcome. */
 static void take_commands(void)
 {
@@ -179,17 +194,22 @@ static void take_commands(void)
 
 /*
  * One line, key=value, for people and for tools/controller_link_demo.py. library:
- * state/revision/count/controller revision; proposal: state/transaction.
+ * state/revision/count/controller revision; proposal: state/transaction; health:
+ * valid/current/overall; history: state/count/reading/the three logs' states.
  */
 static void trace(const furnace_hmi_controller_observation_t *o,
                   const furnace_hmi_controller_library_t *l)
 {
+    const furnace_hmi_controller_health_t *h = furnace_hmi_controller_client_health(&client);
+    const furnace_hmi_controller_history_t *y = furnace_hmi_controller_client_history(&client);
+
     printk("hmi-link: link=%s availability=%s client=%08x session=%02x%02x%02x%02x "
            "changes=%u fw=%u boot=%u proto=%u.%u hello=%u status=%u temp=%d validity=%u "
            "age=%u measurement=%u qualified=%u run_state=%u run=%u inhibited=%u latched=%u "
            "unack=%u faults=%u outdated=%u fresh=%u ready=%u requests=%u request_state=%u "
            "gaps=%u regressions=%u incomplete=%u caps_rejected=%u dropped=%u "
-           "command=%u/%u/%u/%u stop=%u/%u/%u library=%u/%u/%u/%u proposal=%u/%u rx_lost=%u\n",
+           "command=%u/%u/%u/%u stop=%u/%u/%u library=%u/%u/%u/%u proposal=%u/%u rx_lost=%u "
+           "health=%u/%u/%u history=%u/%u/%u/%u/%u/%u\n",
            link_names[o->link], availability_names[o->availability],
            (unsigned int)o->client_session_id, o->session_id[0], o->session_id[1],
            o->session_id[2], o->session_id[3], (unsigned int)o->controller_session_changes,
@@ -208,7 +228,8 @@ static void trace(const furnace_hmi_controller_observation_t *o,
            o->stop.state, o->stop.reason, o->stop.unresolved_cause, l->state,
            (unsigned int)l->library_revision, l->count, (unsigned int)o->library_revision,
            o->start_proposal.state, (unsigned int)o->start_proposal.transaction_id,
-           (unsigned int)rx_lost);
+           (unsigned int)rx_lost, h->valid ? 1U : 0U, h->current ? 1U : 0U, h->overall, y->state,
+           y->count, y->reading ? 1U : 0U, y->logs[0].state, y->logs[1].state, y->logs[2].state);
 }
 
 static void link_main(void *p1, void *p2, void *p3)
@@ -220,6 +241,7 @@ static void link_main(void *p1, void *p2, void *p3)
     };
     uint32_t published_generation;
     uint32_t published_library;
+    uint32_t published_diagnostics;
     uint32_t last_publish;
     uint32_t last_trace;
     uint32_t rx_paused_at = 0U;
@@ -232,6 +254,7 @@ static void link_main(void *p1, void *p2, void *p3)
     furnace_hmi_controller_client_init(&client, &config, k_uptime_get_32());
     published_generation = furnace_hmi_controller_client_generation(&client) - 1U;
     published_library = furnace_hmi_controller_client_library_generation(&client) - 1U;
+    published_diagnostics = furnace_hmi_controller_client_diagnostics_generation(&client) - 1U;
     last_publish = k_uptime_get_32();
     last_trace = last_publish;
 
@@ -245,6 +268,9 @@ static void link_main(void *p1, void *p2, void *p3)
         } else if (!rx_paused) {
             rx_paused_at = now;
         }
+        if (atomic_cas(&history_wanted, 1, 0)) {
+            (void)furnace_hmi_controller_client_read_history(&client);
+        }
         furnace_hmi_controller_client_poll(&client, now);
         take_commands();
         o = furnace_hmi_controller_client_observation(&client);
@@ -257,6 +283,10 @@ static void link_main(void *p1, void *p2, void *p3)
         if (furnace_hmi_controller_client_library_generation(&client) != published_library) {
             publish_library(furnace_hmi_controller_client_library(&client));
             published_library = furnace_hmi_controller_client_library_generation(&client);
+        }
+        if (furnace_hmi_controller_client_diagnostics_generation(&client) != published_diagnostics) {
+            publish_diagnostics();
+            published_diagnostics = furnace_hmi_controller_client_diagnostics_generation(&client);
         }
         if (o->link != traced_link || o->availability != traced_availability ||
             (uint32_t)(now - last_trace) >= TRACE_INTERVAL_MS) {
@@ -315,6 +345,30 @@ bool furnace_hmi_controller_link_take_library(furnace_hmi_controller_library_t *
     }
     (void)k_mutex_unlock(&mailbox_lock);
     return taken;
+}
+
+bool furnace_hmi_controller_link_take_diagnostics(furnace_hmi_controller_health_t *health,
+                                                  furnace_hmi_controller_history_t *history,
+                                                  uint32_t *seen)
+{
+    bool taken = false;
+
+    if (k_mutex_lock(&mailbox_lock, K_NO_WAIT) != 0) {
+        return false;
+    }
+    if (diagnostics_sequence != *seen) {
+        *health = health_mailbox;
+        *history = history_mailbox;
+        *seen = diagnostics_sequence;
+        taken = true;
+    }
+    (void)k_mutex_unlock(&mailbox_lock);
+    return taken;
+}
+
+void furnace_hmi_controller_link_read_history(void)
+{
+    (void)atomic_set(&history_wanted, 1);
 }
 
 uint32_t furnace_hmi_controller_link_submit(const furnace_hmi_command_t *command)

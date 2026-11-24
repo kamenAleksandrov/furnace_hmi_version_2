@@ -10,6 +10,7 @@
 #include <furnace/wire_messages.h>
 #include <furnace_hmi/byte_port.h>
 #include <furnace_hmi/controller_command.h>
+#include <furnace_hmi/controller_diagnostics.h>
 #include <furnace_hmi/controller_library.h>
 #include <furnace_hmi/controller_observation.h>
 
@@ -139,6 +140,9 @@ typedef struct {
     uint32_t library_sent_ms;
     /** A change's result came: list again once, also at the same revision (review M3). */
     bool library_relist;
+
+    /** The controller's health and event history (M21-7c). */
+    furnace_hmi_controller_diagnostics_t diagnostics;
 } furnace_hmi_controller_client_t;
 
 /** Start a client: a new client session, no controller known, HELLO due at once. */
@@ -194,6 +198,28 @@ const furnace_hmi_controller_library_t *furnace_hmi_controller_client_library(
 
 /** Changes whenever the library copy changes. */
 uint32_t furnace_hmi_controller_client_library_generation(
+    const furnace_hmi_controller_client_t *client
+);
+
+/**
+ * Read the controller's event history (M21-7c): the newest entries of each log,
+ * merged when the read ends. A read in progress goes on. Returns false when the
+ * link is not current: the read then starts once it is.
+ */
+bool furnace_hmi_controller_client_read_history(furnace_hmi_controller_client_t *client);
+
+/** The controller's newest health report (M21-7c); valid until the next poll. */
+const furnace_hmi_controller_health_t *furnace_hmi_controller_client_health(
+    const furnace_hmi_controller_client_t *client
+);
+
+/** The newest complete history read (M21-7c); valid until the next poll. */
+const furnace_hmi_controller_history_t *furnace_hmi_controller_client_history(
+    const furnace_hmi_controller_client_t *client
+);
+
+/** Changes whenever the health or the history changes. */
+uint32_t furnace_hmi_controller_client_diagnostics_generation(
     const furnace_hmi_controller_client_t *client
 );
 
