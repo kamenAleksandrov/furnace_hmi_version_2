@@ -127,10 +127,14 @@ withDemoPage({profile: 'p1-browser-profile-durable', debugPort: 9241}, async ({e
     // Program library: three epoxy programs, or none; programs the operator creates stay listed either way.
     assert.strictEqual(await evaluate('visiblePrograms().map(p => p.name).join("|")'), 'Epoxy system 1|Epoxy system 2|Epoxy system 3');
     assert.strictEqual(await evaluate('[...document.querySelectorAll("#demo-library button")].map(b => b.textContent).join("|")'), '3 programs|No programs');
-    // A new program: one stage, a name, Save. Its details open; it is listed, starts and runs like a library
-    // program, survives the library being switched off, and Delete removes it from the library and Recent programs.
+    // A new program: one stage, a name, Save. As on the screens (M21-8), Programs is shown with the
+    // controller's "Program saved"; it is listed, starts and runs like a library program, survives the
+    // library being switched off, and Delete removes it from the library and Recent programs.
     await evaluate('mainPage="programs";programRoute="library";render();openProgramEditor(-1);programEditor.name="Customer cure A";addProgramStage();saveStageEditor();saveProgramEditor()');
-    await waitFor('!controller.pending && mainPage === "programs" && programRoute === "detail"');
+    await waitFor('!controller.pending && mainPage === "programs" && programRoute === "library" && document.getElementById("message").open');
+    assert.strictEqual(await evaluate('document.getElementById("message-title").textContent'), 'Program saved');
+    await evaluate('document.getElementById("message").close();openProgram(selectedProgram)');
+    await waitFor('mainPage === "programs" && programRoute === "detail"');
     assert.strictEqual(await evaluate('(()=>{const p=programCatalogue[selectedProgram];return p.name==="Customer cure A"&&!p.library&&p.count===1&&p.stages[0].target===120&&document.querySelector(".program-toolbar h2").textContent==="Customer cure A"})()'), true);
     const created = await evaluate('selectedProgram');
     // A one-stage program reads "1 stage" on its card and in its Start dialog (M21-7d, as the LVGL screens).
