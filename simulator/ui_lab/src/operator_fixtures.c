@@ -199,11 +199,13 @@ void furnace_hmi_operator_fixture_content(
     content->clock_known = true;
     /* The simulated controller's limits and planning reference (M21-7d): the furnace firmware's
      * fixture profile A (tests/common/profile_fixture.c) and its default reference, 23.0 C within
-     * 5.0 to 40.0 C. Test fixtures, not product values (T-08). */
+     * 5.0 to 40.0 C. Test fixtures, not product values (T-08). The advisory duration of 12 h is
+     * the labs' own (M21-7d-2; the firmware's link_pty has none): a longer program asks for the
+     * acknowledgement at a save and a Start, as a controller with one does. */
     content->program_limits = (furnace_hmi_operator_program_limits_t){
         .known = true, .max_stages = 18U, .hold_allowed = true, .target_min_c = 20, .target_max_c = 180,
         .rate_min_tenths = 1, .rate_max_tenths = 30, .curing_max_minutes = 48 * 60,
-        .name_max_code_points = 31U,
+        .recommended_curing_minutes = 12 * 60, .name_max_code_points = 31U,
     };
     content->planning_reference = (furnace_hmi_operator_planning_reference_t){
         .known = true, .decicelsius = 230, .min_decicelsius = 50, .max_decicelsius = 400,

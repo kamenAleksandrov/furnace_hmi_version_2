@@ -389,6 +389,14 @@ ZTEST(furnace_hmi_operator, test_the_controller_limits_for_the_screens)
                      limits.rate_max_tenths == 25 && limits.curing_max_minutes == 1440,
                  "targets rounded inward to whole degrees; rates, stages and kinds as reported");
     zassert_false(reference.known, "no reference before SETTINGS");
+    zassert_equal(limits.recommended_curing_minutes, 0, "no advisory duration reported");
+    o.recommended_curing_minutes = 600U;
+    furnace_hmi_operator_limits_from_controller(&o, &limits, &reference);
+    zassert_equal(limits.recommended_curing_minutes, 600, "the advisory duration as reported");
+    o.recommended_curing_minutes = 1441U;
+    furnace_hmi_operator_limits_from_controller(&o, &limits, &reference);
+    zassert_true(limits.known && limits.recommended_curing_minutes == 0,
+                 "an advisory above the maximum is the controller's invalid configuration: none assumed");
 
     o.settings_valid = true;
     o.planning_reference_decicelsius = 235;

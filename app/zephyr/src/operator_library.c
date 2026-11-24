@@ -59,6 +59,10 @@ void furnace_hmi_operator_limits_from_controller(const furnace_hmi_controller_ob
     limits->rate_max_tenths = o->rate_max_decicelsius_per_min;
     limits->curing_max_minutes = o->curing_max_minutes > (uint32_t)INT32_MAX ? INT32_MAX
                                                                              : (int32_t)o->curing_max_minutes;
+    /* Above the maximum it is the controller's invalid configuration: none is assumed. */
+    limits->recommended_curing_minutes = o->recommended_curing_minutes > o->curing_max_minutes ? 0
+        : o->recommended_curing_minutes > (uint32_t)INT32_MAX ? INT32_MAX
+                                                             : (int32_t)o->recommended_curing_minutes;
     limits->name_max_code_points = o->name_max_code_points;
     reference->known = o->settings_valid;
     reference->decicelsius = o->planning_reference_decicelsius;
