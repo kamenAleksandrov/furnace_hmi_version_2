@@ -172,3 +172,18 @@ unknown clock's placeholder, the year limits and an out-of-range answer
 (`furnace_hmi_operator_clock_check`), and the range's edges against the controller
 (`test_g_controller_clock`).
 This does not establish a hardware clock (furnace HW-BLOCK-013) or a time zone other than UTC.
+
+## Operator workflow evidence - 2026-11-24 (Phase 21 M21-8, draft)
+
+**Fact:** furnace WI-H07's host workflows through the HMI's own screens against the controller:
+`tests/zephyr/operator_workflows` taps the shared operator screens, runs the application's GUI pass
+(`app/zephyr/src/gui_host.c`) and controller link, and checks both what the controller reports and
+what the screens show, against firmware 7e-1's `link_pty` (`tools/controller_workflow_check.py
+--suite operator`): program edit and save (a 31-character name, Heating and Hold, revision 2,
+delete), a hot start with its confirmation (an explicit Start only, furnace START-10), Pause,
+Resume, Stop with the final cooling, contained navigation, the quality decision with Continue, a
+sensor fault acknowledged and recovered, Manual for the controller's longest session, link loss and
+reconnection during a session, a protective trip that is not offered for recovery, and the Device
+log. `tools/hmi_web_demo_workflows.cjs` runs the same operator steps in the web demo against its
+simulated controller, for parity only. This does not establish recurrence summaries (furnace
+WI-F03), an operator end of the final cooling, the production link, or anything on hardware.
