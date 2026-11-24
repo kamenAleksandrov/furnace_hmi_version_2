@@ -773,3 +773,61 @@ ZTEST(controller_workflows, test_f_limits_and_planning_reference)
 
     zassert_equal(change_reference(before).state, FURNACE_HMI_COMMAND_ACCEPTED, "restored");
 }
+
+/* M21-7e: a time the controller accepts (2026-11-23T12:00:00Z). */
+#define WORKFLOW_CLOCK_MS 1795435200000LL
+
+static bool clock_reported(void)
+{
+    return obs.clock_valid;
+}
+
+static bool clock_shows_the_time_set(void)
+{
+    return obs.clock_valid && obs.wall_state != FURNACE_HMI_WALL_UNKNOWN && obs.wall_ms >= WORKFLOW_CLOCK_MS;
+}
+
+static bool clock_has_advanced(void)
+{
+    return obs.clock_valid && obs.wall_ms >= WORKFLOW_CLOCK_MS + 1000;
+}
+
+static furnace_hmi_command_outcome_t set_clock(int64_t wall_ms)
+{
+    return run((furnace_hmi_command_t){.kind = FURNACE_HMI_COMMAND_CLOCK_SET, .clock_wall_ms = wall_ms});
+}
+
+/*
+ * The controller's clock (M21-7e): read from STATUS; a time outside the controller's range is
+ * refused and changes nothing; a time set is the clock in effect, shown by later statuses and
+ * advancing with the controller's time.
+ */
+ZTEST(controller_workflows, test_g_controller_clock)
+{
+    zassert_true(wait_until(not_executing), "execution still active");
+    zassert_true(wait_until(clock_reported), "no clock in STATUS");
+    printk("workflow: clock state %u at %lld\n", obs.wall_state, (long long)obs.wall_ms);
+    const uint8_t before = obs.wall_state;
+
+    furnace_hmi_command_outcome_t o = set_clock(0);
+    zassert_equal(o.state, FURNACE_HMI_COMMAND_REJECTED);
+    zassert_equal(o.reason, FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE, "OUT_OF_RANGE expected: %u", o.reason);
+    zassert_equal(o.clock_state, before, "a refusal changes nothing");
+
+    /* The range's edges, both inclusive (review): just outside is refused, the edges are set. */
+    o = set_clock(FURNACE_HMI_CLOCK_MIN_MS - 1);
+    zassert_equal(o.reason, FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE, "before 2025: %u", o.reason);
+    o = set_clock(FURNACE_HMI_CLOCK_MAX_MS + 1);
+    zassert_equal(o.reason, FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE, "after 2099: %u", o.reason);
+    zassert_equal(set_clock(FURNACE_HMI_CLOCK_MAX_MS).state, FURNACE_HMI_COMMAND_ACCEPTED, "the last time");
+    zassert_equal(set_clock(FURNACE_HMI_CLOCK_MIN_MS).state, FURNACE_HMI_COMMAND_ACCEPTED, "the first time");
+
+    o = set_clock(WORKFLOW_CLOCK_MS);
+    zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "APPLIED expected: reason %u", o.reason);
+    zassert_true(o.clock_state == FURNACE_HMI_WALL_VALID || o.clock_state == FURNACE_HMI_WALL_ADJUSTED,
+                 "the clock in effect is set");
+    zassert_true(o.clock_wall_ms >= WORKFLOW_CLOCK_MS && o.clock_wall_ms < WORKFLOW_CLOCK_MS + 2000,
+                 "the clock in effect is the time set");
+    zassert_true(wait_until(clock_shows_the_time_set), "STATUS does not show the time set");
+    zassert_true(wait_until(clock_has_advanced), "the controller's clock does not advance");
+}

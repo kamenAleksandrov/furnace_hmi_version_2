@@ -498,6 +498,59 @@ diagnostics can already hold a wall clock (`furnace_diag_set_wall_clock`, the `W
 
 The design takes these answers. M21-7e follows M21-7d-2 and starts with the furnace plan.
 
+**Firmware (2026-11-23):** the plan is furnace `docs/architecture/wall-clock-plan.md` (draft PR
+#67; owner O1 to O3 approved: amend wire 0.16 in place, refuse a set during execution, accept
+2025 to 2099 UTC). Slice 7e-1 is furnace draft PR #68, stacked on #66: `CLOCK_SET` and
+`CLOCK_RESULT`, the clock at the end of `STATUS`, unknown after every start, audited.
+
+**M21-7e-2 done (2026-11-24, draft), stacked on M21-7d-2:**
+- **Codec** synced from the furnace at 7e-1 (`fb1fb79`). An HMI that reads the clock needs a 7e-1
+  controller: against an earlier 0.16 controller its `STATUS` is 9 bytes short and malformed.
+- **Client:** the controller's clock from `STATUS` (state, time, the client's time of the reading)
+  and from `CLOCK_RESULT`; after a result only a `STATUS` newer than the next one replaces it (one
+  captured before the set can still arrive); a new controller session discards it;
+  `CLOCK_SET` is a command in the ordinary slot.
+- **Screens:** Settings > Date & time shows the controller's time to the minute with "UTC"; "Not
+  set" while the controller reports it unknown (no prompt, owner); "Unavailable" without a
+  controller clock. Set date & time sends the picked minute and shows the answer: set, refused
+  outside 2025 to 2099, refused during a run, or no answer. The picker offers 2025 to 2099 and
+  starts at 1 January 2025 when the clock is unknown. The Device log already shows the controller's
+  record times; it now redraws when the minute changes.
+- **Home** shows no clock (it never did): the plan's "Home's clock" is Settings and the Device log.
+- **Labs:** their simulated clock is shown in UTC (the web demo reads it through UTC getters, so
+  in any browser zone); the picker's year starts at 2025.
+- **Found operating the GUI against the controller:** the controller's clock audits were listed as
+  "Controller event 31" (now named); without a clock the Date format card read "Not set" (now an
+  example date).
+- **Review fixes** (three AI reviews in the HMI roles, not the required human reviews; tests first
+  where a test could show it):
+  - the time is shown only while the link is current, and only a state and time the controller
+    can report (2025 to 2099); a reading published just after the GUI's own time no longer adds
+    49.7 days;
+  - a new minute redraws only Date & time and the Device log;
+  - an unanswered set is "not confirmed", not "not set";
+  - an unknown clock's picker starts at 1 January 2025 with Set off until the operator changes the
+    date (an unchanged placeholder would set the furnace to it); a step at a limit is no change;
+  - the date-format choices and a Device log entry dated after the clock (set back) show no zero
+    or negative date;
+  - the web demo reads its clock through UTC getters (the zone shift was wrong near summer-time
+    changes) and sets whole minutes, as the HMI;
+  - checks for the year limits, an out-of-range answer, the redraw scope and, against the
+    controller, the range's edges.
+
+**Not in M21-7e-2, recorded:**
+- No local time zone (owner: UTC); no hardware clock (HW-BLOCK-013); remote (PLC) setting during
+  a run is WI-I07's.
+- The display advances the controller's time between statuses from the HMI's own uptime, to the
+  minute; a set sends the picked minute (seconds 0), so it is up to a minute behind what the
+  operator read.
+- The labs do not answer a set as the controller does: the UI lab's clock is a fixed simulated
+  time and every set is accepted; the web demo's follows the browser's clock. Neither shows Not
+  set, Unavailable or a refusal (the desktop and Zephyr checks do, with the controller's answers).
+- No pending notice between Set and the answer (the answer comes within a second; a second Set
+  meanwhile is busy). The answer's dialog replaces a Faults dialog opened meanwhile.
+- A setting is listed twice in the Device log: the controller's clock change and its audit.
+
 ### M21-5 design
 
 Owner decisions 2026-11-11:

@@ -124,6 +124,8 @@ int furnace_hmi_operator_diagnostics_check(lv_display_t *display, const char **f
  * during execution. Same contract as furnace_hmi_operator_content_check.
  */
 int furnace_hmi_operator_limits_check(lv_display_t *display, const char **failure);
+/* M21-7e: the controller's clock in Settings > Date & time. */
+int furnace_hmi_operator_clock_check(lv_display_t *display, const char **failure);
 
 #ifdef __cplusplus
 }

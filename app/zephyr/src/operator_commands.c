@@ -132,6 +132,11 @@ bool furnace_hmi_operator_command_for(const furnace_hmi_operator_request_t *requ
         command->setting = 1U;
         command->setting_value = request->planning_reference_decicelsius;
         return true;
+    case FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET:
+        /* CLOCK_SET (M21-7e); the controller checks the range and execution. */
+        command->kind = FURNACE_HMI_COMMAND_CLOCK_SET;
+        command->clock_wall_ms = request->clock_wall_ms;
+        return true;
     default:
         return false;
     }

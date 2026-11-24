@@ -190,6 +190,56 @@ ZTEST(furnace_hmi_operator, test_editors_take_the_controller_limits)
     zassert_equal(result, 0, "check %d: %s", result, failure);
 }
 
+ZTEST(furnace_hmi_operator, test_settings_show_and_set_the_controller_clock)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_clock_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+/* The controller's clock for the screens (M21-7e): advanced to now, unknown not set. */
+ZTEST(furnace_hmi_operator, test_the_clock_from_the_controller)
+{
+    static furnace_hmi_controller_observation_t o;
+    furnace_hmi_operator_controller_clock_t clock;
+
+    (void)memset(&o, 0, sizeof(o));
+    furnace_hmi_operator_clock_from_controller(&o, 1000U, &clock);
+    zassert_false(clock.reported, "no clock before the controller's STATUS");
+    o.clock_valid = true;
+    o.availability = FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
+    furnace_hmi_operator_clock_from_controller(&o, 1000U, &clock);
+    zassert_true(clock.reported && !clock.set, "UNKNOWN is reported, not set");
+    o.wall_state = FURNACE_HMI_WALL_ADJUSTED;
+    o.wall_ms = 1795435200000LL;
+    o.clock_at_ms = UINT32_MAX - 499U;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_true(clock.set && clock.wall_ms == 1795435200000LL + 2000,
+                 "advanced from its reading, across the uptime's wrap");
+    o.clock_at_ms = 1600U;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_true(clock.set && clock.wall_ms == 1795435200000LL,
+                 "a reading published after now is not a wrap: nothing added");
+    o.availability = FURNACE_HMI_STATE_AVAILABILITY_STALE;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_false(clock.reported, "no clock shown while the link is not current");
+    o.availability = FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
+    o.wall_ms = FURNACE_HMI_CLOCK_MAX_MS + 1;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_false(clock.reported, "a time outside the controller's range is not shown");
+    o.wall_ms = INT64_MAX;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_false(clock.reported, "no overflow on a garbled time");
+    o.wall_ms = 1795435200000LL;
+    o.wall_state = 7U;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_false(clock.reported, "an unknown state is not shown as set");
+}
+
 /* A program Start, Confirm and Cancel as controller commands (M21-7b). */
 ZTEST(furnace_hmi_operator, test_program_start_as_commands)
 {

@@ -574,6 +574,12 @@ static void io_msg_setting_change(struct wire_io *io, struct furnace_wire_settin
 	io_i32(io, &m->value);
 }
 
+static void io_msg_clock_set(struct wire_io *io, struct furnace_wire_clock_set *m)
+{
+	io_envelope(io, &m->envelope);
+	io_i64(io, &m->wall_ms);
+}
+
 static void io_msg_start_request(struct wire_io *io, struct furnace_wire_start_request *m)
 {
 	io_envelope(io, &m->envelope);
@@ -774,6 +780,8 @@ static void io_msg_status(struct wire_io *io, struct furnace_wire_status *m)
 	io_controller(io, &m->controller);
 	io_lifecycle(io, &m->lifecycle);
 	io_equipment(io, &m->equipment);
+	io_u8(io, &m->wall_state);
+	io_i64(io, &m->wall_ms);
 }
 
 static void io_msg_snapshot_end(struct wire_io *io, struct furnace_wire_snapshot_end *m)
@@ -830,6 +838,14 @@ static void io_msg_setting_result(struct wire_io *io, struct furnace_wire_settin
 	io_u8(io, &m->setting);
 	io_u8(io, &m->result);
 	io_i32(io, &m->value);
+}
+
+static void io_msg_clock_result(struct wire_io *io, struct furnace_wire_clock_result *m)
+{
+	io_u32(io, &m->request_id);
+	io_u8(io, &m->result);
+	io_u8(io, &m->wall_state);
+	io_i64(io, &m->wall_ms);
 }
 
 static void io_msg_start_accepted(struct wire_io *io, struct furnace_wire_start_accepted *m)
@@ -1088,6 +1104,9 @@ static bool io_message(struct wire_io *io, struct furnace_wire_message *m)
 	case FURNACE_WIRE_MSG_SETTING_CHANGE:
 		io_msg_setting_change(io, &m->u.setting_change);
 		return true;
+	case FURNACE_WIRE_MSG_CLOCK_SET:
+		io_msg_clock_set(io, &m->u.clock_set);
+		return true;
 	case FURNACE_WIRE_MSG_START_REQUEST:
 		io_msg_start_request(io, &m->u.start_request);
 		return true;
@@ -1168,6 +1187,9 @@ static bool io_message(struct wire_io *io, struct furnace_wire_message *m)
 		return true;
 	case FURNACE_WIRE_MSG_SETTING_RESULT:
 		io_msg_setting_result(io, &m->u.setting_result);
+		return true;
+	case FURNACE_WIRE_MSG_CLOCK_RESULT:
+		io_msg_clock_result(io, &m->u.clock_result);
 		return true;
 	case FURNACE_WIRE_MSG_START_ACCEPTED:
 		io_msg_start_accepted(io, &m->u.start_accepted);

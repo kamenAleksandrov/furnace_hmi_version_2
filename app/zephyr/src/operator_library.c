@@ -72,6 +72,32 @@ void furnace_hmi_operator_limits_from_controller(const furnace_hmi_controller_ob
     reference->storable = o->settings_state != SETTINGS_STATE_NONE;
 }
 
+void furnace_hmi_operator_clock_from_controller(const furnace_hmi_controller_observation_t *o, uint32_t now_ms,
+                                                furnace_hmi_operator_controller_clock_t *clock)
+{
+    (void)memset(clock, 0, sizeof(*clock));
+    /* Only a current link's clock: an old value is never shown as current (interface:
+     * Communication interruption). */
+    if (!o->clock_valid || o->availability != FURNACE_HMI_STATE_AVAILABILITY_CURRENT) {
+        return;
+    }
+    if (o->wall_state == FURNACE_HMI_WALL_UNKNOWN) {
+        clock->reported = true;
+        return;
+    }
+    /* A state or a time the controller never reports is not shown (M21-7e review). */
+    if ((o->wall_state != FURNACE_HMI_WALL_VALID && o->wall_state != FURNACE_HMI_WALL_ADJUSTED) ||
+        o->wall_ms < FURNACE_HMI_CLOCK_MIN_MS || o->wall_ms > FURNACE_HMI_CLOCK_MAX_MS) {
+        return;
+    }
+    /* Signed: a reading published just after now_ms was taken (the link thread) counts as 0, never
+     * as a wrap of the uptime (review). */
+    const int32_t since = (int32_t)(now_ms - o->clock_at_ms);
+    clock->reported = true;
+    clock->set = true;
+    clock->wall_ms = o->wall_ms + (since > 0 ? since : 0);
+}
+
 static furnace_hmi_operator_library_state_t state_of(furnace_hmi_library_state_t state)
 {
     switch (state) {

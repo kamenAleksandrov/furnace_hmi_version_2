@@ -6666,9 +6666,13 @@ static bool log_add_heading(const furnace_hmi_operator_screens_t *explorer, lv_o
     else if (ago == 1) {
         (void)snprintf(text, sizeof(text), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_YESTERDAY_FORMAT), date_text);
     }
-    else {
+    else if (ago > 1) {
         (void)snprintf(text, sizeof(text), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_AGO_FORMAT), date_text,
                        (unsigned)ago);
+    }
+    else {
+        /* Dated after the clock (it was set back, M21-7e review): the date alone. */
+        copy_text_bounded(text, sizeof(text), date_text);
     }
     lv_obj_t *heading = create_label(list, text, &furnace_hmi_font_regular_13, OPERATOR_MUTED);
     if (heading == NULL) {
@@ -8055,7 +8059,8 @@ enum {
     OPERATOR_CLOCK_FIELD_COUNT,
 };
 
-#define OPERATOR_CLOCK_YEAR_MIN 2020
+/* The controller accepts 2025 to 2099 UTC (M21-7e, owner O3): the picker offers no other year. */
+#define OPERATOR_CLOCK_YEAR_MIN 2025
 #define OPERATOR_CLOCK_YEAR_MAX 2099
 
 static uint8_t clock_days_in_month(uint16_t year, uint8_t month)
@@ -8894,16 +8899,25 @@ static bool settings_build_time(furnace_hmi_operator_screens_t *explorer, lv_obj
     char date[48];
     char short_date[48];
     if (explorer->clock_known) {
+        char day[40];
         format_clock_time(time, sizeof(time), &explorer->clock, explorer->settings_candidate_24_hour);
-        format_clock_date(explorer, date, sizeof(date), &explorer->clock);
+        format_clock_date(explorer, day, sizeof(day), &explorer->clock);
+        /* The controller's time is universal time, shown as UTC (M21-7e, owner 2026-11-20). */
+        (void)snprintf(date, sizeof(date), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_CAPTION_FORMAT), day);
         format_short_date(explorer, short_date, sizeof(short_date), &explorer->clock);
     }
     else {
-        /* The controller's clock is not known: no zero date (M21-2b review). */
-        copy_text_bounded(time, sizeof(time), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE));
-        date[0] = '\0';
-        copy_text_bounded(short_date, sizeof(short_date),
-                          ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE));
+        /* Not known: no zero date (M21-2b review). Not set since the controller's start, or no
+         * controller clock at all (M21-7e). */
+        const furnace_hmi_ui_string_id_t none = explorer->clock_unset ? FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET
+                                                                      : FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE;
+        copy_text_bounded(time, sizeof(time), ui_string(none));
+        copy_text_bounded(date, sizeof(date),
+                          explorer->clock_unset ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UTC) : "");
+        /* The date format is shown with an example date, not "Not set" (found operating the
+         * GUI, M21-7e): how dates are written does not depend on the controller's clock. */
+        const furnace_hmi_operator_clock_t example = { 2025U, 12U, 31U, 0U, 0U };
+        format_short_date(explorer, short_date, sizeof(short_date), &example);
     }
     const operator_card_t cards[] = {
         { .label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_AND_TIME), .value = time,
@@ -9189,8 +9203,12 @@ static bool settings_open_choice(furnace_hmi_operator_screens_t *explorer, uint8
             selected = explorer->settings_candidate_language == index;
             break;
         case OPERATOR_SETTINGS_CHOICE_DATE_FORMAT:
-            /* Each format shows today's date written that way. */
-            format_date_as(text, sizeof(text), &explorer->clock, index);
+            /* Each format shows today's date written that way; without a known clock an
+             * example date (M21-7e review: not a zero date). */
+            format_date_as(text, sizeof(text),
+                           explorer->clock_known ? &explorer->clock
+                                                 : &(const furnace_hmi_operator_clock_t){ 2025U, 12U, 31U, 0U, 0U },
+                           index);
             selected = explorer->settings_candidate_date_format == index;
             break;
         default:
@@ -9340,6 +9358,11 @@ static bool settings_open_clock(furnace_hmi_operator_screens_t *explorer)
     }
     lv_obj_set_width(preview_label, lv_pct(100));
     lv_obj_set_style_text_align(preview_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    /* An unknown clock's picker starts at a placeholder: Set waits for the operator's own date
+     * (M21-7e review: an unchanged placeholder would set the furnace to 1 January 2025). */
+    if (!explorer->clock_known && !explorer->clock_draft_touched) {
+        lv_obj_add_state(set, LV_STATE_DISABLED);
+    }
     size_dialog_button(cancel);
     size_dialog_button(set);
     return true;
@@ -10036,6 +10059,57 @@ static void library_change_done(furnace_hmi_operator_screens_t *explorer,
 static void start_change_done(furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_request_kind_t kind,
                               const furnace_hmi_command_feedback_t *feedback);
 
+#define OPERATOR_CLOCK_RESULT_OUT_OF_RANGE 1U
+#define OPERATOR_CLOCK_RESULT_SESSION_ACTIVE 2U
+
+/* The controller answered CLOCK_SET (M21-7e): what it decided; the clock it keeps comes with the
+ * observation (furnace_hmi_operator_screens_set_clock). */
+static void clock_change_done(furnace_hmi_operator_screens_t *explorer, const furnace_hmi_command_feedback_t *feedback)
+{
+    furnace_hmi_ui_string_id_t detail = FURNACE_HMI_UI_STRING_COUNT;
+
+    if (feedback->state == FURNACE_HMI_FEEDBACK_ACCEPTED) {
+        (void)settings_show_message(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_TIME_SET_TITLE),
+                                    ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_TIME_SET_DETAIL));
+        return;
+    }
+    if (feedback->state == FURNACE_HMI_FEEDBACK_UNRESOLVED) {
+        /* It may have been applied: not "not set" (M21-7e review). STATUS shows the clock. */
+        (void)settings_show_message(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNCONFIRMED_TITLE),
+                                    ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNKNOWN));
+        return;
+    }
+    if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED &&
+               feedback->reason == OPERATOR_CLOCK_RESULT_OUT_OF_RANGE) {
+        detail = FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_OUT_OF_RANGE;
+    } else if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED &&
+               feedback->reason == OPERATOR_CLOCK_RESULT_SESSION_ACTIVE) {
+        detail = FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_SESSION_ACTIVE;
+    }
+    if (detail == FURNACE_HMI_UI_STRING_COUNT) {
+        show_command_problem(explorer, false, FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, feedback);
+        return;
+    }
+    (void)settings_show_message(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_REFUSED_TITLE),
+                                ui_string(detail));
+}
+
+/* Set date & time on a controller (M21-7e): CLOCK_SET with the picked minute, UTC. */
+static void send_clock(furnace_hmi_operator_screens_t *explorer)
+{
+    if (explorer->command_awaiting || stop_in_progress(explorer)) {
+        const furnace_hmi_command_feedback_t busy = {.state = FURNACE_HMI_FEEDBACK_NOT_SENT,
+                                                     .reason = FURNACE_HMI_NOT_SENT_BUSY};
+        clear_modal(explorer);
+        show_command_problem(explorer, false, FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, &busy);
+        return;
+    }
+    post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET);
+    explorer->request.clock_wall_ms =
+        (int64_t)furnace_hmi_operator_clock_minute(&explorer->clock_draft) * 60000;
+    clear_modal(explorer);
+}
+
 /* The ordinary command's outcome arrived (or it could not be handed over). */
 static void ordinary_command_done(furnace_hmi_operator_screens_t *explorer,
                                   const furnace_hmi_command_feedback_t *feedback)
@@ -10050,6 +10124,11 @@ static void ordinary_command_done(furnace_hmi_operator_screens_t *explorer,
     }
     if (is_start_request(kind)) {
         start_change_done(explorer, kind, feedback);
+        return;
+    }
+    if (kind == FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET) {
+        clock_change_done(explorer, feedback);
+        flush_manual_retarget(explorer);
         return;
     }
     if (kind == FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE) {
@@ -11116,6 +11195,8 @@ static bool action_connected(operator_action_t action)
     /* M21-7b: a program Start, answered by the controller's proposal or its run. */
     case OPERATOR_ACTION_RUNNING:
     case OPERATOR_ACTION_START_AGAIN:
+    /* M21-7e: the controller's clock. */
+    case OPERATOR_ACTION_SETTINGS_CLOCK_SET:
         return true;
     default:
         return false;
@@ -11516,17 +11597,30 @@ static void apply_action(
         }
         break;
     case OPERATOR_ACTION_SETTINGS_SHOW_CLOCK:
-        explorer->clock_draft = explorer->clock;
+        /* An unknown clock starts the picker at the first date the controller accepts. */
+        explorer->clock_draft = explorer->clock_known
+            ? explorer->clock
+            : (furnace_hmi_operator_clock_t){ OPERATOR_CLOCK_YEAR_MIN, 1U, 1U, 0U, 0U };
+        explorer->clock_draft_touched = false;
         (void)settings_open_clock(explorer);
         break;
     case OPERATOR_ACTION_SETTINGS_CLOCK_STEP:
         if (value >= 0) {
+            const furnace_hmi_operator_clock_t before = explorer->clock_draft;
             clock_step(&explorer->clock_draft, (uint8_t)((unsigned)value >> 1),
                        ((unsigned)value & 1U) != 0U ? 1 : -1);
+            /* A step at a limit changes nothing: still the placeholder. */
+            explorer->clock_draft_touched = explorer->clock_draft_touched ||
+                                            memcmp(&before, &explorer->clock_draft, sizeof(before)) != 0;
             (void)settings_open_clock(explorer);
         }
         break;
     case OPERATOR_ACTION_SETTINGS_CLOCK_SET:
+        if (!explorer->simulated_responses) {
+            /* The controller sets its clock and answers (M21-7e); the clock shown is its own. */
+            send_clock(explorer);
+            break;
+        }
         /* The simulated controller accepts every request. */
         explorer->clock = explorer->clock_draft;
         clear_modal(explorer);
@@ -12996,6 +13090,38 @@ bool furnace_hmi_operator_planning_reference_equal(const furnace_hmi_operator_pl
     return a->known == b->known && a->decicelsius == b->decicelsius &&
            a->min_decicelsius == b->min_decicelsius && a->max_decicelsius == b->max_decicelsius &&
            a->change_permitted == b->change_permitted && a->storable == b->storable;
+}
+
+bool furnace_hmi_operator_screens_set_clock(furnace_hmi_operator_screens_t *explorer,
+                                            const furnace_hmi_operator_controller_clock_t *clock)
+{
+    if (explorer == NULL || explorer->root == NULL || clock == NULL) {
+        return false;
+    }
+    /* Within 1970 to about 6000 the minute fits 32 bits (the host passes only the controller's
+     * range; this guards the cast). */
+    const bool known = clock->reported && clock->set && clock->wall_ms >= 0 &&
+                       clock->wall_ms / 60000 <= (int64_t)INT32_MAX / 2;
+    const bool unset = clock->reported && !clock->set;
+    furnace_hmi_operator_clock_t shown = explorer->clock;
+    if (known) {
+        /* Minutes since 1970 fit 32 bits for millennia; a time before 1970 is never offered. */
+        shown = civil_from_minute((int32_t)(clock->wall_ms / 60000));
+    }
+    const bool changed = known != explorer->clock_known || unset != explorer->clock_unset ||
+                         (known && memcmp(&shown, &explorer->clock, sizeof(shown)) != 0);
+    if (!changed) {
+        return true;
+    }
+    explorer->clock = shown;
+    explorer->clock_known = known;
+    explorer->clock_unset = unset;
+    /* Only what shows the clock is drawn again (M21-7e review): Date & time and the Device log. */
+    if ((explorer->page == FURNACE_HMI_OPERATOR_PAGE_SETTINGS && explorer->settings_tab == OPERATOR_SETTINGS_TAB_TIME) ||
+        (explorer->page == FURNACE_HMI_OPERATOR_PAGE_DEVICE && explorer->device_tab == OPERATOR_DEVICE_TAB_COMPONENTS)) {
+        return rebuild_page_keeping_modal(explorer);
+    }
+    return true;
 }
 
 bool furnace_hmi_operator_screens_set_program_limits(

@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 1066 of 1066 strings; missing entries are NULL and fall back to English. */
+/* en: 1076 of 1076 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -641,6 +641,14 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_FURNACE_CONTROLLER] = "Furnace controller",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CONNECTED] = "Connected",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE] = "Unavailable",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_CAPTION_FORMAT] = "%s \xC2\xB7 UTC",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UTC] = "UTC",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET] = "Not set",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_REFUSED_TITLE] = "Date and time not set",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_OUT_OF_RANGE] = "The furnace controller accepts dates from 2025 to 2099 (UTC). Nothing changed.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_SESSION_ACTIVE] = "The date and time cannot change while a program or Manual session runs. Nothing changed.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNCONFIRMED_TITLE] = "Date and time not confirmed",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNKNOWN] = "The furnace controller did not answer. The change may or may not have been made; check the date and time shown.",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CONTROL_LINK_CAPTION] = "Control link, separate from server and Bluetooth",
     [FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LAST_SERVICE] = "Last service",
     [FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_NO_SERVICE_ATTENTION] = "No current service attention",
@@ -672,7 +680,7 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_DECIMAL_FORMAT] = "%ld.%ld",
     [FURNACE_HMI_UI_STRING_UI_LAB_DECIMAL_SEPARATOR] = ".",
     [FURNACE_HMI_UI_STRING_UI_LAB_FAN_THOUSANDS_FORMAT] = "%ld,%03ld %s",
-    [FURNACE_HMI_UI_STRING_UI_LAB_DATE_TIME_PREVIEW_FORMAT] = "%s \xC2\xB7 %s",
+    [FURNACE_HMI_UI_STRING_UI_LAB_DATE_TIME_PREVIEW_FORMAT] = "%s \xC2\xB7 %s UTC",
     [FURNACE_HMI_UI_STRING_UI_LAB_TIME_24H_PATTERN] = "{hour}:{minute}",
     [FURNACE_HMI_UI_STRING_UI_LAB_TIME_12H_PATTERN] = "{hour}:{minute} {period}",
     [FURNACE_HMI_UI_STRING_UI_LAB_DATE_LONG_PATTERN] = "{weekday} {date}",
@@ -759,6 +767,8 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_10] = "Setting change refused",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_11] = "Settings could not be saved",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_12] = "Program library rebuilt",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_13] = "Controller date and time set",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_14] = "Controller date and time not set",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_MEASUREMENT_FORMAT] = "Temperature measurement: %s",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_MEASUREMENT_1] = "qualified",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_MEASUREMENT_2] = "reading returned, not yet qualified",

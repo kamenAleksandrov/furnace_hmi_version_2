@@ -379,6 +379,11 @@ static bool encode_command(furnace_hmi_controller_client_t *c, const furnace_hmi
         m->u.setting_change.setting = cmd->setting;
         m->u.setting_change.value = cmd->setting_value;
         break;
+    case FURNACE_HMI_COMMAND_CLOCK_SET:
+        m->type = FURNACE_WIRE_MSG_CLOCK_SET;
+        env = &m->u.clock_set.envelope;
+        m->u.clock_set.wall_ms = cmd->clock_wall_ms;
+        break;
     case FURNACE_HMI_COMMAND_NONE:
     case FURNACE_HMI_COMMAND_COUNT:
     default:
@@ -496,6 +501,8 @@ static furnace_hmi_command_kind_t kind_of_message(uint16_t msg_type)
         return FURNACE_HMI_COMMAND_START_CANCEL;
     case FURNACE_WIRE_MSG_SETTING_CHANGE:
         return FURNACE_HMI_COMMAND_SETTING_CHANGE;
+    case FURNACE_WIRE_MSG_CLOCK_SET:
+        return FURNACE_HMI_COMMAND_CLOCK_SET;
     default:
         return FURNACE_HMI_COMMAND_NONE;
     }
@@ -652,6 +659,27 @@ static void on_setting_result(furnace_hmi_controller_client_t *c,
         c->observation.planning_reference_decicelsius = r->value;
     }
     complete(c, o, r->result == SETTING_APPLIED, r->result);
+}
+
+/* M21-7e: the controller's clock in effect after a CLOCK_SET, whatever the result. */
+static void on_clock_result(furnace_hmi_controller_client_t *c, const struct furnace_wire_clock_result *r)
+{
+    furnace_hmi_controller_observation_t *obs = &c->observation;
+    furnace_hmi_command_outcome_t *o = pending_command(c, r->request_id, FURNACE_HMI_COMMAND_CLOCK_SET);
+
+    if (o == NULL) {
+        return;
+    }
+    o->clock_state = r->wall_state;
+    o->clock_wall_ms = r->wall_ms;
+    obs->clock_valid = true;
+    obs->wall_state = r->wall_state;
+    obs->wall_ms = r->wall_ms;
+    obs->clock_at_ms = c->now_ms;
+    /* The newest STATUS seen, and the next one, may have been captured before the set. */
+    c->clock_hold = true;
+    c->clock_hold_sequence = obs->status_sequence + 1U;
+    complete(c, o, r->result == FURNACE_HMI_CLOCK_RESULT_APPLIED, r->result);
 }
 
 /* The pending Start-transaction command this result answers, of any of the given kinds. */
@@ -1022,6 +1050,9 @@ static void discard_session_data(furnace_hmi_controller_client_t *c)
 
     o->capabilities_valid = false;
     o->settings_valid = false;
+    /* The new session's STATUS gives its clock (unknown after the controller's start). */
+    o->clock_valid = false;
+    c->clock_hold = false;
     /* The new session's snapshot gives its settings. */
     c->settings_wanted = false;
     c->settings_request_id = 0U;
@@ -1286,6 +1317,13 @@ static void on_status(furnace_hmi_controller_client_t *c, const struct furnace_w
         return;
     }
     copy_status(o, s);
+    if (!c->clock_hold || (int32_t)(s->status_sequence - c->clock_hold_sequence) > 0) {
+        c->clock_hold = false;
+        o->clock_valid = true;
+        o->wall_state = s->wall_state;
+        o->wall_ms = s->wall_ms;
+        o->clock_at_ms = c->now_ms;
+    }
     proposal_from_status(c, &s->start);
     c->last_status_ms = c->now_ms;
     changed(c);
@@ -1806,6 +1844,9 @@ static void on_frame(furnace_hmi_controller_client_t *c, const struct furnace_wi
         break;
     case FURNACE_WIRE_MSG_SETTING_RESULT:
         on_setting_result(c, &m->u.setting_result);
+        break;
+    case FURNACE_WIRE_MSG_CLOCK_RESULT:
+        on_clock_result(c, &m->u.clock_result);
         break;
     default:
         break; /* PROGRAM_ESTIMATE: not asked for (the controller's stored estimate is shown) */
