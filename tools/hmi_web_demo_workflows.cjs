@@ -16,7 +16,7 @@ const {withDemoPage, sleep} = require('./hmi_web_demo_browser.cjs');
 
 // In the page: buttons of the open dialog, else of the screen, found as an operator reads them.
 const HELPERS = `window.wf={
- vis:b=>b.getClientRects().length>0,
+ vis:b=>b.getClientRects().length>0&&!b.closest('[inert]'),
  dialog(){return document.getElementById('message');},
  scope(){const m=this.dialog();return m.open?m:document.querySelector('.screen');},
  label(b){return b.textContent.trim()||b.getAttribute('aria-label')||'';},
@@ -28,7 +28,9 @@ const HELPERS = `window.wf={
  tap(id,...a){return this.click(t(id,...a));},
  title(){return this.dialog().open?document.getElementById('message-title').textContent:'';},
  shows(text){return this.scope().textContent.includes(text);},
- type(text){for(const c of text)this.click(c);return true;}
+ type(text){for(const c of text)this.click(c);return true;},
+ rail(id,optional){const b=[...document.querySelectorAll('.nav button')].filter(this.vis).find(x=>this.label(x)===t(id));
+  if(!b){if(optional)return false;throw new Error('no rail button '+id);}if(!b.disabled)b.click();return true;}
 };true`;
 
 const LONG_NAME = '1234567890123456789012345678901'; // 31 characters
@@ -67,24 +69,30 @@ async function workflows({evaluate, waitFor, exceptions}) {
 
   // W1 Program edit and save: a new program of 31 characters, saved, edited, deleted.
   step('W1 program edit and save');
-  await evaluate("switchMain('programs')");
+  await evaluate("wf.rail('DASHBOARD_PROGRAMS')");
   await tap('UI_LAB_NEW_DRAFT');
   await tap('UI_LAB_NEW_PROGRAM_NAME');
   await tap('UI_LAB_KEYBOARD_CLEAR');
   await evaluate(`wf.type(${JSON.stringify(LONG_NAME)})`);
   await tap('UI_LAB_SETTINGS_APPLY');
   await tap('UI_LAB_ADD_STAGE_ACTION');
+  await tap('UI_LAB_SAVE_DRAFT'); // the stage editor's "Save all changes", then the program's Save
   await tap('UI_LAB_SAVE_PROGRAM');
-  await waitFor(`programCatalogue.some(p=>p.name===${JSON.stringify(LONG_NAME)})`);
+  await waitFor(`programCatalogue.some(p=>!p.deleted&&p.name===${JSON.stringify(LONG_NAME)})`);
   await answered();
-  const saved = await evaluate(`programCatalogue.findIndex(p=>p.name===${JSON.stringify(LONG_NAME)})`);
-  await evaluate(`switchMain('programs');openProgram(${saved})`);
+  assert.strictEqual(await page(), 'programs', 'a new program does not return to Programs');
+  const saved = await evaluate(`programCatalogue.findIndex(p=>!p.deleted&&p.name===${JSON.stringify(LONG_NAME)})`);
+  // Opened by its row, edited with a Hold stage, saved again.
+  await evaluate(`wf.click(${JSON.stringify(LONG_NAME.slice(0, 16))})`);
   await tap('UI_LAB_EDIT_PROGRAM');
   await tap('UI_LAB_ADD_STAGE_ACTION');
+  await tap('UI_LAB_STAGE_HOLD');
+  await tap('UI_LAB_SAVE_DRAFT');
   await tap('UI_LAB_SAVE_PROGRAM');
-  await waitFor(`programCatalogue[${saved}]&&programCatalogue[${saved}].stages.length===2`);
+  await waitFor(`programCatalogue[${saved}].stages.map(s=>s.kind).join()==='Heating,Hold'`);
   await answered();
-  await evaluate(`switchMain('programs');openProgram(${saved})`);
+  await evaluate("wf.rail('DASHBOARD_PROGRAMS')");
+  await evaluate(`wf.click(${JSON.stringify(LONG_NAME.slice(0, 16))})`);
   await tap('UI_LAB_DELETE_DRAFT');
   await tap('UI_LAB_DELETE_DRAFT');
   await waitFor(`!programCatalogue.some(p=>!p.deleted&&p.name===${JSON.stringify(LONG_NAME)})`);
@@ -92,7 +100,8 @@ async function workflows({evaluate, waitFor, exceptions}) {
 
   // W2 to W5: a hot start from a hot furnace, Pause and Resume, contained navigation, Stop and cooling.
   step('W2-W5 hot start, Pause, Resume, Stop');
-  await evaluate("switchMain('programs');openProgram(1)");
+  await evaluate("wf.rail('DASHBOARD_PROGRAMS')");
+  await evaluate("wf.click(programCatalogue[1].name)");
   await tap('UI_LAB_START_PROGRAM');
   await tap('UI_LAB_START_PROGRAM');
   await waitFor("mainPage==='running'&&!!demoRun&&!controller.pending");
@@ -101,12 +110,15 @@ async function workflows({evaluate, waitFor, exceptions}) {
   await waitFor("wf.offered(t('UI_LAB_START_AGAIN'))");
   await tap('UI_LAB_START_AGAIN');
   await waitFor('proposalShown()');
-  const proposal = await evaluate('wf.dialog().textContent');
-  assert(/stage 1, Heating to/.test(proposal), 'the hot start does not show the skipped stage: ' + proposal);
+  // The demo's hot start: Start again on its hot, cooling furnace (it has no hot furnace at rest).
+  assert(await evaluate("wf.shows(t('UI_LAB_START_PROPOSAL_TITLE_FORMAT',programCatalogue[1].name))"),
+         'the proposal does not name the program');
+  assert(await evaluate("wf.dialog().textContent.includes(t('UI_LAB_START_SKIPPED_HEATING_FORMAT',1,'').split(' ').slice(0,3).join(' '))"),
+         'the hot start does not show the skipped stage');
   await tap('UI_LAB_START_CONFIRM');
   await waitFor("mainPage==='running'&&!!demoRun&&!demoRun.stopped&&!controller.pending");
   // W5: the library cannot be reached while the run executes.
-  await evaluate("switchMain('programs')");
+  await evaluate("wf.rail('DASHBOARD_PROGRAMS',true)"); // not offered, or offered and refused
   assert.strictEqual(await page(), 'running', 'Programs is reachable during a run');
   // W3: Pause and Resume.
   await tap('UI_LAB_PAUSE_PREVIEW');
@@ -123,7 +135,8 @@ async function workflows({evaluate, waitFor, exceptions}) {
 
   // W9 Manual: Start, a retarget, Pause, Resume, Stop, Exit.
   step('W9 Manual');
-  await evaluate("mainPage='manual';render()");
+  await evaluate("wf.rail('DASHBOARD_HOME')");
+  await tap('UI_LAB_START_MANUAL');
   await tap('UI_LAB_START');
   await waitFor("!!demoRun&&demoRun.mode==='manual'&&!controller.pending");
   const target = await evaluate('demoRun.target');
@@ -156,7 +169,8 @@ async function workflows({evaluate, waitFor, exceptions}) {
   await closeDialog();
   assert(!(await evaluate("wf.offered(t('UI_LAB_PAUSE_PREVIEW'))")), 'a faulted run offers Pause');
   await evaluate("wf.click(t('UI_LAB_FAULTS_BUTTON_FORMAT',demoFaults.length))");
-  assert(await evaluate("wf.shows(t('UI_LAB_FAULTS_TITLE'))"), 'no Faults dialog');
+  assert(await evaluate("wf.shows(t('UI_LAB_FAULTS_TITLE'))&&wf.shows(t('UI_LAB_FAULT_3'))"),
+         'the sensor fault is not listed');
   await closeDialog();
   await evaluate('stopScenario()');
   await tap('UI_LAB_STOP_PREVIEW');
@@ -171,10 +185,18 @@ async function workflows({evaluate, waitFor, exceptions}) {
   await evaluate("playScenario('link-lost')");
   await waitFor('demoLinkLost', 300);
   assert.strictEqual(await title(), await evaluate("t('UI_LAB_ALERT_LINK_LOST_TITLE')"));
-  await waitFor('!demoLinkLost && !scenarioPlayer', 600);
-  assert.strictEqual(await title(), await evaluate("t('UI_LAB_ALERT_LINK_RESTORED_TITLE')"));
+  const lostRun = await evaluate('demoRun&&demoRun.program.id');
   await closeDialog();
-  assert(await evaluate("wf.offered(t('UI_LAB_STOP_PREVIEW'))"), 'Stop is not offered after the link returns');
+  assert(!(await evaluate("wf.offered(t('UI_LAB_STOP_PREVIEW'))")), 'Stop is offered while the link is lost');
+  await waitFor('!demoLinkLost && !scenarioPlayer', 600);
+  // The demo opens the alert again as "Connection restored" when the link returns.
+  if (await evaluate('wf.dialog().open')) {
+    assert.strictEqual(await title(), await evaluate("t('UI_LAB_ALERT_LINK_RESTORED_TITLE')"));
+    await closeDialog();
+  }
+  assert.strictEqual(await evaluate('demoRun&&demoRun.program.id'), lostRun, 'another run after the link returns');
+  await tap('UI_LAB_STOP_PREVIEW');
+  await waitFor("!!demoRun&&demoRun.stopped");
   await evaluate('resetDemoState();render()');
 
   // W8 Protective trip. Known parity gap (M21-8): the demo simulates no protective trip (fault 7)
@@ -195,9 +217,10 @@ async function workflows({evaluate, waitFor, exceptions}) {
 
   // W11 Device log: the log shows the session's records.
   step('W11 Device log');
-  await evaluate("switchMain('device','log')");
-  assert(await evaluate("document.querySelector('.screen').textContent.length>0&&!wf.shows(t('UI_LAB_DEVICE_UNAVAILABLE'))"),
-         'the Device log is unavailable');
+  await evaluate("wf.rail('DASHBOARD_DEVICE')");
+  await tap('UI_LAB_DEVICE_LOG');
+  assert(await evaluate("!wf.shows(t('UI_LAB_DEVICE_UNAVAILABLE'))&&!wf.shows(t('UI_LAB_DEVICE_LOG_EMPTY'))&&!wf.shows(t('CTRL_LOG_EMPTY'))"),
+         'the Device log is unavailable or empty');
 
   assert.strictEqual(exceptions.length, 0, JSON.stringify(exceptions));
   console.log('PASS: web demo M3 operator workflows W1 to W11 (parity with tests/zephyr/operator_workflows).');

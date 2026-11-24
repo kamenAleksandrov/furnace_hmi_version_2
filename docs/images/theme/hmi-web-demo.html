@@ -1390,18 +1390,15 @@ function programEditorErrors(){if(!programEditor)return [t('UI_LAB_PROGRAM_ERROR
 const PROGRAM_CAPACITY=12;
 // Save: a new program is added for the session, an edited one keeps its place (and library origin); its details open.
 // `acknowledged`: the estimate the operator accepted in the advisory question (a click passes an event: none).
-function saveProgramEditor(acknowledged){
- // Saved from the stage editor, the stages being edited are saved, as on the screens (M21-8 parity).
- if(stageSession&&stageSession.owner==='program-editor'){if(stageErrors().length)return;programEditor.stages=structuredClone(stageSession.stages);}
- const errors=programEditorErrors();if(errors.length){tell('UI_LAB_PROGRAM_NOT_ACCEPTED',errors[0]);return;}const draft=structuredClone(programEditor);
+function saveProgramEditor(acknowledged){const errors=programEditorErrors();if(errors.length){tell('UI_LAB_PROGRAM_NOT_ACCEPTED',errors[0]);return;}const draft=structuredClone(programEditor);
  if(draft.id===null&&programCatalogue.filter(p=>!p.deleted).length>=PROGRAM_CAPACITY){tell('UI_LAB_PROGRAM_NOT_ACCEPTED','UI_LAB_PROGRAM_LIBRARY_FULL');return;}
  // The simulated controller, as the controller (PROG-11, M21-7d-2): above the advisory duration it saves only an
  // acknowledged estimate, exactly that one; Cancel saves nothing.
  const estimate=curingEstimateSeconds(draft.stages),advisory=controllerLimits().recommendedMinutes;
  if(advisory&&estimate>advisory*60&&acknowledged!==estimate){$('message-title').textContent=t('UI_LAB_SAVE_ACKNOWLEDGE_TITLE');$('message-text').textContent=t('UI_LAB_SAVE_ACKNOWLEDGE_FORMAT',secondsAsMinutes(estimate));const cancel=button('UI_LAB_CANCEL',()=>$('message').close(),'cancel-action');$('message-actions').replaceChildren(cancel,button('UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM',()=>{$('message').close();saveProgramEditor(estimate);},'primary'));$('message').showModal();cancel.focus();return;}
- controllerRequest('UI_LAB_SAVE_PROGRAM',()=>{const existing=draft.id===null?null:programCatalogue[draft.id],program=normalizeProgram({id:existing?existing.id:programCatalogue.length,name:draft.name.trim(),library:!!(existing&&existing.library),stages:draft.stages});programCatalogue[program.id]=program;controllerEvent('UI_LAB_DEVICE_CONTROL_CPU','UI_LAB_EVENT_PROGRAM_SAVED','UI_LAB_EVENT_CONFIRMED');logEvent('program-saved',{name:program.name});const origin=programEditor?programEditor.origin:'programs';programEditor=null;if(stageSession&&stageSession.owner==='program-editor'){stageSession=null;hideStageDialog();}selectedProgram=program.id;programStagePage=0;
-  // As the screens (M21-8 parity): a new program returns to Programs, an edited one to where it was
-  // opened from; the controller's answer is told.
+ controllerRequest('UI_LAB_SAVE_PROGRAM',()=>{const existing=draft.id===null?null:programCatalogue[draft.id],program=normalizeProgram({id:existing?existing.id:programCatalogue.length,name:draft.name.trim(),library:!!(existing&&existing.library),stages:draft.stages});programCatalogue[program.id]=program;controllerEvent('UI_LAB_DEVICE_CONTROL_CPU','UI_LAB_EVENT_PROGRAM_SAVED','UI_LAB_EVENT_CONFIRMED');logEvent('program-saved',{name:program.name});const origin=programEditor?programEditor.origin:'programs';programEditor=null;selectedProgram=program.id;programStagePage=0;
+  // As the screens (M21-8 parity): a new program returns to Programs, an edited one to its details;
+  // the controller's answer is told.
   mainPage=existing===null||origin==='programs'?'programs':'home';programRoute=existing!==null&&origin==='programs'?'detail':'library';render();tell('UI_LAB_PROGRAM_SAVED',t('UI_LAB_PROGRAM_SAVED_DETAIL_FORMAT',program.name));});}
 // Delete: the controller removes the program; it leaves the library, Favourites and Recent programs.
 function removeProgram(id){const p=programCatalogue[id];if(!p||p.deleted)return;p.deleted=true;logEvent('program-deleted',{name:p.name});programFavourites.delete(id);const at=demoRecent.indexOf(id);if(at>=0)demoRecent.splice(at,1);if(selectedProgram===id)programRoute='library';programPage=0;}

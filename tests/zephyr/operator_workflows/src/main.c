@@ -154,6 +154,10 @@ static void tap(lv_obj_t *button, const char *what)
     zassert_not_null(button, "no button for %s", what);
     zassert_true(SCREENS.modal == NULL || inside(button, SCREENS.modal),
                  "%s is under the dialog '%s'", what, first_text(SCREENS.modal));
+    /* The stage editor covers the page as well. */
+    zassert_true(SCREENS.modal != NULL || SCREENS.stage_dialog == NULL ||
+                     inside(button, SCREENS.stage_dialog),
+                 "%s is under the stage editor", what);
     zassert_true(furnace_hmi_probe_enabled(button), "%s is not offered: hidden %d disabled %d modal %d",
                  what, lv_obj_has_flag(button, LV_OBJ_FLAG_HIDDEN),
                  lv_obj_has_state(button, LV_STATE_DISABLED), SCREENS.modal != NULL);
@@ -199,11 +203,36 @@ static void dismiss(void)
     }
 }
 
+/* A navigation rail button, by its label. */
+static lv_obj_t *rail_button(furnace_hmi_ui_string_id_t id)
+{
+    return furnace_hmi_probe_button_with_text(SCREENS.nav, text(id));
+}
+
+/* A page reached as an operator reaches it: the rail, and Manual from Home's "Start manual". */
 static void go_to(furnace_hmi_operator_page_t page)
 {
-    zassert_true(furnace_hmi_operator_screens_navigate(&SCREENS, page), "page %d not reachable",
-                 (int)page);
+    static const struct {
+        furnace_hmi_operator_page_t page;
+        furnace_hmi_ui_string_id_t rail;
+    } rail[] = {
+        {FURNACE_HMI_OPERATOR_PAGE_HOME, FURNACE_HMI_UI_STRING_DASHBOARD_HOME},
+        {FURNACE_HMI_OPERATOR_PAGE_PROGRAMS, FURNACE_HMI_UI_STRING_DASHBOARD_PROGRAMS},
+        {FURNACE_HMI_OPERATOR_PAGE_DEVICE, FURNACE_HMI_UI_STRING_DASHBOARD_DEVICE},
+    };
+
+    if (page == FURNACE_HMI_OPERATOR_PAGE_MANUAL) {
+        go_to(FURNACE_HMI_OPERATOR_PAGE_HOME);
+        tap(page_button(FURNACE_HMI_UI_STRING_UI_LAB_START_MANUAL), "Start manual");
+    } else {
+        for (size_t i = 0U; i < ARRAY_SIZE(rail); i++) {
+            if (rail[i].page == page) {
+                tap(rail_button(rail[i].rail), text(rail[i].rail));
+            }
+        }
+    }
     pump();
+    zassert_equal(SCREENS.page, page, "page %d shown, not %d", (int)SCREENS.page, (int)page);
 }
 
 /* ---- The controller's scenario channel and the runner's relay ---- */
@@ -216,6 +245,9 @@ static void channel(int fd, const char *line)
     const int64_t end = k_uptime_get() + WAIT_MS;
 
     zassert_true(fd >= 0, "channel not given for '%s'", line);
+    /* A late answer to an earlier line, after a failure, is not taken for this one's. */
+    for (char c; nsi_host_read(fd, &c, 1U) == 1L;) {
+    }
     zassert_equal(nsi_host_write(fd, line, strlen(line)), (long)strlen(line));
     zassert_equal(nsi_host_write(fd, "\n", 1U), 1L);
     while (n < sizeof(reply) - 1U) {
@@ -279,14 +311,12 @@ static bool manual_start_offered(void)
     return furnace_hmi_probe_enabled(manual(SCREENS.manual_start_button));
 }
 
-static bool modal_open(void)
-{
-    return SCREENS.modal != NULL;
-}
-
 /*
- * Connected, qualified and idle, with no dialog open: where each workflow starts.
- * Each workflow answers its own faults; only the protective trip's latch stays.
+ * Connected, qualified and not executing, with no dialog open: where each
+ * workflow starts. A final cooling may still run (W4 leaves one; the controller
+ * accepts a new Start during it). Each workflow answers its own faults; only the
+ * protective trip's latch stays, so W8 runs last but for the Device log. Dialogs
+ * left open are closed with their Close button only, never by an action.
  */
 static void ready(void)
 {
@@ -294,9 +324,13 @@ static void ready(void)
                  "not connected and qualified: link %u availability %u measurement %u library %u",
                  OBS.link, OBS.availability, OBS.measurement_state, host.library.state);
     zassert_true(wait_for(not_executing, WAIT_MS), "a session executes");
-    while (SCREENS.modal != NULL && !SCREENS.decision_open) {
-        dismiss();
+    for (int i = 0; i < 4 && SCREENS.modal != NULL && !SCREENS.decision_open; i++) {
+        lv_obj_t *close = modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE);
+
+        zassert_not_null(close, "a dialog '%s' is left open", first_text(SCREENS.modal));
+        tap(close, "Close a dialog left open");
     }
+    zassert_true(SCREENS.modal == NULL, "a dialog stays open");
 }
 
 /* ---- Shared steps ---- */
@@ -368,14 +402,17 @@ static void close_alert(void)
  * Every fault answered from the Faults dialog, as an operator does: Acknowledge
  * each entry, then Recover each latched one. A refused recovery (the condition
  * or the measurement not back yet) is shown, and the operator taps again a
- * second later: each a new action, never an automatic resend.
+ * second later: each a new action, never an automatic resend. The workflow
+ * names how many of each it needs at least, so answering nothing cannot pass.
  */
-static void answer_faults(void)
+static void answer_faults(unsigned int acknowledgements, unsigned int recoveries)
 {
+    unsigned int acknowledged = 0U;
+    unsigned int recovered = 0U;
     int taps = 0;
 
     pump();
-    if (OBS.fault_count == 0U) {
+    if (OBS.fault_count == 0U && acknowledgements == 0U && recoveries == 0U) {
         return;
     }
     close_alert();
@@ -387,9 +424,11 @@ static void answer_faults(void)
 
         if (furnace_hmi_probe_enabled(acknowledge)) {
             tap(acknowledge, "Acknowledge");
+            acknowledged++;
             pump_for(500U);
         } else if (furnace_hmi_probe_enabled(recover)) {
             tap(recover, "Recover");
+            recovered++;
             pump_for(1000U);
         } else {
             pump_for(200U);
@@ -397,6 +436,9 @@ static void answer_faults(void)
     }
     zassert_true(nothing_latched(), "faults left: latched %u unacknowledged %u", OBS.latched_class,
                  OBS.unacknowledged_faults);
+    zassert_true(acknowledged >= acknowledgements && recovered >= recoveries,
+                 "answered with %u Acknowledge and %u Recover taps, needed %u and %u", acknowledged,
+                 recovered, acknowledgements, recoveries);
     if (SCREENS.modal != NULL) {
         tap(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE), "Close");
     }
@@ -412,18 +454,21 @@ static const furnace_hmi_controller_program_t *program_named(const char *name)
     return NULL;
 }
 
-/* The program's details, opened from Programs by its place in the list shown. */
+/*
+ * The program's details, opened by tapping its row on Programs. A row may cut a
+ * long name short, so the row is found by the name's first 16 bytes; the
+ * details then show the whole name.
+ */
 static void open_program(const char *name)
 {
+    char start[17];
+
     go_to(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS);
-    for (uint8_t i = 0U; i < host.shown_library.count; i++) {
-        if (strcmp(host.shown_library.programs[i].name, name) == 0) {
-            SCREENS.selected_program = i;
-            go_to(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL);
-            return;
-        }
-    }
-    zassert_unreachable("%s is not listed", name);
+    (void)snprintf(start, sizeof(start), "%s", name);
+    tap(furnace_hmi_probe_button_with_text(SCREENS.content, start), name);
+    pump();
+    zassert_equal(SCREENS.page, FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL, "no details for %s", name);
+    zassert_true(page_shows(name), "the details do not show %s", name);
 }
 
 static void setup_channels(void)
@@ -504,24 +549,62 @@ static bool long_name_gone(void)
            program_named(long_name) == NULL;
 }
 
+/* A dialog that is not the "sending" notice: the controller's answer. */
+static bool answer_shown(void)
+{
+    return SCREENS.modal != NULL &&
+           !modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_SENDING_TITLE));
+}
+
 /* The answer to a save: acknowledged when the controller asks for it, then "saved". */
 static void save_answered(void)
 {
-    zassert_true(wait_for(modal_open, WAIT_MS), "no answer to the save");
-    while (SCREENS.modal != NULL &&
-           modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_SENDING_TITLE))) {
-        pump();
-    }
+    zassert_true(wait_for(answer_shown, WAIT_MS), "no answer to the save");
     if (modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_TITLE))) {
         tap(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM), "accept the duration");
-        zassert_true(wait_for(modal_open, WAIT_MS), "no answer to the acknowledged save");
-        while (modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_SENDING_TITLE))) {
-            pump();
-        }
+        zassert_true(wait_for(answer_shown, WAIT_MS), "no answer to the acknowledged save");
     }
     zassert_true(modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_SAVED)),
                  "the controller did not save the program");
     dismiss();
+}
+
+static bool deletion_shown(void)
+{
+    return modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED));
+}
+
+/*
+ * The stage editor's "Save all changes", answering what it asks, back to the
+ * program editor, whose Save program is then reachable.
+ */
+static void save_stage_changes(void)
+{
+    zassert_not_null(SCREENS.stage_dialog, "no stage editor");
+    tap(furnace_hmi_probe_button_with_text(SCREENS.stage_dialog,
+                                           text(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_DRAFT)),
+        "Save all changes");
+    if (SCREENS.modal != NULL) {
+        printk("workflow: the stage editor asks '%s'\n", first_text(SCREENS.modal));
+        tap(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_DRAFT), "confirm Save all changes");
+    }
+    zassert_true(SCREENS.stage_dialog == NULL && SCREENS.modal == NULL,
+                 "the stage editor stays open (page %d)", (int)SCREENS.page);
+}
+
+static bool stage_kinds(uint8_t count, const uint8_t *kinds)
+{
+    const furnace_hmi_controller_program_t *p = program_named(long_name);
+
+    if (p == NULL || p->stage_count != count) {
+        return false;
+    }
+    for (uint8_t i = 0U; i < count; i++) {
+        if (p->stages[i].kind != kinds[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 ZTEST(operator_workflows, test_1_program_edit_and_save)
@@ -536,16 +619,19 @@ ZTEST(operator_workflows, test_1_program_edit_and_save)
     for (size_t i = 0U; i < strlen(long_name); i++) {
         const char key[2] = {long_name[i], '\0'};
 
-        furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(SCREENS.modal, key));
+        tap(furnace_hmi_probe_button_with_text(SCREENS.modal, key), key);
     }
     tap(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY), "Apply");
     zassert_str_equal(SCREENS.program_editor_name, long_name, "the name typed");
 
     tap(page_button(FURNACE_HMI_UI_STRING_UI_LAB_ADD_STAGE_ACTION), "Add stage");
+    save_stage_changes();
     tap(page_button(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM), "Save");
     save_answered();
     wanted_revision = 1U;
     zassert_true(wait_for(long_name_listed, WAIT_MS), "the new program is not listed by the controller");
+    zassert_equal(program_named(long_name)->stage_count, 1U, "the saved stages");
+    zassert_equal(SCREENS.page, FURNACE_HMI_OPERATOR_PAGE_PROGRAMS, "a new program does not return to Programs");
     printk("workflow: saved, program %u revision %u\n", program_named(long_name)->program_id,
            program_named(long_name)->program_revision);
 
@@ -553,19 +639,27 @@ ZTEST(operator_workflows, test_1_program_edit_and_save)
     open_program(long_name);
     tap(page_button(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM), "Edit");
     tap(page_button(FURNACE_HMI_UI_STRING_UI_LAB_ADD_STAGE_ACTION), "Add stage");
+    tap(furnace_hmi_probe_button_with_text(SCREENS.stage_dialog,
+                                           text(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_HOLD)),
+        "Hold");
+    save_stage_changes();
     tap(page_button(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM), "Save");
     save_answered();
     wanted_revision = 2U;
     zassert_true(wait_for(long_name_listed, WAIT_MS), "revision 2 is not listed");
-    zassert_equal(program_named(long_name)->stage_count, 2U, "the edited stages");
+    {
+        static const uint8_t heating_hold[] = {FURNACE_HMI_CONTROLLER_STAGE_HEATING,
+                                               FURNACE_HMI_CONTROLLER_STAGE_HOLD};
+
+        zassert_true(stage_kinds(2U, heating_hold), "the edited stages are not Heating and Hold");
+    }
 
     /* Deleted. */
     open_program(long_name);
     tap(page_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT), "Delete");
     tap(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT), "confirm Delete");
     zassert_true(wait_for(long_name_gone, WAIT_MS), "the deleted program is listed");
-    zassert_true(wait_for(modal_open, WAIT_MS));
-    zassert_true(modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED)), "no deletion shown");
+    zassert_true(wait_for(deletion_shown, WAIT_MS), "no deletion shown");
     dismiss();
 }
 
@@ -627,9 +721,12 @@ ZTEST(operator_workflows, test_2_hot_start_pause_resume_stop)
     }
     zassert_true(wait_for(proposal_shown, WAIT_MS), "no hot-start proposal (modal %p)",
                  (void *)SCREENS.modal);
-    (void)snprintf(skipped, sizeof(skipped), "Start %s?", post_cure);
+    (void)snprintf(skipped, sizeof(skipped),
+                   text(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_TITLE_FORMAT), post_cure);
     zassert_true(modal_shows(skipped), "the proposal does not name the program");
-    zassert_true(modal_shows("stage 1, Heating to 100.0"), "the skipped stage is not shown");
+    (void)snprintf(skipped, sizeof(skipped),
+                   text(FURNACE_HMI_UI_STRING_UI_LAB_START_SKIPPED_HEATING_FORMAT), 1U, "100.0");
+    zassert_true(modal_shows(skipped), "the skipped stage is not shown: '%s'", skipped);
     zassert_true(OBS.start_proposal.skipped_count > 0U, "the controller skips nothing");
     printk("workflow: proposal stage %u, %u skipped\n", OBS.start_proposal.proposed_stage,
            OBS.start_proposal.skipped_count);
@@ -643,9 +740,17 @@ ZTEST(operator_workflows, test_2_hot_start_pause_resume_stop)
     zassert_true(OBS.stage_index >= proposed, "the run starts at stage %u, proposed %u",
                  OBS.stage_index, proposed);
 
-    /* W5: the library cannot be reached while the run executes (contained navigation). */
-    zassert_false(furnace_hmi_operator_screens_navigate(&SCREENS, FURNACE_HMI_OPERATOR_PAGE_PROGRAMS),
-                  "Programs is reachable during a run");
+    /* W5: the library cannot be reached while the run executes (contained navigation): the rail's
+     * Programs is not offered, or a tap on it leaves Running. */
+    {
+        lv_obj_t *programs = rail_button(FURNACE_HMI_UI_STRING_DASHBOARD_PROGRAMS);
+
+        if (furnace_hmi_probe_enabled(programs)) {
+            tap(programs, "Programs during the run");
+        }
+        pump();
+        zassert_equal(SCREENS.page, FURNACE_HMI_OPERATOR_PAGE_RUNNING, "Programs is reachable during a run");
+    }
 
     /* W3: Pause and Resume, each the controller's answer. */
     tap(page_button(FURNACE_HMI_UI_STRING_UI_LAB_PAUSE_PREVIEW), "Pause");
@@ -681,6 +786,11 @@ static bool manual_paused(void)
 ZTEST(operator_workflows, test_3_manual)
 {
     manual_start();
+    /* Started for the controller's longest session (owner 2026-11-11). */
+    zassert_true(OBS.capabilities_valid && OBS.manual_max_minutes > 0U &&
+                     OBS.manual_remaining_s + 60U >= OBS.manual_max_minutes * 60U,
+                 "a session of %u s left, maximum %u min", OBS.manual_remaining_s,
+                 OBS.manual_max_minutes);
     wanted_target = OBS.manual_target_decicelsius + 10;
     tap(furnace_hmi_probe_button_with_text(manual(SCREENS.manual_steppers),
                                            text(FURNACE_HMI_UI_STRING_UI_LAB_INCREASE)),
@@ -719,7 +829,7 @@ ZTEST(operator_workflows, test_4_quality_decision_and_continue)
                  OBS.run_state);
     scenario("offset 0");
     manual_stop_and_exit();
-    answer_faults();
+    answer_faults(0U, 0U);
 }
 
 /* ---- W7 Faults ---- */
@@ -743,7 +853,8 @@ ZTEST(operator_workflows, test_5_sensor_fault)
     tap(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE), "Close");
     manual_stop_and_exit();
     scenario("sensor measurement");
-    answer_faults();
+    /* The sensor fault is latched: one Acknowledge and one Recover at least. */
+    answer_faults(1U, 1U);
 }
 
 /* ---- W10 Link loss and reconnection during a session ---- */
@@ -752,6 +863,7 @@ ZTEST(operator_workflows, test_5_sensor_fault)
 static bool link_lost_shown(void)
 {
     return OBS.availability != FURNACE_HMI_STATE_AVAILABILITY_CURRENT &&
+           SCREENS.page == FURNACE_HMI_OPERATOR_PAGE_MANUAL &&
            modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_LOST_TITLE)) &&
            !furnace_hmi_probe_enabled(manual(SCREENS.manual_stop_button)) &&
            !furnace_hmi_probe_enabled(manual(SCREENS.manual_pause_button));
@@ -774,7 +886,9 @@ ZTEST(operator_workflows, test_6_link_loss_and_reconnection)
     channel(relay_fd, "hold");
     zassert_true(wait_for(link_lost_shown, WAIT_MS),
                  "the lost link is not shown: availability %u", OBS.availability);
-    pump_for(2000U);
+    /* The link stays lost for 5 s, longer than the controller's 3 s link silence. */
+    pump_for(5000U);
+    zassert_true(link_lost_shown(), "the lost link is not shown throughout");
     channel(relay_fd, "release");
     zassert_true(wait_for(link_back, WAIT_MS),
                  "the session is not shown again: link %u availability %u run %u (was %u)",
@@ -807,12 +921,22 @@ ZTEST(operator_workflows, test_7_protective_trip)
     tap(faults_button(), "Faults");
     zassert_true(modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RESET_EXTERNAL)),
                  "the external reset is not shown");
+    zassert_true(furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE)),
+                 "the trip cannot be acknowledged");
     for (int i = 0; i < 4 && furnace_hmi_probe_enabled(modal_button(
                                  FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE));
          i++) {
         tap(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE), "Acknowledge");
         pump_for(500U);
     }
+    zassert_equal(OBS.unacknowledged_faults, 0U, "acknowledged, the controller still counts %u",
+                  OBS.unacknowledged_faults);
+    /* A protective trip is reset outside software: acknowledged, it is not offered for recovery,
+     * the external reset is named, and the controller keeps it latched. */
+    zassert_is_null(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER),
+                    "Recover is offered for a protective trip");
+    zassert_true(modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RESET_EXTERNAL)),
+                 "the external reset is not named after acknowledgement");
     zassert_equal(OBS.latched_class, CLASS_PROTECTIVE_TRIP, "the trip is no longer latched");
     tap(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE), "Close");
 }
@@ -833,5 +957,9 @@ ZTEST(operator_workflows, test_8_device_log)
     pump_for(200U);
     zassert_false(page_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_UNAVAILABLE)),
                   "the Device log is shown unavailable");
+    zassert_false(page_shows(text(FURNACE_HMI_UI_STRING_CTRL_LOG_EMPTY)) ||
+                      page_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LOG_EMPTY)),
+                  "the Device log shows no entries though the controller sent %u",
+                  host.history.count);
     printk("workflow: Device log, %u entries\n", host.history.count);
 }

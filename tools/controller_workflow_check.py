@@ -80,6 +80,7 @@ class Relay:
         self.control_port = os.ttyname(self._control_slave)
         self.held = False
         self.dropped = 0
+        self.error: str | None = None
         self.stopping = False
         self._line = b""
         self.thread = threading.Thread(target=self._run, daemon=True)
@@ -103,22 +104,46 @@ class Relay:
             else:
                 os.write(self.control_master, b"refused\n")
 
+    def _write_all(self, fd: int, data: bytes) -> None:
+        """Every byte, in order, or an error recorded: a full pseudo-terminal is waited for."""
+        deadline = time.monotonic() + 2.0
+        while data:
+            try:
+                written = os.write(fd, data)
+            except BlockingIOError:
+                written = 0
+            data = data[written:]
+            if data:
+                if time.monotonic() > deadline:
+                    raise OSError(f"the link stalled with {len(data)} bytes unwritten")
+                select.select([], [fd], [], 0.05)
+
     def _run(self) -> None:
         pairs = {self.controller: self.hmi_master, self.hmi_master: self.controller}
-        while not self.stopping:
-            ready, _, _ = select.select([self.controller, self.hmi_master, self.control_master],
-                                        [], [], 0.1)
-            for fd in ready:
-                try:
-                    data = os.read(fd, 4096)
-                except (BlockingIOError, OSError):
-                    continue
-                if fd == self.control_master:
-                    self._control(data)
-                elif self.held:
-                    self.dropped += len(data)
-                else:
-                    os.write(pairs[fd], data)
+        for fd in pairs:
+            os.set_blocking(fd, False)
+        try:
+            while not self.stopping:
+                ready, _, _ = select.select(
+                    [self.controller, self.hmi_master, self.control_master], [], [], 0.1)
+                for fd in ready:
+                    try:
+                        data = os.read(fd, 4096)
+                    except BlockingIOError:
+                        continue
+                    if not data:
+                        raise OSError(f"end of file on fd {fd}")
+                    if fd == self.control_master:
+                        self._control(data)
+                    elif self.held:
+                        self.dropped += len(data)
+                    else:
+                        self._write_all(pairs[fd], data)
+        except OSError as error:
+            # Only an error while the workflows still run matters; it fails the check.
+            if not self.stopping:
+                self.error = str(error)
+                print(f"relay: stopped, {error}", flush=True)
 
 
 def main() -> int:
@@ -174,7 +199,14 @@ def main() -> int:
                 print("   ", lines[index + 1])
     if relay is not None:
         print(f"relay: {relay.dropped} bytes dropped while held")
-    passed = returncode == 0 and "PROJECT EXECUTION SUCCESSFUL" in output
+    # Every test ran and passed: a suite that ran none, or skipped some, is no evidence.
+    summary = re.search(r"SUITE \w+ - .*pass = (\d+), fail = (\d+), skip = (\d+)", output)
+    complete = summary is not None and int(summary.group(1)) > 0 and \
+        int(summary.group(2)) == 0 and int(summary.group(3)) == 0
+    passed = returncode == 0 and "PROJECT EXECUTION SUCCESSFUL" in output and complete and \
+        (relay is None or relay.error is None)
+    if relay is not None and relay.error is not None:
+        print(f"relay error: {relay.error}")
     if not passed:
         traces = [line for line in output.splitlines() if line.startswith("hmi-link:")]
         print("last link trace:", traces[-1] if traces else "none")
