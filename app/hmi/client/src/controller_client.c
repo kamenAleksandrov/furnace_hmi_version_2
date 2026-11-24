@@ -24,11 +24,53 @@
 /* FAULT_ACKNOWLEDGE_RESULT and FAULT_RECOVERY_RESULT codes (controller interface). */
 #define ACKNOWLEDGE_DONE 0U
 #define RECOVERY_RECOVERED 7U
+/* Library results (controller interface: Program library). */
+#define LIBRARY_OK 0U
+#define LIBRARY_STORAGE_UNAVAILABLE 1U
+#define DATA_DAMAGED 3U
+#define SAVE_SAVED 0U
+#define DELETE_DELETED 0U
+#define LIBRARY_UNRESOLVED 10U
+/* Start transaction codes: the start reason DUPLICATE_REQUEST and the STATUS start states. */
+#define START_DUPLICATE_REQUEST 5U
+#define START_STATE_CONSUMED 4U
+#define START_STATE_CANCELLED 5U
+#define START_STATE_INVALIDATED 6U
 
 #define READ_CHUNK 64U
 
+/* The copies between the plain data and the codec assume these capacities (review L6). */
+_Static_assert(sizeof(((furnace_hmi_command_t *)0)->name) ==
+                   sizeof(((struct furnace_wire_program_save *)0)->name),
+               "a save's name is copied whole");
+_Static_assert(sizeof(((struct furnace_wire_library_entry *)0)->name) ==
+                   FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY + 1U,
+               "library names fit");
+_Static_assert(FURNACE_HMI_CONTROLLER_MAX_STAGES ==
+                   sizeof(((struct furnace_wire_program_data *)0)->stages) /
+                       sizeof(((struct furnace_wire_program_data *)0)->stages[0]),
+               "program stages match the wire");
+_Static_assert(FURNACE_HMI_CONTROLLER_MAX_STAGES ==
+                   sizeof(((struct furnace_wire_start_proposal *)0)->skipped_stages) /
+                       sizeof(((struct furnace_wire_start_proposal *)0)->skipped_stages[0]),
+               "skipped stages match the wire");
+_Static_assert(FURNACE_HMI_CONTROLLER_MAX_PROPOSAL_WARNINGS ==
+                   sizeof(((struct furnace_wire_start_proposal *)0)->warnings),
+               "proposal warnings match the wire");
+_Static_assert(FURNACE_HMI_CLIENT_LIBRARY_PAGE ==
+                   sizeof(((struct furnace_wire_program_list *)0)->entries) /
+                       sizeof(((struct furnace_wire_program_list *)0)->entries[0]),
+               "a list page as the wire holds it");
+
+/* Where the library mirror's reading stands (client.library_step). */
+#define LIBRARY_IDLE 0U
+#define LIBRARY_LISTING 1U
+#define LIBRARY_READING 2U
+
 static void unresolve(furnace_hmi_controller_client_t *c, bool stop,
                       furnace_hmi_command_unresolved_t cause);
+static void library_discard(furnace_hmi_controller_client_t *c);
+static void end_open_proposal(furnace_hmi_controller_client_t *c);
 
 static void saturating_increment(uint32_t *counter)
 {
@@ -111,6 +153,8 @@ static void new_client_session(furnace_hmi_controller_client_t *c)
     /* A result goes only to the client session that sent the command. */
     unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED);
     unresolve(c, true, FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED);
+    /* Another client session invalidates the transaction (CLIENT_SESSION_CHANGED; review L5). */
+    end_open_proposal(c);
     changed(c);
 }
 
@@ -271,6 +315,48 @@ static bool encode_command(furnace_hmi_controller_client_t *c, const furnace_hmi
         m->u.fault_recovery_request.fault_id = cmd->fault_id;
         m->u.fault_recovery_request.source = cmd->source;
         break;
+    case FURNACE_HMI_COMMAND_PROGRAM_SAVE:
+        m->type = FURNACE_WIRE_MSG_PROGRAM_SAVE;
+        env = &m->u.program_save.envelope;
+        m->u.program_save.program_id = cmd->program_id;
+        m->u.program_save.base_revision = cmd->program_revision;
+        m->u.program_save.acknowledged_duration_s = cmd->acknowledged_duration_s;
+        (void)memcpy(m->u.program_save.name, cmd->name, sizeof(m->u.program_save.name));
+        m->u.program_save.stages_count = cmd->stage_count;
+        for (uint8_t i = 0U; i < cmd->stage_count; i++) {
+            m->u.program_save.stages[i].kind = cmd->stages[i].kind;
+            m->u.program_save.stages[i].target = cmd->stages[i].target_decicelsius;
+            m->u.program_save.stages[i].rate = cmd->stages[i].rate_decicelsius_per_min;
+            m->u.program_save.stages[i].duration_minutes = cmd->stages[i].duration_minutes;
+        }
+        break;
+    case FURNACE_HMI_COMMAND_PROGRAM_DELETE:
+        m->type = FURNACE_WIRE_MSG_PROGRAM_DELETE;
+        env = &m->u.program_delete.envelope;
+        m->u.program_delete.program_id = cmd->program_id;
+        m->u.program_delete.program_revision = cmd->program_revision;
+        break;
+    case FURNACE_HMI_COMMAND_PROGRAM_START:
+        m->type = FURNACE_WIRE_MSG_START_REQUEST;
+        env = &m->u.start_request.envelope;
+        m->u.start_request.program_id = cmd->program_id;
+        m->u.start_request.program_revision = cmd->program_revision;
+        break;
+    case FURNACE_HMI_COMMAND_START_CONFIRM:
+        m->type = FURNACE_WIRE_MSG_START_CONFIRM;
+        env = &m->u.start_confirm.envelope;
+        m->u.start_confirm.transaction_id = cmd->transaction_id;
+        m->u.start_confirm.proposal_revision = cmd->proposal_revision;
+        m->u.start_confirm.program_id = cmd->program_id;
+        m->u.start_confirm.program_revision = cmd->program_revision;
+        m->u.start_confirm.proposed_stage = cmd->proposed_stage;
+        m->u.start_confirm.accepted_duration_s = cmd->accepted_duration_s;
+        break;
+    case FURNACE_HMI_COMMAND_START_CANCEL:
+        m->type = FURNACE_WIRE_MSG_START_CANCEL;
+        env = &m->u.start_cancel.envelope;
+        m->u.start_cancel.transaction_id = cmd->transaction_id;
+        break;
     case FURNACE_HMI_COMMAND_NONE:
     case FURNACE_HMI_COMMAND_COUNT:
     default:
@@ -372,9 +458,25 @@ static furnace_hmi_command_kind_t kind_of_message(uint16_t msg_type)
         return FURNACE_HMI_COMMAND_FAULT_ACKNOWLEDGE;
     case FURNACE_WIRE_MSG_FAULT_RECOVERY_REQUEST:
         return FURNACE_HMI_COMMAND_FAULT_RECOVERY;
+    case FURNACE_WIRE_MSG_PROGRAM_SAVE:
+        return FURNACE_HMI_COMMAND_PROGRAM_SAVE;
+    case FURNACE_WIRE_MSG_PROGRAM_DELETE:
+        return FURNACE_HMI_COMMAND_PROGRAM_DELETE;
+    case FURNACE_WIRE_MSG_START_REQUEST:
+        return FURNACE_HMI_COMMAND_PROGRAM_START;
+    case FURNACE_WIRE_MSG_START_CONFIRM:
+        return FURNACE_HMI_COMMAND_START_CONFIRM;
+    case FURNACE_WIRE_MSG_START_CANCEL:
+        return FURNACE_HMI_COMMAND_START_CANCEL;
     default:
         return FURNACE_HMI_COMMAND_NONE;
     }
+}
+
+/* Save and delete: answered once written, so retried later and fewer times (M21-7 design). */
+static bool is_library_change(furnace_hmi_command_kind_t kind)
+{
+    return kind == FURNACE_HMI_COMMAND_PROGRAM_SAVE || kind == FURNACE_HMI_COMMAND_PROGRAM_DELETE;
 }
 
 static void complete(furnace_hmi_controller_client_t *c, furnace_hmi_command_outcome_t *o,
@@ -436,6 +538,281 @@ static void on_start_prepare_result(furnace_hmi_controller_client_t *c,
     }
 }
 
+/* ---- library changes and the program Start (M21-7a; plan, M21-7 design) ------------------ */
+
+static void on_program_save_result(furnace_hmi_controller_client_t *c,
+                                   const struct furnace_wire_program_save_result *r)
+{
+    furnace_hmi_command_outcome_t *o =
+        pending_command(c, r->request_id, FURNACE_HMI_COMMAND_PROGRAM_SAVE);
+
+    if (o == NULL) {
+        return;
+    }
+    o->program_id = r->program_id;
+    o->program_revision = r->program_revision;
+    o->error_reason = r->error_reason;
+    o->error_field = r->error_field;
+    o->error_stage = r->error_stage;
+    o->curing_estimate_s = r->curing_estimate_s;
+    o->planning_reference_decicelsius = r->planning_reference;
+    /* After a change, or one that may still take effect, the library is listed again (review M3). */
+    c->library_relist = (r->result == SAVE_SAVED || r->result == LIBRARY_UNRESOLVED);
+    if (r->result == LIBRARY_UNRESOLVED) {
+        o->reason = r->result;
+        c->client_session_confirmed = true;
+        unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_BY_CONTROLLER);
+        return;
+    }
+    complete(c, o, r->result == SAVE_SAVED, r->result);
+}
+
+static void on_program_delete_result(furnace_hmi_controller_client_t *c,
+                                     const struct furnace_wire_program_delete_result *r)
+{
+    furnace_hmi_command_outcome_t *o =
+        pending_command(c, r->request_id, FURNACE_HMI_COMMAND_PROGRAM_DELETE);
+
+    if (o == NULL) {
+        return;
+    }
+    o->program_id = r->program_id;
+    c->library_relist = (r->result == DELETE_DELETED || r->result == LIBRARY_UNRESOLVED);
+    if (r->result == LIBRARY_UNRESOLVED) {
+        o->reason = r->result;
+        c->client_session_confirmed = true;
+        unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_BY_CONTROLLER);
+        return;
+    }
+    complete(c, o, r->result == DELETE_DELETED, r->result);
+}
+
+/* The pending Start-transaction command this result answers, of any of the given kinds. */
+static furnace_hmi_command_outcome_t *pending_start(furnace_hmi_controller_client_t *c,
+                                                    uint32_t request_id, bool request,
+                                                    bool confirm, bool cancel)
+{
+    furnace_hmi_command_outcome_t *o = NULL;
+
+    if (request) {
+        o = pending_command(c, request_id, FURNACE_HMI_COMMAND_PROGRAM_START);
+    }
+    if (o == NULL && confirm) {
+        o = pending_command(c, request_id, FURNACE_HMI_COMMAND_START_CONFIRM);
+    }
+    if (o == NULL && cancel) {
+        o = pending_command(c, request_id, FURNACE_HMI_COMMAND_START_CANCEL);
+    }
+    return o;
+}
+
+/* The open proposal of this transaction, if any. */
+static furnace_hmi_controller_start_proposal_t *open_proposal(furnace_hmi_controller_client_t *c,
+                                                              uint32_t transaction_id)
+{
+    furnace_hmi_controller_start_proposal_t *p = &c->observation.start_proposal;
+
+    return (p->state == FURNACE_HMI_PROPOSAL_OPEN && p->transaction_id == transaction_id) ? p
+                                                                                          : NULL;
+}
+
+static void end_proposal(furnace_hmi_controller_client_t *c,
+                         furnace_hmi_controller_start_proposal_t *p,
+                         furnace_hmi_proposal_state_t state, uint8_t reason)
+{
+    if (p != NULL) {
+        p->state = state;
+        p->invalidation_reason = reason;
+        changed(c);
+    }
+}
+
+static void end_open_proposal(furnace_hmi_controller_client_t *c)
+{
+    end_proposal(c, open_proposal(c, c->observation.start_proposal.transaction_id),
+                 FURNACE_HMI_PROPOSAL_ENDED, 0U);
+}
+
+/*
+ * The answer to the latest Start of this client session, also after that Start
+ * became unresolved: the controller's transaction is then still shown (review M2).
+ */
+static bool answers_latest_start(const furnace_hmi_controller_client_t *c, uint32_t request_id)
+{
+    const furnace_hmi_command_outcome_t *o = &c->observation.command;
+
+    return request_id != 0U && o->kind == FURNACE_HMI_COMMAND_PROGRAM_START &&
+           o->request_id == request_id && o->state == FURNACE_HMI_COMMAND_UNRESOLVED &&
+           o->unresolved_cause != FURNACE_HMI_COMMAND_UNRESOLVED_CLIENT_SESSION_CHANGED &&
+           o->unresolved_cause != FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED;
+}
+
+static void fill_proposal(furnace_hmi_controller_start_proposal_t *p,
+                          const struct furnace_wire_start_proposal *w)
+{
+    p->state = FURNACE_HMI_PROPOSAL_OPEN;
+    p->transaction_id = w->transaction_id;
+    p->proposal_revision = w->proposal_revision;
+    p->measured_decicelsius = w->measured_temperature.value;
+    p->measured_validity = w->measured_temperature.validity;
+    p->proposed_stage = w->proposed_stage;
+    p->skipped_count = w->skipped_stages_count;
+    for (uint8_t i = 0U; i < w->skipped_stages_count; i++) {
+        p->skipped[i].index = w->skipped_stages[i].index;
+        p->skipped[i].kind = w->skipped_stages[i].kind;
+        p->skipped[i].target_decicelsius = w->skipped_stages[i].target;
+        p->skipped[i].hold_minutes = w->skipped_stages[i].hold_minutes;
+    }
+    p->remaining_curing_s = w->remaining_curing_s;
+    p->duration_ack_required = w->duration_ack_required;
+    p->recommended_s = w->recommended_s;
+    p->maximum_s = w->maximum_s;
+    p->warnings_count = w->warnings_count;
+    (void)memcpy(p->warnings, w->warnings, sizeof(p->warnings));
+    p->invalidation_reason = 0U;
+}
+
+/*
+ * Only the answer to the operator's START_REQUEST opens a proposal; later
+ * revisions of that transaction replace it (spec: START_PROPOSAL).
+ */
+static void on_start_proposal(furnace_hmi_controller_client_t *c,
+                              const struct furnace_wire_start_proposal *w)
+{
+    furnace_hmi_controller_start_proposal_t *p = &c->observation.start_proposal;
+    furnace_hmi_command_outcome_t *o =
+        (w->request_id != 0U) ? pending_start(c, w->request_id, true, false, false) : NULL;
+
+    if (o != NULL) {
+        const furnace_hmi_command_t *start = &c->command_delivery.command;
+
+        o->transaction_id = w->transaction_id;
+        o->state = FURNACE_HMI_COMMAND_PROPOSED;
+        c->client_session_confirmed = true;
+        (void)memset(p, 0, sizeof(*p));
+        p->program_id = start->program_id;
+        p->program_revision = start->program_revision;
+        fill_proposal(p, w);
+        changed(c);
+        return;
+    }
+    if (answers_latest_start(c, w->request_id) && p->state != FURNACE_HMI_PROPOSAL_OPEN) {
+        const furnace_hmi_command_t *start = &c->command_delivery.command;
+
+        (void)memset(p, 0, sizeof(*p));
+        p->program_id = start->program_id;
+        p->program_revision = start->program_revision;
+        fill_proposal(p, w);
+        changed(c);
+        return;
+    }
+    p = open_proposal(c, w->transaction_id);
+    if (p != NULL && w->proposal_revision > p->proposal_revision) {
+        fill_proposal(p, w);
+        changed(c);
+    }
+}
+
+static void on_start_accepted(furnace_hmi_controller_client_t *c,
+                              const struct furnace_wire_start_accepted *a)
+{
+    furnace_hmi_command_outcome_t *o = pending_start(c, a->request_id, true, true, false);
+
+    if (o != NULL) {
+        o->run_id = a->run_id;
+        o->transaction_id = a->transaction_id;
+        complete(c, o, true, 0U);
+    }
+    end_proposal(c, open_proposal(c, a->transaction_id), FURNACE_HMI_PROPOSAL_ACCEPTED, 0U);
+}
+
+static void on_start_rejected(furnace_hmi_controller_client_t *c,
+                              const struct furnace_wire_start_rejected *r)
+{
+    furnace_hmi_command_outcome_t *o = pending_start(c, r->request_id, true, true, true);
+
+    if (o == NULL) {
+        return;
+    }
+    if (r->reason == START_DUPLICATE_REQUEST) {
+        /* The start transaction's own duplicate check: the outcome is unknown. */
+        o->reason = r->reason;
+        c->client_session_confirmed = true;
+        unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_DUPLICATE);
+        return;
+    }
+    complete(c, o, false, r->reason);
+}
+
+static void on_start_cancelled(furnace_hmi_controller_client_t *c,
+                               const struct furnace_wire_start_cancelled *r)
+{
+    furnace_hmi_command_outcome_t *o = pending_start(c, r->request_id, false, false, true);
+
+    if (o != NULL) {
+        o->transaction_id = r->transaction_id;
+        complete(c, o, true, 0U);
+    }
+    end_proposal(c, open_proposal(c, r->transaction_id), FURNACE_HMI_PROPOSAL_CANCELLED, 0U);
+}
+
+static void on_start_invalidated(furnace_hmi_controller_client_t *c,
+                                 const struct furnace_wire_start_proposal_invalidated *i)
+{
+    end_proposal(c, open_proposal(c, i->transaction_id), FURNACE_HMI_PROPOSAL_INVALIDATED,
+                 i->reason);
+}
+
+/*
+ * STATUS tells a client that missed an event how the transaction ended. Status
+ * is coalesced and may trail the proposal: no transaction or an older one says
+ * nothing (plan, M21-7 design).
+ */
+static void proposal_from_status(furnace_hmi_controller_client_t *c,
+                                 const struct furnace_wire_start_status *s)
+{
+    furnace_hmi_controller_start_proposal_t *p = &c->observation.start_proposal;
+
+    if (p->state != FURNACE_HMI_PROPOSAL_OPEN || s->transaction_id < p->transaction_id) {
+        return;
+    }
+    if (s->transaction_id > p->transaction_id) {
+        end_proposal(c, p, FURNACE_HMI_PROPOSAL_ENDED, 0U);
+    } else if (s->state == START_STATE_CONSUMED) {
+        end_proposal(c, p, FURNACE_HMI_PROPOSAL_ACCEPTED, 0U);
+    } else if (s->state == START_STATE_CANCELLED) {
+        end_proposal(c, p, FURNACE_HMI_PROPOSAL_CANCELLED, 0U);
+    } else if (s->state == START_STATE_INVALIDATED) {
+        end_proposal(c, p, FURNACE_HMI_PROPOSAL_INVALIDATED, s->invalidation_reason);
+    }
+}
+
+/* A save the codec can encode: a NUL-terminated strict UTF-8 name, kinds and fields as the wire allows. */
+static bool save_encodable(const furnace_hmi_command_t *cmd)
+{
+    const void *nul = memchr(cmd->name, '\0', sizeof(cmd->name));
+
+    if (nul == NULL || cmd->stage_count > FURNACE_HMI_CONTROLLER_MAX_STAGES ||
+        !furnace_hmi_controller_name_valid(cmd->name,
+                                           (uint32_t)((const char *)nul - cmd->name),
+                                           FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY)) {
+        return false;
+    }
+    for (uint8_t i = 0U; i < cmd->stage_count; i++) {
+        const furnace_hmi_controller_stage_t *s = &cmd->stages[i];
+
+        if (s->kind == FURNACE_HMI_CONTROLLER_STAGE_HEATING) {
+            if (s->duration_minutes != 0U) {
+                return false;
+            }
+        } else if (s->kind != FURNACE_HMI_CONTROLLER_STAGE_HOLD || s->target_decicelsius != 0 ||
+                   s->rate_decicelsius_per_min != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /*
  * COMMAND_REJECTED of a pending command: refused by the service, except that a
  * duplicate and STOP_UNRESOLVED leave the outcome unknown (controller interface).
@@ -482,8 +859,12 @@ static void on_command_time(furnace_hmi_controller_client_t *c)
         const bool stop = (slot == 1);
         furnace_hmi_command_outcome_t *o = outcome_of(c, stop);
         const uint32_t since = delivery_of(c, stop)->last_sent_ms;
-        const uint8_t attempts =
-            stop ? FURNACE_HMI_CLIENT_STOP_ATTEMPTS : FURNACE_HMI_CLIENT_COMMAND_ATTEMPTS;
+        const bool library = is_library_change(o->kind);
+        const uint8_t attempts = stop      ? FURNACE_HMI_CLIENT_STOP_ATTEMPTS
+                                 : library ? FURNACE_HMI_CLIENT_LIBRARY_ATTEMPTS
+                                           : FURNACE_HMI_CLIENT_COMMAND_ATTEMPTS;
+        const uint32_t retry_ms =
+            library ? FURNACE_HMI_CLIENT_LIBRARY_RETRY_MS : FURNACE_HMI_CLIENT_COMMAND_RETRY_MS;
         const bool usable = (link == FURNACE_HMI_LINK_CONNECTED) ||
                             (stop && link == FURNACE_HMI_LINK_SYNCHRONIZING);
 
@@ -496,7 +877,7 @@ static void on_command_time(furnace_hmi_controller_client_t *c)
             }
             continue;
         }
-        if (!elapsed(c->now_ms, since, FURNACE_HMI_CLIENT_COMMAND_RETRY_MS)) {
+        if (!elapsed(c->now_ms, since, retry_ms)) {
             continue;
         }
         if (o->attempts >= attempts) {
@@ -537,7 +918,8 @@ furnace_hmi_command_local_t furnace_hmi_controller_client_submit(
     furnace_hmi_command_outcome_t *o = outcome_of(c, stop);
     uint32_t request_id = 0U;
 
-    if (command->kind <= FURNACE_HMI_COMMAND_NONE || command->kind >= FURNACE_HMI_COMMAND_COUNT) {
+    if (command->kind <= FURNACE_HMI_COMMAND_NONE || command->kind >= FURNACE_HMI_COMMAND_COUNT ||
+        (command->kind == FURNACE_HMI_COMMAND_PROGRAM_SAVE && !save_encodable(command))) {
         refusal = FURNACE_HMI_COMMAND_LOCAL_INVALID;
     } else if (c->observation.link != FURNACE_HMI_LINK_CONNECTED) {
         refusal = FURNACE_HMI_COMMAND_LOCAL_NOT_CURRENT;
@@ -556,6 +938,11 @@ furnace_hmi_command_local_t furnace_hmi_controller_client_submit(
     o->state = FURNACE_HMI_COMMAND_PENDING;
     o->request_id = request_id;
     delivery_of(c, stop)->command = *command;
+    if (command->kind == FURNACE_HMI_COMMAND_PROGRAM_START &&
+        c->observation.start_proposal.state != FURNACE_HMI_PROPOSAL_OPEN) {
+        /* A new Start: the proposal of an earlier one is no longer shown. */
+        (void)memset(&c->observation.start_proposal, 0, sizeof(c->observation.start_proposal));
+    }
     send_command(c, stop);
     return FURNACE_HMI_COMMAND_LOCAL_NONE;
 }
@@ -583,6 +970,13 @@ static void discard_session_data(furnace_hmi_controller_client_t *c)
     /* Another controller session: a restart, which ends every run; no result will come. */
     unresolve(c, false, FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED);
     unresolve(c, true, FURNACE_HMI_COMMAND_UNRESOLVED_SESSION_CHANGED);
+    end_open_proposal(c);
+    o->start_transaction_id = 0U;
+    o->start_proposal_revision = 0U;
+    o->start_state = 0U;
+    o->start_invalidation_reason = 0U;
+    o->library_revision = 0U;
+    library_discard(c);
     changed(c);
 }
 
@@ -774,6 +1168,11 @@ static void copy_status(furnace_hmi_controller_observation_t *o, const struct fu
     o->fan_feedback = s->equipment.fan_feedback;
     o->door_state = s->equipment.door_state;
     o->emergency_active = s->equipment.emergency_active;
+    o->library_revision = s->library_revision;
+    o->start_transaction_id = s->start.transaction_id;
+    o->start_proposal_revision = s->start.proposal_revision;
+    o->start_state = s->start.state;
+    o->start_invalidation_reason = s->start.invalidation_reason;
     o->status_valid = true;
 }
 
@@ -801,6 +1200,7 @@ static void on_status(furnace_hmi_controller_client_t *c, const struct furnace_w
         return;
     }
     copy_status(o, s);
+    proposal_from_status(c, &s->start);
     c->last_status_ms = c->now_ms;
     changed(c);
     if (o->link == FURNACE_HMI_LINK_SILENT) {
@@ -897,6 +1297,7 @@ static void on_snapshot_end(furnace_hmi_controller_client_t *c,
     o->faults_outdated = false;
     o->run_event_sequence = end->run_event_sequence;
     o->fault_event_sequence = end->fault_sequence;
+    o->library_revision = end->library_revision;
     c->event_sequences_known = true;
     /* The controller's own snapshot (request 0) does not answer a request of ours still pending. */
     c->snapshot_active = !ours && (o->snapshot_request == FURNACE_HMI_REQUEST_PENDING);
@@ -942,9 +1343,11 @@ static void on_command_rejected(furnace_hmi_controller_client_t *c,
     const bool snapshot = (o->snapshot_request == FURNACE_HMI_REQUEST_PENDING) &&
                           (r->request_id == o->snapshot_request_id);
     const bool capabilities = (r->request_id != 0U) && (r->request_id == c->capabilities_request_id);
+    /* A refused library read is asked again after its timeout, like a lost answer. */
+    const bool library = (c->library_step != LIBRARY_IDLE) && (r->request_id == c->library_request_id);
     const bool command = command_rejected(c, r->request_id, r->msg_type, r->reason);
 
-    if (!snapshot && !capabilities && !command) {
+    if (!snapshot && !capabilities && !library && !command) {
         return;
     }
     if (snapshot) {
@@ -960,6 +1363,245 @@ static void on_command_rejected(furnace_hmi_controller_client_t *c,
     } else if (r->reason == REJECT_NOT_CONNECTED || r->reason == REJECT_STALE_SESSION ||
                r->reason == REJECT_CLIENT_SESSION_MISMATCH) {
         send_hello(c);
+    }
+}
+
+/* ---- the library mirror (M21-7a; plan, M21-7 design) ------------------------------------- */
+
+static void library_changed(furnace_hmi_controller_client_t *c)
+{
+    c->library_generation++;
+}
+
+/* Another controller session: nothing of the previous one's library is shown. */
+static void library_discard(furnace_hmi_controller_client_t *c)
+{
+    furnace_hmi_controller_library_t *l = &c->library;
+
+    l->state = FURNACE_HMI_LIBRARY_UNKNOWN;
+    l->library_revision = 0U;
+    l->updating = false;
+    l->count = 0U;
+    (void)memset(l->programs, 0, sizeof(l->programs));
+    c->library_step = LIBRARY_IDLE;
+    c->library_relist = false;
+    library_changed(c);
+}
+
+/* Send the request of the current step: the page at library_next, or the read of that program. */
+static void library_send(furnace_hmi_controller_client_t *c)
+{
+    struct furnace_wire_envelope *env;
+
+    (void)memset(&c->out, 0, sizeof(c->out));
+    if (c->library_step == LIBRARY_LISTING) {
+        c->out.type = FURNACE_WIRE_MSG_PROGRAM_LIST_REQUEST;
+        env = &c->out.u.program_list_request.envelope;
+        c->out.u.program_list_request.first_index = c->library_next;
+        c->out.u.program_list_request.max_count = FURNACE_HMI_CLIENT_LIBRARY_PAGE;
+    } else {
+        c->out.type = FURNACE_WIRE_MSG_PROGRAM_READ_REQUEST;
+        env = &c->out.u.program_read_request.envelope;
+        c->out.u.program_read_request.program_id =
+            c->library_reading.programs[c->library_next].program_id;
+    }
+    c->library_sent_ms = c->now_ms;
+    if (!fill_envelope(c, env)) {
+        c->library_step = LIBRARY_IDLE; /* a new client session is opening */
+        return;
+    }
+    c->library_request_id = env->request_id;
+    send_out(c);
+}
+
+static void library_list_from_start(furnace_hmi_controller_client_t *c)
+{
+    c->library_step = LIBRARY_LISTING;
+    c->library_next = 0U;
+    c->library_reading.count = 0U;
+    library_send(c);
+}
+
+/* The library changed while it was read: everything is read again from index 0. */
+static void library_restart(furnace_hmi_controller_client_t *c)
+{
+    saturating_increment(&c->library.restarts);
+    library_changed(c);
+    library_list_from_start(c);
+}
+
+/* The controller serves no library, or one too large to hold: nothing is shown. */
+static void library_settle(furnace_hmi_controller_client_t *c, furnace_hmi_library_state_t state,
+                           uint32_t revision)
+{
+    c->library.state = state;
+    /* Held at the newest revision seen, so a STATUS ahead of the page does not list it again (L6). */
+    c->library.library_revision = (revision > c->observation.library_revision)
+                                      ? revision
+                                      : c->observation.library_revision;
+    c->library.updating = false;
+    c->library.count = 0U;
+    c->library_step = LIBRARY_IDLE;
+    library_changed(c);
+}
+
+/* Read the next program that is not damaged; with every program read, the listing is shown. */
+static void library_read_next(furnace_hmi_controller_client_t *c, uint8_t from)
+{
+    furnace_hmi_controller_library_t *r = &c->library_reading;
+    furnace_hmi_controller_library_t *l = &c->library;
+
+    for (uint8_t i = from; i < r->count; i++) {
+        if (!r->programs[i].damaged) {
+            c->library_step = LIBRARY_READING;
+            c->library_next = i;
+            library_send(c);
+            return;
+        }
+    }
+    l->state = FURNACE_HMI_LIBRARY_CURRENT;
+    l->library_revision = r->library_revision;
+    l->updating = false;
+    l->count = r->count;
+    (void)memcpy(l->programs, r->programs, sizeof(l->programs));
+    c->library_step = LIBRARY_IDLE;
+    library_changed(c);
+}
+
+static void copy_name(char *to, const char *from)
+{
+    (void)memcpy(to, from, FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY);
+    to[FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY] = '\0';
+}
+
+static bool name_shown(const char *name)
+{
+    return furnace_hmi_controller_name_valid(name, (uint32_t)strlen(name),
+                                             FURNACE_HMI_CONTROLLER_NAME_MAX_CODE_POINTS);
+}
+
+static void on_program_list(furnace_hmi_controller_client_t *c,
+                            const struct furnace_wire_program_list *l)
+{
+    furnace_hmi_controller_library_t *r = &c->library_reading;
+
+    if (c->library_step != LIBRARY_LISTING || l->request_id != c->library_request_id) {
+        return; /* superseded, or not ours */
+    }
+    c->client_session_confirmed = true;
+    if (l->result != LIBRARY_OK) {
+        library_settle(c, FURNACE_HMI_LIBRARY_UNAVAILABLE, l->library_revision);
+        return;
+    }
+    if (c->library_next == 0U) {
+        r->library_revision = l->library_revision;
+        c->library_total = l->total;
+        if (l->total > FURNACE_HMI_CONTROLLER_MAX_PROGRAMS) {
+            library_settle(c, FURNACE_HMI_LIBRARY_TOO_LARGE, l->library_revision);
+            return;
+        }
+    } else if (l->library_revision != r->library_revision || l->total != c->library_total) {
+        library_restart(c);
+        return;
+    }
+    if (c->library_total == 0U && l->first_index == 0U && l->entries_count == 0U) {
+        library_read_next(c, 0U); /* a library without programs (review M1) */
+        return;
+    }
+    if (l->first_index != c->library_next || l->entries_count == 0U ||
+        l->entries_count > c->library_total - c->library_next) {
+        return; /* not the page asked for: asked again after the timeout */
+    }
+    for (uint8_t i = 0U; i < l->entries_count; i++) {
+        const struct furnace_wire_library_entry *e = &l->entries[i];
+        furnace_hmi_controller_program_t *p = &r->programs[c->library_next + i];
+
+        (void)memset(p, 0, sizeof(*p));
+        p->program_id = e->program_id;
+        p->program_revision = e->program_revision;
+        copy_name(p->name, e->name);
+        p->name_valid = name_shown(p->name);
+        p->damaged = e->damaged;
+        p->max_target_decicelsius = e->max_target;
+        p->curing_estimate_s = e->curing_estimate_s;
+        p->planning_reference_decicelsius = e->planning_reference;
+    }
+    c->library_next = (uint8_t)(c->library_next + l->entries_count);
+    r->count = c->library_next;
+    if (c->library_next < c->library_total) {
+        library_send(c);
+    } else {
+        library_read_next(c, 0U);
+    }
+}
+
+static void on_program_data(furnace_hmi_controller_client_t *c,
+                            const struct furnace_wire_program_data *d)
+{
+    furnace_hmi_controller_program_t *p = &c->library_reading.programs[c->library_next];
+
+    if (c->library_step != LIBRARY_READING || d->request_id != c->library_request_id) {
+        return;
+    }
+    c->client_session_confirmed = true;
+    if (d->result == LIBRARY_STORAGE_UNAVAILABLE) {
+        library_settle(c, FURNACE_HMI_LIBRARY_UNAVAILABLE, c->library_reading.library_revision);
+        return;
+    }
+    if (d->result == DATA_DAMAGED) {
+        p->damaged = true;
+        p->stage_count = 0U;
+    } else if (d->result == LIBRARY_OK && d->program_id == p->program_id &&
+               d->program_revision == p->program_revision) {
+        copy_name(p->name, d->name);
+        p->name_valid = name_shown(p->name);
+        p->curing_estimate_s = d->curing_estimate_s;
+        p->planning_reference_decicelsius = d->planning_reference;
+        p->stage_count = d->stages_count;
+        for (uint8_t i = 0U; i < d->stages_count; i++) {
+            p->stages[i].kind = d->stages[i].kind;
+            p->stages[i].target_decicelsius = d->stages[i].target;
+            p->stages[i].rate_decicelsius_per_min = d->stages[i].rate;
+            p->stages[i].duration_minutes = d->stages[i].duration_minutes;
+        }
+    } else {
+        library_restart(c); /* NOT_FOUND or another revision: the library changed */
+        return;
+    }
+    library_read_next(c, (uint8_t)(c->library_next + 1U));
+}
+
+/*
+ * While the link is current: list when the controller's revision is newer than
+ * the one shown, ask again what went unanswered, and mark the listing shown as
+ * updating. A link that is not current stops the reading (plan, M21-7 design).
+ */
+static void library_time(furnace_hmi_controller_client_t *c)
+{
+    furnace_hmi_controller_library_t *l = &c->library;
+    const uint32_t wanted = c->observation.library_revision;
+    bool updating;
+
+    if (c->observation.link != FURNACE_HMI_LINK_CONNECTED) {
+        c->library_step = LIBRARY_IDLE;
+        return;
+    }
+    /* Revisions only increase within a controller session; a STATUS may trail a page. */
+    updating = (l->state == FURNACE_HMI_LIBRARY_CURRENT) && (wanted > l->library_revision);
+    if (l->updating != updating) {
+        l->updating = updating;
+        library_changed(c);
+    }
+    if (c->library_step != LIBRARY_IDLE) {
+        if (elapsed(c->now_ms, c->library_sent_ms, FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS)) {
+            saturating_increment(&l->retries);
+            library_changed(c);
+            library_send(c);
+        }
+    } else if (l->state == FURNACE_HMI_LIBRARY_UNKNOWN || wanted > l->library_revision ||
+               c->library_relist) {
+        c->library_relist = false;
+        library_list_from_start(c);
     }
 }
 
@@ -1025,8 +1667,35 @@ static void on_frame(furnace_hmi_controller_client_t *c, const struct furnace_wi
     case FURNACE_WIRE_MSG_START_PREPARE_RESULT:
         on_start_prepare_result(c, &m->u.start_prepare_result);
         break;
+    case FURNACE_WIRE_MSG_PROGRAM_LIST:
+        on_program_list(c, &m->u.program_list);
+        break;
+    case FURNACE_WIRE_MSG_PROGRAM_DATA:
+        on_program_data(c, &m->u.program_data);
+        break;
+    case FURNACE_WIRE_MSG_PROGRAM_SAVE_RESULT:
+        on_program_save_result(c, &m->u.program_save_result);
+        break;
+    case FURNACE_WIRE_MSG_PROGRAM_DELETE_RESULT:
+        on_program_delete_result(c, &m->u.program_delete_result);
+        break;
+    case FURNACE_WIRE_MSG_START_PROPOSAL:
+        on_start_proposal(c, &m->u.start_proposal);
+        break;
+    case FURNACE_WIRE_MSG_START_ACCEPTED:
+        on_start_accepted(c, &m->u.start_accepted);
+        break;
+    case FURNACE_WIRE_MSG_START_REJECTED:
+        on_start_rejected(c, &m->u.start_rejected);
+        break;
+    case FURNACE_WIRE_MSG_START_CANCELLED:
+        on_start_cancelled(c, &m->u.start_cancelled);
+        break;
+    case FURNACE_WIRE_MSG_START_PROPOSAL_INVALIDATED:
+        on_start_invalidated(c, &m->u.start_proposal_invalidated);
+        break;
     default:
-        break; /* SETTINGS, start proposals and library replies: later milestones */
+        break; /* SETTINGS, estimates, health and history: later milestones */
     }
 }
 
@@ -1174,6 +1843,7 @@ void furnace_hmi_controller_client_poll(furnace_hmi_controller_client_t *client,
     }
     on_time(client);
     on_command_time(client);
+    library_time(client);
     update_availability(client);
 }
 
@@ -1186,6 +1856,18 @@ const furnace_hmi_controller_observation_t *furnace_hmi_controller_client_observ
 uint32_t furnace_hmi_controller_client_generation(const furnace_hmi_controller_client_t *client)
 {
     return client->generation;
+}
+
+const furnace_hmi_controller_library_t *furnace_hmi_controller_client_library(
+    const furnace_hmi_controller_client_t *client)
+{
+    return &client->library;
+}
+
+uint32_t furnace_hmi_controller_client_library_generation(
+    const furnace_hmi_controller_client_t *client)
+{
+    return client->library_generation;
 }
 
 furnace_hmi_value_validity_t furnace_hmi_controller_temperature_validity(

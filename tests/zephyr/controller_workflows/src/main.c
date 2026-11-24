@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 /*
- * SIMULATION ONLY (Phase 21 M21-5). The HMI's controller link, its link thread
- * and command mailbox included, against the real controller: the furnace
+ * SIMULATION ONLY (Phase 21 M21-5, M21-7a). The HMI's controller link, its link
+ * thread, command mailbox and library copy included, against the real controller: the furnace
  * firmware's tests/sim/link_pty program, started by
  * tools/controller_workflow_check.py. Each workflow submits operator commands as
  * a screen does and checks the controller's results and status; faults are the
@@ -32,6 +32,7 @@
 #define RUN_STOPPED 5U
 #define RUN_FAULTED 6U
 #define RUN_AWAITING_DECISION 7U
+#define SESSION_PROGRAM 1U
 #define SESSION_MANUAL 2U
 #define MEASUREMENT_QUALIFIED 1U
 #define STORE_READY 3U
@@ -379,6 +380,110 @@ ZTEST(controller_workflows, test_ab_stop_supersedes_an_unsent_start)
     refresh();
     zassert_false(obs.execution_active, "something runs");
     zassert_false(obs.command.submission == start_submission, "the Start was sent");
+}
+
+/* ---- the library and the program Start (M21-7a) ------------------------------------------ */
+
+static furnace_hmi_controller_library_t lib;
+static uint32_t lib_seen;
+static uint8_t wanted_count;
+
+static bool library_listed(void)
+{
+    (void)furnace_hmi_controller_link_take_library(&lib, &lib_seen);
+    return lib.state == FURNACE_HMI_LIBRARY_CURRENT && !lib.updating && lib.count == wanted_count;
+}
+
+static const furnace_hmi_controller_program_t *program_named(const char *name)
+{
+    for (uint8_t i = 0U; i < lib.count; i++) {
+        if (strcmp(lib.programs[i].name, name) == 0) {
+            return &lib.programs[i];
+        }
+    }
+    return NULL;
+}
+
+static bool program_running(void)
+{
+    return obs.run_state == RUN_RUNNING && obs.session_kind == SESSION_PROGRAM &&
+           obs.run_id == expected_run && obs.execution_active;
+}
+
+/*
+ * The controller's delivered fixture programs are listed and read; a program is
+ * saved, appears, is deleted and goes; a delivered program starts (through its
+ * proposal when the controller asks for one) and is stopped.
+ */
+ZTEST(controller_workflows, test_aa_library_and_program_start)
+{
+    furnace_hmi_command_t save = {.kind = FURNACE_HMI_COMMAND_PROGRAM_SAVE, .stage_count = 2U};
+    const furnace_hmi_controller_program_t *p;
+    furnace_hmi_command_outcome_t o;
+    uint32_t saved_id;
+
+    wanted_count = 3U;
+    zassert_true(wait_until(library_listed), "library state %u count %u", lib.state, lib.count);
+    zassert_not_null(program_named("Sim cure 120"), "a delivered program is missing");
+    printk("workflow: library revision %u with %u programs\n", lib.library_revision, lib.count);
+
+    (void)memcpy(save.name, "HMI check 60", sizeof("HMI check 60"));
+    save.stages[0] = (furnace_hmi_controller_stage_t){.kind = FURNACE_HMI_CONTROLLER_STAGE_HEATING,
+                                                      .target_decicelsius = 600,
+                                                      .rate_decicelsius_per_min = 20};
+    save.stages[1] = (furnace_hmi_controller_stage_t){.kind = FURNACE_HMI_CONTROLLER_STAGE_HOLD,
+                                                      .duration_minutes = 10U};
+    o = run(save);
+    zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "save: state %u result %u error %u/%u/%u",
+                  o.state, o.reason, o.error_reason, o.error_field, o.error_stage);
+    zassert_true(o.program_id != 0U && o.program_revision == 1U, "the new program's identity");
+    saved_id = o.program_id;
+    wanted_count = 4U;
+    zassert_true(wait_until(library_listed), "the saved program is not listed: count %u", lib.count);
+    p = program_named("HMI check 60");
+    zassert_not_null(p);
+    zassert_true(p->program_id == saved_id && p->stage_count == 2U &&
+                     p->stages[0].target_decicelsius == 600 && p->stages[1].duration_minutes == 10U,
+                 "the saved program as read back");
+
+    o = run((furnace_hmi_command_t){.kind = FURNACE_HMI_COMMAND_PROGRAM_DELETE,
+                                    .program_id = p->program_id,
+                                    .program_revision = p->program_revision});
+    zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "delete: result %u", o.reason);
+    wanted_count = 3U;
+    zassert_true(wait_until(library_listed), "the deleted program is listed: count %u", lib.count);
+    zassert_is_null(program_named("HMI check 60"));
+
+    p = program_named("Sim cure 120");
+    zassert_not_null(p);
+    prepare();
+    o = run((furnace_hmi_command_t){.kind = FURNACE_HMI_COMMAND_PROGRAM_START,
+                                    .program_id = p->program_id,
+                                    .program_revision = p->program_revision});
+    if (o.state == FURNACE_HMI_COMMAND_PROPOSED) {
+        const furnace_hmi_controller_start_proposal_t proposal = obs.start_proposal;
+
+        zassert_equal(proposal.state, FURNACE_HMI_PROPOSAL_OPEN);
+        printk("workflow: proposal %u revision %u stage %u acknowledgement %u estimate %u\n",
+               proposal.transaction_id, proposal.proposal_revision, proposal.proposed_stage,
+               proposal.duration_ack_required ? 1U : 0U, proposal.remaining_curing_s);
+        o = run((furnace_hmi_command_t){
+            .kind = FURNACE_HMI_COMMAND_START_CONFIRM,
+            .transaction_id = proposal.transaction_id,
+            .proposal_revision = proposal.proposal_revision,
+            .program_id = proposal.program_id,
+            .program_revision = proposal.program_revision,
+            .proposed_stage = proposal.proposed_stage,
+            .accepted_duration_s = proposal.duration_ack_required ? proposal.remaining_curing_s : 0U,
+        });
+    }
+    zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "program Start: state %u reason %u",
+                  o.state, o.reason);
+    expected_run = o.run_id;
+    zassert_true(wait_until(program_running), "the program does not run: state %u kind %u",
+                 obs.run_state, obs.session_kind);
+    zassert_equal(obs.program_id, p->program_id, "another program runs");
+    stop(o.run_id);
 }
 
 /*

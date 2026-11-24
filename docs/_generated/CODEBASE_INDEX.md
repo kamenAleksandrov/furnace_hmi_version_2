@@ -9,14 +9,14 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 374 |
-| Git-tracked files | 374 |
+| Repository files | 376 |
+| Git-tracked files | 376 |
 | Git-untracked files | 0 |
-| Manually maintained files | 345 |
+| Manually maintained files | 347 |
 | Generated files | 29 |
 | Modules | 41 |
 | Build targets | 120 |
-| Compile units | 59 |
+| Compile units | 60 |
 | Boards | 1 |
 
 ## Inputs
@@ -45,7 +45,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `.codex/agents` | 10 | agent-configuration |
 | `.codex/config.toml` | 1 | agent-configuration |
 | `.vscode` | 5 | configuration |
-| `app/hmi/client` | 7 | build, header, source |
+| `app/hmi/client` | 9 | build, header, source |
 | `app/hmi/foundation` | 3 | build, header, source |
 | `app/hmi/model` | 4 | build, header, source |
 | `app/hmi/presentation` | 99 | build, configuration, documentation, header, other, source |
@@ -80,7 +80,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Target | Type | Configuration | Repository sources | External sources |
 | --- | --- | --- | ---: | ---: |
-| `furnace_hmi_client` | STATIC_LIBRARY | `Debug` | 2 | 0 |
+| `furnace_hmi_client` | STATIC_LIBRARY | `Debug` | 3 | 0 |
 | `furnace_hmi_foundation` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_model` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_ui_strings` | STATIC_LIBRARY | `Debug` | 2 | 0 |
@@ -104,7 +104,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `furnace_hmi_wire_conformance` | EXECUTABLE | `Debug` | 3 | 0 |
 | `app` | STATIC_LIBRARY | `default` | 5 | 0 |
 | `offsets` | OBJECT_LIBRARY | `default` | 0 | 1 |
-| `arch__x86__core` | STATIC_LIBRARY | `default` | 0 | 19 |
+| `..__..__..__..__furnace_hmi_version_2__.deps__zephyr-workspace__zephyr__arch__x86__core` | STATIC_LIBRARY | `default` | 0 | 19 |
 | `arch__common` | STATIC_LIBRARY | `default` | 0 | 1 |
 | `drivers__console` | STATIC_LIBRARY | `default` | 0 | 1 |
 | `drivers__interrupt_controller` | STATIC_LIBRARY | `default` | 0 | 3 |
@@ -205,7 +205,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 
 | Board | Source | Definition/build |
 | --- | --- | --- |
-| `qemu_x86` | CMakeCache.txt | `.deps/zephyr-workspace/zephyr/boards/qemu/x86` |
+| `qemu_x86` | CMakeCache.txt | `build/zephyr-qemu_x86` |
 
 ## Files
 
@@ -253,9 +253,11 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/client/include/furnace_hmi/controller_client.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/include/furnace_hmi/controller_command.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/include/furnace_hmi/controller_dashboard.h` | header | `app/hmi/client` | manual | tracked |
+| `app/hmi/client/include/furnace_hmi/controller_library.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/include/furnace_hmi/controller_observation.h` | header | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/src/controller_client.c` | source | `app/hmi/client` | manual | tracked |
 | `app/hmi/client/src/controller_dashboard.c` | source | `app/hmi/client` | manual | tracked |
+| `app/hmi/client/src/controller_library.c` | source | `app/hmi/client` | manual | tracked |
 | `app/hmi/foundation/CMakeLists.txt` | build | `app/hmi/foundation` | manual | tracked |
 | `app/hmi/foundation/include/furnace_hmi/foundation.h` | header | `app/hmi/foundation` | manual | tracked |
 | `app/hmi/foundation/src/foundation.c` | source | `app/hmi/foundation` | manual | tracked |
