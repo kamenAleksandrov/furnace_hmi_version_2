@@ -9,14 +9,14 @@ The index contains repository-relative paths only and deliberately omits generat
 
 | Item | Count |
 | --- | ---: |
-| Repository files | 384 |
-| Git-tracked files | 384 |
+| Repository files | 395 |
+| Git-tracked files | 395 |
 | Git-untracked files | 0 |
-| Manually maintained files | 355 |
+| Manually maintained files | 366 |
 | Generated files | 29 |
 | Modules | 41 |
 | Build targets | 120 |
-| Compile units | 62 |
+| Compile units | 63 |
 | Boards | 1 |
 
 ## Inputs
@@ -51,7 +51,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/hmi/presentation` | 101 | build, configuration, documentation, header, other, source |
 | `app/hmi/protocol` | 9 | build, configuration, documentation, header, source |
 | `app/hmi/transport` | 4 | build, header, source |
-| `app/zephyr` | 14 | board, build, configuration, header, source |
+| `app/zephyr` | 16 | board, build, configuration, header, source |
 | `docs` | 3 | documentation |
 | `docs/.obsidian` | 4 | documentation |
 | `docs/00-project` | 5 | documentation |
@@ -72,9 +72,9 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/client` | 4 | test |
 | `tests/conformance` | 5 | test |
 | `tests/host` | 5 | test |
-| `tests/presentation` | 6 | test |
-| `tests/zephyr` | 27 | test |
-| `tools` | 24 | test, tool |
+| `tests/presentation` | 8 | test |
+| `tests/zephyr` | 32 | test |
+| `tools` | 26 | test, tool |
 
 ## Build Targets
 
@@ -93,7 +93,7 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `furnace_hmi_fonts` | STATIC_LIBRARY | `Debug` | 24 | 0 |
 | `furnace_hmi_icons` | STATIC_LIBRARY | `Debug` | 2 | 0 |
 | `lvgl` | STATIC_LIBRARY | `Debug` | 0 | 531 |
-| `furnace_hmi_operator_content_checks` | STATIC_LIBRARY | `Debug` | 1 | 0 |
+| `furnace_hmi_operator_content_checks` | STATIC_LIBRARY | `Debug` | 2 | 0 |
 | `furnace_hmi_operator_screens` | STATIC_LIBRARY | `Debug` | 3 | 0 |
 | `furnace_hmi_state_availability_view` | STATIC_LIBRARY | `Debug` | 1 | 0 |
 | `furnace_hmi_controller_client_tests` | EXECUTABLE | `Debug` | 3 | 0 |
@@ -391,6 +391,8 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `app/zephyr/sample.yaml` | configuration | `app/zephyr` | manual | tracked |
 | `app/zephyr/src/controller_link.c` | source | `app/zephyr` | manual | tracked |
 | `app/zephyr/src/controller_link.h` | header | `app/zephyr` | manual | tracked |
+| `app/zephyr/src/gui_host.c` | source | `app/zephyr` | manual | tracked |
+| `app/zephyr/src/gui_host.h` | header | `app/zephyr` | manual | tracked |
 | `app/zephyr/src/gui_main.c` | source | `app/zephyr` | manual | tracked |
 | `app/zephyr/src/main.c` | source | `app/zephyr` | manual | tracked |
 | `app/zephyr/src/operator_commands.c` | source | `app/zephyr` | manual | tracked |
@@ -542,7 +544,9 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/presentation/availability/src/availability_presentation_checks.c` | test | `tests/presentation` | manual | tracked |
 | `tests/presentation/operator/CMakeLists.txt` | test | `tests/presentation` | manual | tracked |
 | `tests/presentation/operator/include/furnace_hmi/operator_content_checks.h` | test | `tests/presentation` | manual | tracked |
+| `tests/presentation/operator/include/furnace_hmi/screen_probe.h` | test | `tests/presentation` | manual | tracked |
 | `tests/presentation/operator/src/operator_content_checks.c` | test | `tests/presentation` | manual | tracked |
+| `tests/presentation/operator/src/screen_probe.c` | test | `tests/presentation` | manual | tracked |
 | `tests/zephyr/controller_client/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/controller_client/prj.conf` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/controller_client/src/main.c` | test | `tests/zephyr` | manual | tracked |
@@ -561,6 +565,11 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tests/zephyr/operator/prj.conf` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/operator/src/main.c` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/operator/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator_workflows/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator_workflows/boards/native_sim.overlay` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator_workflows/prj.conf` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator_workflows/src/main.c` | test | `tests/zephyr` | manual | tracked |
+| `tests/zephyr/operator_workflows/testcase.yaml` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/presentation/CMakeLists.txt` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/presentation/app.overlay` | test | `tests/zephyr` | manual | tracked |
 | `tests/zephyr/presentation/prj.conf` | test | `tests/zephyr` | manual | tracked |
@@ -582,7 +591,9 @@ Repository files come from Git's tracked and non-ignored worktree views at `.`.
 | `tools/codebase_index.py` | tool | `tools` | manual | tracked |
 | `tools/controller_link_demo.py` | tool | `tools` | manual | tracked |
 | `tools/controller_workflow_check.py` | tool | `tools` | manual | tracked |
+| `tools/hmi_web_demo_browser.cjs` | tool | `tools` | manual | tracked |
 | `tools/hmi_web_demo_p1_smoke.cjs` | tool | `tools` | manual | tracked |
+| `tools/hmi_web_demo_workflows.cjs` | tool | `tools` | manual | tracked |
 | `tools/review_ui_lab.py` | tool | `tools` | manual | tracked |
 | `tools/run_desktop_ui.py` | tool | `tools` | manual | tracked |
 | `tools/run_foundation.py` | tool | `tools` | manual | tracked |

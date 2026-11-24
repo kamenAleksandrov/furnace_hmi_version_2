@@ -75,7 +75,152 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 | M21-5 | Run, Manual and fault workflows (WI-H03, WI-H04) | Each workflow runs against the controller; the same behavior in the web demo, simulated |
 | M21-6 | Controller 20d (firmware) | A controller-side plan with its open decisions for the product owner and the controller's reviewers (for example the health rules still proposed); the messages built test-first with the controller's verification; the HMI resynced to the new revision in lockstep, ADR-0007 checked against its reopen triggers, before M21-7. **2026-11-19:** firmware 20d in #56–#60 (merged) and drafts #63–#65; pin moved to `a96d138` with the codec byte-identical; ADR-0007 trigger not met (result values only, no layout change; STATUS) |
 | M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b (screens) in draft, stacked on it; **2026-11-20:** M21-7c (Device log and health) in draft, stacked on M21-7b; M21-7d (the controller's limits and the planning reference) added; M21-7e (the controller's clock, firmware and HMI) added |
-| M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria |
+| M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria. **2026-11-24:** owner decisions and design below; M3's other criteria stay with their reviews |
+
+### M21-8, the end-to-end operator workflows
+
+**Owner decisions (2026-11-24):**
+- The workflows go through the screens: an operator's taps on the shared screens, the command
+  mapping, the link and the real controller, never the client alone.
+- Recurrence summaries (furnace WI-F03) stay out. SD-04 is undecided, so WI-F03 is blocked; it is
+  recorded as open for M3, with no guessed policy.
+- The web demo runs the same scenarios against its simulated controller.
+
+**What exists:**
+- `tests/zephyr/controller_workflows` runs 10 workflows against the controller, but submits
+  commands to the client as a screen would, so no screen is in the path.
+- The screen checks (`tests/presentation/operator`) tap the screens, but against fixed observations,
+  not a controller.
+
+Neither shows that an operator's tap reaches the controller and that its answer reaches the screen.
+
+**Design:**
+- **One GUI host.** The body of `gui_main.c`'s loop moves into `app/zephyr/src/gui_host.c`, with
+  an init function and one pass:
+  - the pass takes the link's observation, library, limits, clock and diagnostics into the screens;
+  - it hands the screens' requests to the link.
+
+  `gui_main.c` keeps the display and the loop. The test calls the same pass, so the tested path is
+  the application's. No behavior change; the GUI build and the lab captures show it.
+- **`tests/zephyr/operator_workflows`** (new, not run by Twister: it needs the controller):
+  - the screens on a memory display, as in `tests/zephyr/operator`;
+  - the real link thread, and the controller's `link_pty` program over a pseudo-terminal pair;
+  - taps sent with `lv_obj_send_event` to widgets found by their label strings;
+  - each step waits for what the controller reports and checks what the screen shows.
+
+  `tools/controller_workflow_check.py` runs it, with a suite argument.
+- **Link loss without a restart.** The runner relays bytes between the two pseudo-terminals, as
+  `controller_link_demo.py` does. A control line holds the relay and later releases it.
+- **Scenarios**, each from Home, with no session executing (a final cooling may still run: the
+  controller accepts a new Start during it). Pages are reached by the rail, Manual by Home's Start
+  manual, a program by its row. W8 runs last but for the Device log, because a protective trip
+  stays latched for the controller session.
+  - **W1 Program edit and save:** Programs, New, a name of 31 characters typed on the keyboard,
+    Add stage, Save all changes, Save program; Programs shows "Program saved" and the controller
+    lists it with one stage. Edit it, add a Hold stage, save: the controller lists revision 2 with a
+    Heating and a Hold stage. Delete it.
+  - **W2 Start with hot-start confirmation:** the scenario offset raises the reading to about
+    110 °C. Start "Sim cure and post-cure"; the proposal panel names the program and the skipped
+    Heating to 100.0 °C; Confirm; Running shows the controller's run, at or after the proposed stage.
+  - **W3 Pause and Resume** of that program run.
+  - **W4 Stop and cooling:** Stop; Running shows the run stopped with Return Home while the
+    controller cools. Return Home shows Home, and the cooling goes on.
+  - **W5 Contained navigation:** while a run executes, the rail's Programs is not offered, or a tap
+    on it leaves Running. The controller's refusal of a library change (PROG-15) stays covered by
+    the furnace's tests.
+  - **W6 Quality decision and Continue:** an offset below a Manual ramp brings the decision panel;
+    Continue; the session goes on.
+  - **W7 Faults:** a sensor fault; the alert; Faults (n) lists it; only Stop offered; Stop; Exit;
+    with the sensor back, Acknowledge and Recover from Home's banner (at least one of each).
+  - **W8 Protective trip:** acknowledged, the trip is not offered for recovery, its external reset
+    is named, and the controller keeps it latched.
+  - **W9 Manual:** Start for the controller's longest session, a retarget by stepper, Pause,
+    Resume, Stop, Exit.
+  - **W10 Link loss and reconnection during a session:** the relay holds for 5 s on Manual, longer
+    than the controller's 3 s link silence. The screens show "Connection lost" and offer no
+    command. After the release they show "Connection restored" and the same session (same run ID),
+    and Stop works.
+  - **W11 Device log** after the others: the controller's log is read and not shown as empty or
+    unavailable.
+- **Web demo:** `tools/hmi_web_demo_workflows.cjs` (headless Chrome) runs the operator steps of
+  W1 to W11 against the demo's simulated controller, with its scenarios for the faults. This checks
+  the parity of the presentation, not controller truth (ADR-0004). W10 is the demo's simulated link
+  loss.
+- **Firmware:** no change expected. The simulated controller already takes offset, sensor,
+  interlock and protection lines. A gap gets its own furnace pull request.
+
+**Not covered, recorded for M3:**
+- Recurrence summaries (WI-F03, SD-04).
+- An operator end of the final cooling: the controller has `RUN_END_COOLING`, the screens have no
+  action for it.
+- Cyrillic names (owner: later).
+- The production link and the boards.
+
+**M3:** M21-8 gives WI-H07's evidence only. M3 also needs:
+- WI-I01 reviewed by both repositories and frozen as 1.0;
+- the open review gates;
+- the merges;
+- the maturity updates in the furnace register, with the evidence its release criteria require.
+
+**M21-8 done (2026-11-24, draft), stacked on M21-7e-2; controller: furnace 7e-1 (`fb1fb79`):**
+- **Delivered:**
+  - `app/zephyr/src/gui_host.c`: the GUI context's pass, shared by the application and the test.
+    No behavior change.
+  - `tests/presentation/operator/src/screen_probe.c`: the screen checks' widget finders, shared.
+  - `tests/zephyr/operator_workflows`: W1 to W11 in 8 tests.
+  - `tools/controller_workflow_check.py --suite operator`, with the relay for link loss.
+  - `tools/hmi_web_demo_workflows.cjs`, and `tools/hmi_web_demo_browser.cjs` shared with the
+    smoke test.
+- **Found in the web demo, now as the screens:**
+  - a new program was saved without the controller's "Program saved" and opened its details
+    (the screens return to Programs);
+  - Add stage repeated the previous target, so the draft could not be saved (the screens add
+    1 °C above it, at least 120 °C, at 1.0 °C/min, within the controller's limits).
+- **Parity gaps, recorded, not changed:**
+  - the demo ends a stopped faulted run at once and shows Home; the controller stops it into
+    its final cooling, which the screens show until Exit or Return Home;
+  - the demo simulates no protective trip (fault 7) and no external reset; W8 runs its
+    over-temperature fault (16) instead;
+  - the demo raises faults only during program runs, so its W6, W7, W8 and W10 run on a program
+    where the screens' run on Manual; its sensor fault is fault 3, the controller's fault 1;
+  - the demo's hot start is Start again during its cooling: its furnace is never hot at rest;
+  - Add stage in the demo gives every new Heating stage 95 min; the screens derive it from the
+    rate and the previous target;
+  - Cancel of a new program returns the demo to a program's details; the screens return to
+    Programs;
+  - the demo's state is reset between scenarios; the controller's carries over.
+- **Found operating the screens through the test:**
+  - after a link loss the "Connection restored" alert covers Stop until it is closed (UX baseline,
+    as designed). A fault alert does the same. Each costs the operator one tap before Stop; the
+    decision panel has its own Stop. For the HMI reviewers.
+  - The screens keep pointers to a deleted page's widgets (`manual_exit_button`,
+    `manual_steppers`). The screens' own code does not use them then; the test guards them.
+- **Reviews:** AI agents in the HMI's embedded-reviewer and error-auditor roles, and the
+  software-critic and UI-parity roles. These are not the required human reviews. No High finding.
+  Fixed:
+  - W1 tapped Save program under the stage editor, which an operator cannot do (and a demo
+    change had followed that tap; withdrawn);
+  - pages and programs were reached by setting state, not by taps;
+  - the fault answers could pass with no tap;
+  - W8 did not show that Recover is withheld;
+  - W9 did not check the controller's longest session;
+  - W10 held 2 s and could pass off Manual;
+  - W11 did not look at the page;
+  - the relay could lose bytes on a full pseudo-terminal;
+  - the runner passed a suite that ran no tests.
+
+  Kept: a tap is an LVGL click event on the widget, not a touch at its position (the screens act
+  on clicks only); the client-level and screen suites keep their own scenario-channel code.
+- **Evidence** (at `c344978`):
+  - the screen suite 8 of 8 and the client-level suite 10 of 10, against `link_pty` at `fb1fb79`;
+  - web workflows and smoke test pass;
+  - Twister in WSL 38 of 38 executed test cases, 3 configurations built only (the two workflow
+    suites and the application);
+  - MSVC core 15 of 15, desktop 18 of 18, the three UI lab presets 17 of 17 each; GCC 18 of 18;
+  - mutation probes, each breaking one link from tap to controller, all 8 killed: nothing submitted,
+    Pause sent as Resume, Continue as Pause, Confirm as Cancel, Stop as Pause, a stale link shown
+    as current, the library never shown, the relay ignoring hold. Each fails the scenario it
+    should (Continue W6, Confirm W2, hold W10, stale W10 and W8).
 
 ### M21-2b design
 

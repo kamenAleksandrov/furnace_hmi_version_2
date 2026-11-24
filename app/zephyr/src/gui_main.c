@@ -9,69 +9,41 @@
  * without a display build main.c instead.
  *
  * It shows the shared operator screens (Phase 21 M21-2b). The controller link
- * runs in its own thread (controller_link.c); this context takes its newest
- * observation without waiting and maps it to the screens' status model. Every
- * value comes from the controller, the application links no simulator, and
- * the screens get no simulated answers. The program library is the
- * controller's, taken from the link as it changes (M21-7b); so are the Device
- * log and Health (M21-7c), the log read when the operator opens it. The clock,
- * maintenance and service records stay unavailable until the controller
- * reports them.
- * Manual, Pause, Resume and Stop are commands to the controller (M21-5b); other
- * actions that would change controller state send nothing.
+ * runs in its own thread (controller_link.c); between LVGL timer passes this
+ * context takes the link's news into the screens and hands the screens'
+ * requests to the link without waiting (gui_host.c, which the end-to-end
+ * operator workflows also run, M21-8). Every value comes from the controller,
+ * the application links no simulator, and the screens get no simulated
+ * answers. Maintenance and service records stay unavailable until the
+ * controller reports them.
  */
 
 #include <stdint.h>
-#include <string.h>
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-#include <furnace_hmi/controller_dashboard.h>
 #include <furnace_hmi/development_marker.h>
 #include <furnace_hmi/foundation.h>
-#include <furnace_hmi/operator_screens.h>
 #include <furnace_hmi/ui_strings.h>
 #include <lvgl.h>
 
 #include "controller_link.h"
-#include "operator_commands.h"
-#include "operator_library.h"
+#include "gui_host.h"
 
 /* The longest the GUI context sleeps between LVGL timer passes. */
 #define GUI_MAX_SLEEP_MS UINT32_C(10)
 /* At least one tick, so that native_sim time advances. */
 #define GUI_MIN_SLEEP_MS UINT32_C(1)
-/*
- * The link thread publishes at least every 200 ms. Nothing for this long means
- * it is stuck (for example in a blocked write): what is shown is then stale.
- */
-#define GUI_MAILBOX_STALE_MS UINT32_C(1000)
 
-static furnace_hmi_operator_screens_t screens;
-static furnace_hmi_operator_content_t no_content;
-static furnace_hmi_controller_observation_t observation;
-static furnace_hmi_dashboard_state_t status;
-/* The controller's library (M21-7b): the link's copy and the screens' form of it. */
-static furnace_hmi_controller_library_t library;
-static furnace_hmi_operator_library_t shown_library;
-/* The controller's health and history (M21-7c), shown by the screens as they are. */
-static furnace_hmi_controller_health_t health;
-/* M21-7d: the controller's program limits and planning reference as the screens use them. */
-static furnace_hmi_operator_program_limits_t limits;
-static furnace_hmi_operator_planning_reference_t reference;
-static furnace_hmi_controller_history_t history;
+/* The screens and what they show (gui_host.h); static, as it holds whole libraries. */
+static furnace_hmi_gui_host_t host;
 
 int main(void)
 {
     const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-    uint32_t seen = 0U;
-    uint32_t library_seen = 0U;
-    uint32_t diagnostics_seen = 0U;
-    uint32_t last_taken;
-    bool watchdog_stale = false;
 
     printk("%s (build probe %u)\n",
            furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_APPLICATION_TITLE),
@@ -81,17 +53,12 @@ int main(void)
         printk("Display not ready for LVGL.\n");
         return 2;
     }
-    furnace_hmi_controller_dashboard_state(&observation, &status);
-    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &status, &no_content) ||
+    if (!furnace_hmi_gui_host_init(&host, lv_screen_active(), k_uptime_get_32()) ||
         furnace_hmi_development_tag_create(FURNACE_HMI_UI_STRING_SIMULATED_LINK_DEVELOPMENT_LABEL) ==
             NULL) {
         printk("Operator screens could not be created.\n");
         return 13;
     }
-    /* Until the link has read it, the controller's library is being read (LOADING). */
-    (void)furnace_hmi_operator_screens_set_library(&screens, &shown_library);
-    /* Nothing read and nothing reported yet. */
-    (void)furnace_hmi_operator_screens_set_diagnostics(&screens, &health, &history);
     if (furnace_hmi_controller_link_start() != 0) {
         printk("Controller link UART not ready.\n");
         return 3;
@@ -100,71 +67,12 @@ int main(void)
     /* Draw the first frame, then show it: the display starts blanked. */
     (void)lv_timer_handler();
     (void)display_blanking_off(display);
-    last_taken = k_uptime_get_32();
+    host.last_taken = k_uptime_get_32();
 
     for (;;) {
-        const uint32_t now = k_uptime_get_32();
-        furnace_hmi_operator_request_t request;
-        bool refresh = false;
         uint32_t sleep_ms;
 
-        if (furnace_hmi_controller_link_take(&observation, &seen)) {
-            last_taken = now;
-            watchdog_stale = false;
-            refresh = true;
-        } else if (!watchdog_stale && (uint32_t)(now - last_taken) >= GUI_MAILBOX_STALE_MS &&
-                   observation.availability == FURNACE_HMI_STATE_AVAILABILITY_CURRENT) {
-            /* The link thread is silent: show its last values as stale. */
-            observation.availability = FURNACE_HMI_STATE_AVAILABILITY_STALE;
-            watchdog_stale = true;
-            refresh = true;
-        }
-        bool library_changed = furnace_hmi_controller_link_take_library(&library, &library_seen);
-
-        if (refresh) {
-            furnace_hmi_operator_program_limits_t new_limits;
-            furnace_hmi_operator_planning_reference_t new_reference;
-
-            furnace_hmi_controller_dashboard_state(&observation, &status);
-            (void)furnace_hmi_operator_screens_update(&screens, &status);
-            furnace_hmi_operator_limits_from_controller(&observation, &new_limits, &new_reference);
-            if (!furnace_hmi_operator_program_limits_equal(&new_limits, &limits) ||
-                !furnace_hmi_operator_planning_reference_equal(&new_reference, &reference)) {
-                limits = new_limits;
-                reference = new_reference;
-                (void)furnace_hmi_operator_screens_set_program_limits(&screens, &limits, &reference);
-                /* The library's ramps and exactness follow the limits and the reference. */
-                library_changed = true;
-            }
-        }
-        if (library_changed) {
-            furnace_hmi_operator_library_from_controller(&library, &limits, &reference, &shown_library);
-            (void)furnace_hmi_operator_screens_set_library(&screens, &shown_library);
-        }
-        {
-            /* M21-7e: the controller's clock, advanced to now; the screens redraw per minute. */
-            furnace_hmi_operator_controller_clock_t clock;
-
-            furnace_hmi_operator_clock_from_controller(&observation, now, &clock);
-            (void)furnace_hmi_operator_screens_set_clock(&screens, &clock);
-        }
-        if (furnace_hmi_controller_link_take_diagnostics(&health, &history, &diagnostics_seen)) {
-            (void)furnace_hmi_operator_screens_set_diagnostics(&screens, &health, &history);
-        }
-        if (furnace_hmi_operator_screens_take_history_read(&screens)) {
-            furnace_hmi_controller_link_read_history();
-        }
-        /* The operator's requests go to the link thread; their outcomes come back as feedback. */
-        while (furnace_hmi_operator_screens_take_request(&screens, &request)) {
-            /* Static: a command holds a whole program (M21-7a); only this context uses it. */
-            static furnace_hmi_command_t command;
-            const uint32_t submission =
-                furnace_hmi_operator_command_for(&request, &command)
-                    ? furnace_hmi_controller_link_submit(&command)
-                    : 0U;
-
-            furnace_hmi_operator_screens_request_submitted(&screens, request.kind, submission);
-        }
+        furnace_hmi_gui_host_pass(&host, k_uptime_get_32());
         sleep_ms = lv_timer_handler();
         if (sleep_ms == LV_NO_TIMER_READY || sleep_ms > GUI_MAX_SLEEP_MS) {
             sleep_ms = GUI_MAX_SLEEP_MS;

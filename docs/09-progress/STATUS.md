@@ -1,5 +1,18 @@
 # Project status
 
+**Fact (2026-11-24, Phase 21 M21-8, draft):** the M3 operator workflows run through the HMI's own
+screens against the controller (owner 2026-11-24: through the screens; the web demo runs the same
+scenarios; recurrence summaries are an M3 gap). Stacked on M21-7e-2; the controller is furnace 7e-1
+(draft PR #68). Details in the Phase 21 plan ("M21-8").
+- **Delivered:** `tests/zephyr/operator_workflows` (W1 to W11 in 8 tests: taps on the shared
+  screens, the application's GUI pass `gui_host.c`, its link, the controller's `link_pty`); the
+  runner's relay for link loss; `tools/hmi_web_demo_workflows.cjs`.
+- **Demo fixed to match the screens:** "Program saved" after a save, and Add stage's target.
+  Seven parity gaps recorded in the plan.
+- **Evidence:** the screen and client-level suites, web, host, desktop, UI lab and Twister checks,
+  and mutation probes; counts in the plan and the pull request.
+- **Open:** the human reviews; M3's other criteria (interface 1.0, WI-F03 after SD-04, merges).
+
 **Fact (2026-11-24, Phase 21 M21-7e-2, draft):** the controller's clock on the HMI (owner
 2026-11-20: the controller keeps the time in UTC; the HMI shows it and sets it when the operator
 asks). Stacked on M21-7d-2; needs furnace 7e-1 (draft PR #68). Details in the Phase 21 plan

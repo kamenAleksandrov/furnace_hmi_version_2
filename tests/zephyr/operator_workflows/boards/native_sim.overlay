@@ -1,0 +1,26 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/*
+ * SIMULATION ONLY. A display without a window, at the application's 800 x 480
+ * viewport, and the controller link as in the HMI application: a host serial
+ * device given with --controller_link_port=<path> by
+ * tools/controller_workflow_check.py. No production link is implied (ADR-0006).
+ */
+/ {
+	chosen {
+		zephyr,display = &dummy_dc;
+	};
+
+	dummy_dc: dummy_dc {
+		compatible = "zephyr,dummy-dc";
+		width = <800>;
+		height = <480>;
+	};
+
+	controller_link: controller_link {
+		compatible = "zephyr,native-tty-uart";
+		status = "okay";
+		serial-port = "/tmp/furnace-hmi-controller-link";
+		current-speed = <115200>;
+	};
+};

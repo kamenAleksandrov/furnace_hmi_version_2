@@ -51,6 +51,7 @@ if(CONFIG_LVGL)
   file(GLOB FURNACE_HMI_FONT_SOURCES "${FURNACE_HMI_FONTS_DIR}/generated/*.c")
   target_sources(app PRIVATE
     src/gui_main.c
+    src/gui_host.c
     src/controller_link.c
     src/operator_commands.c
     src/operator_library.c

@@ -1,28 +1,5 @@
 const assert = require('assert');
-const fs = require('fs');
-const http = require('http');
-const path = require('path');
-const {spawn} = require('child_process');
-
-const root = path.resolve(__dirname, '..');
-const source = path.join(root, 'docs', 'images', 'theme', 'hmi-web-demo.html');
-const chromePath = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const debugPort = 9241;
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-const server = http.createServer((request, response) => {
-  const requested = new URL(request.url, 'http://localhost').pathname;
-  if (request.method !== 'GET' || requested !== '/hmi-web-demo.html') {
-    response.writeHead(404);
-    response.end();
-    return;
-  }
-  response.setHeader('content-type', 'text/html; charset=utf-8');
-  response.end(fs.readFileSync(source));
-});
+const {withDemoPage, sleep} = require('./hmi_web_demo_browser.cjs');
 
 // Theme switch check: a probe theme whose every token differs from every colour
 // of the generated themes. On every listed screen, no rendered colour (text,
@@ -116,89 +93,7 @@ const PRESENTATION_CHOICE = `(()=>{
  finally{HMI_THEMES.pop();HMI_LANGUAGES.pop();delete HMI_STRINGS.xx;resetDemoState();render();}
 })()`;
 
-(async () => {
-  let chrome;
-  let ws;
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const httpPort = server.address().port;
-  const profile = path.join(root, 'build', 'p1-browser-profile-durable');
-  chrome = spawn(chromePath, [
-    '--headless=new',
-    '--no-sandbox',
-    '--disable-gpu',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--remote-debugging-address=127.0.0.1',
-    '--remote-debugging-port=' + debugPort,
-    '--user-data-dir=' + profile,
-    'about:blank'
-  ], {windowsHide: true, stdio: 'ignore'});
-
-  try {
-    let pages;
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      try {
-        pages = await (await fetch('http://127.0.0.1:' + debugPort + '/json')).json();
-        break;
-      } catch {
-        await sleep(200);
-      }
-    }
-    assert(pages, 'Chrome debugging endpoint unavailable');
-    const page = pages.find(item => item.type === 'page');
-    assert(page, 'Chrome page unavailable');
-
-    ws = new WebSocket(page.webSocketDebuggerUrl);
-    await new Promise((resolve, reject) => {
-      ws.onopen = resolve;
-      ws.onerror = reject;
-    });
-    let commandId = 0;
-    const pending = new Map();
-    const exceptions = [];
-    ws.onmessage = event => {
-      const message = JSON.parse(event.data);
-      if (message.method === 'Runtime.exceptionThrown') {
-        exceptions.push(message.params.exceptionDetails);
-      }
-      if (message.id && pending.has(message.id)) {
-        const request = pending.get(message.id);
-        pending.delete(message.id);
-        if (message.error) request.reject(message.error);
-        else request.resolve(message.result);
-      }
-    };
-    const call = (method, params = {}) => new Promise((resolve, reject) => {
-      const id = ++commandId;
-      pending.set(id, {resolve, reject});
-      ws.send(JSON.stringify({id, method, params}));
-    });
-    const evaluate = async expression => {
-      const result = await call('Runtime.evaluate', {
-        expression,
-        returnByValue: true,
-        awaitPromise: true
-      });
-      assert(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
-      return result.result && result.result.value;
-    };
-    const waitFor = async (expression, attempts = 50) => {
-      for (let attempt = 0; attempt < attempts; attempt += 1) {
-        if (await evaluate(expression)) return;
-        await sleep(100);
-      }
-      assert.fail('Timed out waiting for ' + expression);
-    };
-
-    await call('Runtime.enable');
-    await call('Page.enable');
-    await call('Emulation.setDeviceMetricsOverride', {
-      width: 1024, height: 720, deviceScaleFactor: 1, mobile: false
-    });
-    await call('Page.navigate', {
-      url: 'http://127.0.0.1:' + httpPort + '/hmi-web-demo.html'
-    });
-    await waitFor('document.readyState === \'complete\' && !!document.querySelector(\'.demo-shell\')');
+withDemoPage({profile: 'p1-browser-profile-durable', debugPort: 9241}, async ({evaluate, waitFor, call, exceptions}) => {
     assert.strictEqual(await evaluate('document.title'), 'Furnace HMI Web Demo');
     // Demo page: the website logo in its own colours is the tab icon and the bar mark; an intro
     // (logo, company, product, status) covers the page until it ends or is skipped; a development
@@ -232,10 +127,14 @@ const PRESENTATION_CHOICE = `(()=>{
     // Program library: three epoxy programs, or none; programs the operator creates stay listed either way.
     assert.strictEqual(await evaluate('visiblePrograms().map(p => p.name).join("|")'), 'Epoxy system 1|Epoxy system 2|Epoxy system 3');
     assert.strictEqual(await evaluate('[...document.querySelectorAll("#demo-library button")].map(b => b.textContent).join("|")'), '3 programs|No programs');
-    // A new program: one stage, a name, Save. Its details open; it is listed, starts and runs like a library
-    // program, survives the library being switched off, and Delete removes it from the library and Recent programs.
+    // A new program: one stage, a name, Save. As on the screens (M21-8), Programs is shown with the
+    // controller's "Program saved"; it is listed, starts and runs like a library program, survives the
+    // library being switched off, and Delete removes it from the library and Recent programs.
     await evaluate('mainPage="programs";programRoute="library";render();openProgramEditor(-1);programEditor.name="Customer cure A";addProgramStage();saveStageEditor();saveProgramEditor()');
-    await waitFor('!controller.pending && mainPage === "programs" && programRoute === "detail"');
+    await waitFor('!controller.pending && mainPage === "programs" && programRoute === "library" && document.getElementById("message").open');
+    assert.strictEqual(await evaluate('document.getElementById("message-title").textContent'), 'Program saved');
+    await evaluate('document.getElementById("message").close();openProgram(selectedProgram)');
+    await waitFor('mainPage === "programs" && programRoute === "detail"');
     assert.strictEqual(await evaluate('(()=>{const p=programCatalogue[selectedProgram];return p.name==="Customer cure A"&&!p.library&&p.count===1&&p.stages[0].target===120&&document.querySelector(".program-toolbar h2").textContent==="Customer cure A"})()'), true);
     const created = await evaluate('selectedProgram');
     // A one-stage program reads "1 stage" on its card and in its Start dialog (M21-7d, as the LVGL screens).
@@ -681,12 +580,7 @@ const PRESENTATION_CHOICE = `(()=>{
     assert.strictEqual(await evaluate('document.getElementById(\'demo-shell\').classList.contains(\'drawer-open\')'), false);
     assert.strictEqual(exceptions.length, 0, JSON.stringify(exceptions));
     console.log('PASS: HTML demo viewport, control panel, playback, scenarios and controller alerts, keyboard, dialog, theme switch, pseudo language, mobile fit, fullscreen side menu and exception checks.');
-  } finally {
-    if (ws) ws.close();
-    if (chrome) chrome.kill();
-    server.close();
-  }
-})().catch(error => {
+}).catch(error => {
   console.error(error.stack || error);
   process.exitCode = 1;
 });

@@ -9,6 +9,7 @@
 #include <furnace_hmi/dashboard_model.h>
 #include <furnace_hmi/operator_content_checks.h>
 #include <furnace_hmi/operator_screens.h>
+#include <furnace_hmi/screen_probe.h>
 #include <furnace_hmi/ui_strings.h>
 
 static furnace_hmi_operator_screens_t screens;
@@ -38,57 +39,6 @@ static int failed(const char **failure, const char *description, int code)
     return code;
 }
 
-static bool tree_contains(const lv_obj_t *object, const char *text)
-{
-    if (lv_obj_check_type(object, &lv_label_class) && strstr(lv_label_get_text(object), text) != NULL) {
-        return true;
-    }
-    const uint32_t count = lv_obj_get_child_count(object);
-    for (uint32_t index = 0U; index < count; ++index) {
-        if (tree_contains(lv_obj_get_child(object, (int32_t)index), text)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static lv_obj_t *first_button(lv_obj_t *object)
-{
-    if (object == NULL) {
-        return NULL;
-    }
-    if (lv_obj_check_type(object, &lv_button_class)) {
-        return object;
-    }
-    const uint32_t count = lv_obj_get_child_count(object);
-    for (uint32_t index = 0U; index < count; ++index) {
-        lv_obj_t *found = first_button(lv_obj_get_child(object, (int32_t)index));
-        if (found != NULL) {
-            return found;
-        }
-    }
-    return NULL;
-}
-
-/* The button whose label reads text. */
-static lv_obj_t *button_with_text(lv_obj_t *object, const char *text)
-{
-    if (object == NULL) {
-        return NULL;
-    }
-    if (lv_obj_check_type(object, &lv_button_class) && tree_contains(object, text)) {
-        return object;
-    }
-    const uint32_t count = lv_obj_get_child_count(object);
-    for (uint32_t index = 0U; index < count; ++index) {
-        lv_obj_t *found = button_with_text(lv_obj_get_child(object, (int32_t)index), text);
-        if (found != NULL) {
-            return found;
-        }
-    }
-    return NULL;
-}
-
 static bool show(furnace_hmi_operator_page_t page)
 {
     if (!furnace_hmi_operator_screens_navigate(&screens, page)) {
@@ -108,11 +58,11 @@ static int no_simulated_content(const char **failure, int code)
     };
 
     for (size_t index = 0U; index < sizeof(delivered) / sizeof(delivered[0]); ++index) {
-        if (tree_contains(screens.root, furnace_hmi_ui_string(delivered[index]))) {
+        if (furnace_hmi_probe_tree_contains(screens.root, furnace_hmi_ui_string(delivered[index]))) {
             return failed(failure, "A delivered program of the simulation is shown.", code);
         }
     }
-    if (tree_contains(screens.root, "2026") || tree_contains(screens.root, "14:32")) {
+    if (furnace_hmi_probe_tree_contains(screens.root, "2026") || furnace_hmi_probe_tree_contains(screens.root, "14:32")) {
         return failed(failure, "The simulation's date or time is shown.", code + 1);
     }
     return 0;
@@ -156,8 +106,8 @@ int furnace_hmi_operator_content_check(lv_display_t *display, const char **failu
      */
     (void)snprintf(fallback_forecast, sizeof(fallback_forecast),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_HOURS_MINUTES_FORMAT), 0L, 48L);
-    if (tree_contains(screens.root, fallback_forecast) ||
-        !tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_UNKNOWN))) {
+    if (furnace_hmi_probe_tree_contains(screens.root, fallback_forecast) ||
+        !furnace_hmi_probe_tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_UNKNOWN))) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "Manual forecasts from an assumed temperature.", 70);
     }
@@ -195,13 +145,13 @@ int furnace_hmi_operator_content_check(lv_display_t *display, const char **failu
     }
 
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) ||
-        !tree_contains(screens.root,
+        !furnace_hmi_probe_tree_contains(screens.root,
                        furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNAVAILABLE))) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "Programs does not say that the library is unavailable.", 80);
     }
     if (!show(FURNACE_HMI_OPERATOR_PAGE_DEVICE) ||
-        !tree_contains(screens.root,
+        !furnace_hmi_probe_tree_contains(screens.root,
                        furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_UNAVAILABLE))) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "Device does not say that its data are unavailable.", 90);
@@ -209,9 +159,9 @@ int furnace_hmi_operator_content_check(lv_display_t *display, const char **failu
     /* Settings > Date & time (the screens' second Settings tab): no date without the clock. */
     screens.settings_tab = 1U;
     if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
-        !tree_contains(screens.root,
+        !furnace_hmi_probe_tree_contains(screens.root,
                        furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE)) ||
-        tree_contains(screens.root, "00:00")) {
+        furnace_hmi_probe_tree_contains(screens.root, "00:00")) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "Date & time shows a clock the controller did not provide.", 95);
     }
@@ -261,10 +211,10 @@ int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **fai
         furnace_hmi_operator_request_t request;
 
         lv_refr_now(NULL);
-        lv_obj_t *stop = button_with_text(screens.root,
+        lv_obj_t *stop = furnace_hmi_probe_button_with_text(screens.root,
                                           furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
         if (stop == NULL ||
-            button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME)) != NULL) {
+            furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME)) != NULL) {
             furnace_hmi_operator_screens_destroy(&screens);
             return failed(failure, "A faulted run offers Return Home instead of Stop.", 110);
         }
@@ -288,14 +238,14 @@ int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **fai
         return failed(failure, "The cooling status was refused.", 103);
     }
     lv_refr_now(NULL);
-    if (tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_COOLING_COMPLETE)) ||
-        !tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_STOPPED_COOLING))) {
+    if (furnace_hmi_probe_tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_COOLING_COMPLETE)) ||
+        !furnace_hmi_probe_tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_STOPPED_COOLING))) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "A run that still cools is shown as complete.", 104);
     }
     /* Running is left by its Return Home button: during background cooling it shows Home. */
     {
-        lv_obj_t *home = button_with_text(
+        lv_obj_t *home = furnace_hmi_probe_button_with_text(
             screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RETURN_HOME));
 
         if (home != NULL) {
@@ -319,7 +269,7 @@ int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **fai
         return failed(failure, "A run awaiting a decision is not on Running.", 106);
     }
     lv_refr_now(NULL);
-    if (!tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_AWAITING_DECISION))) {
+    if (!furnace_hmi_probe_tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RUN_AWAITING_DECISION))) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "Awaiting a decision is not named.", 107);
     }
@@ -345,27 +295,6 @@ int furnace_hmi_operator_lifecycle_check(lv_display_t *display, const char **fai
 }
 
 /* ---- Manual against a controller (M21-5b) ---- */
-
-static void settle(void)
-{
-    for (int pass = 0; pass < 3; ++pass) {
-        (void)lv_timer_handler();
-    }
-}
-
-static void click(lv_obj_t *button)
-{
-    if (button != NULL) {
-        lv_obj_send_event(button, LV_EVENT_CLICKED, NULL);
-        settle();
-    }
-}
-
-static bool enabled(const lv_obj_t *button)
-{
-    return button != NULL && !lv_obj_has_flag(button, LV_OBJ_FLAG_HIDDEN) &&
-           !lv_obj_has_state(button, LV_STATE_DISABLED);
-}
 
 /* The controller's idle status, ready to start, with a Manual maximum of 48 h. */
 static void ready_status(void)
@@ -434,10 +363,10 @@ static bool no_request(void)
 static bool dialog_shows(furnace_hmi_ui_string_id_t title, furnace_hmi_ui_string_id_t detail)
 {
     lv_refr_now(NULL);
-    const bool shown = screens.modal != NULL && tree_contains(screens.modal, furnace_hmi_ui_string(title)) &&
-                       tree_contains(screens.modal, furnace_hmi_ui_string(detail));
+    const bool shown = screens.modal != NULL && furnace_hmi_probe_tree_contains(screens.modal, furnace_hmi_ui_string(title)) &&
+                       furnace_hmi_probe_tree_contains(screens.modal, furnace_hmi_ui_string(detail));
 
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
     return shown && screens.modal == NULL;
 }
 
@@ -446,7 +375,7 @@ static bool update(void)
     if (!furnace_hmi_operator_screens_update(&screens, &state)) {
         return false;
     }
-    settle();
+    furnace_hmi_probe_settle();
     return true;
 }
 
@@ -460,37 +389,37 @@ static int manual_commands(const char **failure)
         return failed(failure, "Opening Manual does not ask for start readiness.", 201);
     }
     answer(&state.command_feedback, 1U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
-    if (!update() || enabled(screens.manual_start_button)) {
+    if (!update() || furnace_hmi_probe_enabled(screens.manual_start_button)) {
         return failed(failure, "Start is offered while a command is pending.", 202);
     }
     answer(&state.command_feedback, 1U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     state.start_ready.value = false; /* PREPARING */
-    if (!update() || enabled(screens.manual_start_button) ||
-        !tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_NOT_READY_NOTE))) {
+    if (!update() || furnace_hmi_probe_enabled(screens.manual_start_button) ||
+        !furnace_hmi_probe_tree_contains(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_NOT_READY_NOTE))) {
         return failed(failure, "Start is offered before the controller is ready.", 230);
     }
     state.start_ready.value = true;
-    if (!update() || !enabled(screens.manual_start_button)) {
+    if (!update() || !furnace_hmi_probe_enabled(screens.manual_start_button)) {
         return failed(failure, "Start is not offered when the controller is ready.", 203);
     }
 
     /* Start asks for the controller's longest session; a refusal is shown with its reason. */
-    click(screens.manual_start_button);
+    furnace_hmi_probe_click(screens.manual_start_button);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START, 2U, &request) ||
         request.target_c != 120 || request.rate_tenths_c_per_minute != 20 ||
         request.session_minutes != 2880 || !no_request()) {
         return failed(failure, "Start does not ask for target, rate and the longest session.", 204);
     }
-    if (enabled(screens.manual_start_button) || screens.manual_running) {
+    if (furnace_hmi_probe_enabled(screens.manual_start_button) || screens.manual_running) {
         return failed(failure, "Start is offered twice, or a session is assumed.", 205);
     }
     answer(&state.command_feedback, 2U, FURNACE_HMI_FEEDBACK_REJECTED, 9U);
     if (!update() || !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_REJECTED_TITLE,
                                    FURNACE_HMI_UI_STRING_UI_LAB_REASON_START_CONDITIONS) ||
-        !enabled(screens.manual_start_button) || !no_request()) {
+        !furnace_hmi_probe_enabled(screens.manual_start_button) || !no_request()) {
         return failed(failure, "A rejected Start is not shown, or is sent again.", 206);
     }
-    click(screens.manual_start_button);
+    furnace_hmi_probe_click(screens.manual_start_button);
     answer(&state.command_feedback, 3U, FURNACE_HMI_FEEDBACK_REFUSED, 10U);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START, 3U, &request) || !update() ||
         !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_REJECTED_TITLE,
@@ -499,30 +428,30 @@ static int manual_commands(const char **failure)
     }
 
     /* Accepted: the session follows the controller and holds Manual. */
-    click(screens.manual_start_button);
+    furnace_hmi_probe_click(screens.manual_start_button);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_START, 4U, &request)) {
         return failed(failure, "Start is not sent again when pressed again.", 208);
     }
     answer(&state.command_feedback, 4U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     manual_status(FURNACE_HMI_RUN_STATE_RUNNING);
     if (!update() || screens.page != FURNACE_HMI_OPERATOR_PAGE_MANUAL || !screens.manual_running ||
-        !enabled(screens.manual_pause_button) || !enabled(screens.manual_stop_button) ||
+        !furnace_hmi_probe_enabled(screens.manual_pause_button) || !furnace_hmi_probe_enabled(screens.manual_stop_button) ||
         furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_HOME)) {
         return failed(failure, "The controller's Manual session is not shown and held.", 209);
     }
 
     /* Retarget: one request at a time; taps while it is pending are merged. */
-    lv_obj_t *increase = button_with_text(screens.manual_steppers,
+    lv_obj_t *increase = furnace_hmi_probe_button_with_text(screens.manual_steppers,
                                           furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_INCREASE));
-    click(increase);
+    furnace_hmi_probe_click(increase);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET, 5U, &request) ||
         request.target_c != 121 || request.rate_tenths_c_per_minute != 20) {
         return failed(failure, "A target change is not sent as a retarget.", 210);
     }
     answer(&state.command_feedback, 5U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
     (void)update();
-    click(increase);
-    click(increase);
+    furnace_hmi_probe_click(increase);
+    furnace_hmi_probe_click(increase);
     if (!no_request() || screens.manual_target_c != 123) {
         return failed(failure, "Taps while a retarget is pending are not merged.", 211);
     }
@@ -533,7 +462,7 @@ static int manual_commands(const char **failure)
         return failed(failure, "The merged target is not sent after the answer.", 212);
     }
     /* A tap while it is pending is dropped with it: nothing is sent after a refusal. */
-    click(increase);
+    furnace_hmi_probe_click(increase);
     answer(&state.command_feedback, 6U, FURNACE_HMI_FEEDBACK_REJECTED, 19U);
     if (!update() || !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_REJECTED_TITLE,
                                    FURNACE_HMI_UI_STRING_UI_LAB_REASON_MANUAL_REQUEST) ||
@@ -558,20 +487,20 @@ static int manual_commands(const char **failure)
      * before Stop goes out after it, and nothing ordinary while it is pending
      * (review F2).
      */
-    click(increase);
+    furnace_hmi_probe_click(increase);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET, 30U, &request)) {
         return failed(failure, "A target change is not sent.", 241);
     }
     answer(&state.command_feedback, 30U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
     (void)update();
-    click(increase);
+    furnace_hmi_probe_click(increase);
     /* A Stop tap behind a tap not yet handled is never lost. */
     lv_obj_send_event(increase, LV_EVENT_CLICKED, NULL);
-    click(screens.manual_stop_button);
+    furnace_hmi_probe_click(screens.manual_stop_button);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 31U, &request) || request.run_id != 5U) {
         return failed(failure, "Stop is lost behind another tap, or does not name the session.", 242);
     }
-    if (enabled(increase) || enabled(screens.manual_pause_button)) {
+    if (furnace_hmi_probe_enabled(increase) || furnace_hmi_probe_enabled(screens.manual_pause_button)) {
         return failed(failure, "Steppers or Pause are offered while Stop is pending.", 243);
     }
     answer(&state.command_feedback, 30U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
@@ -579,18 +508,18 @@ static int manual_commands(const char **failure)
         return failed(failure, "A tap from before Stop is sent after it.", 244);
     }
     /* Even a Pause event that reaches the screens sends nothing while Stop is pending. */
-    click(screens.manual_pause_button);
+    furnace_hmi_probe_click(screens.manual_pause_button);
     if (!no_request()) {
         return failed(failure, "An ordinary command goes out while Stop is pending.", 253);
     }
     answer(&state.stop_feedback, 31U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     state.manual_target_c.value = 121;
-    if (!update() || !no_request() || screens.manual_target_c != 121 || !enabled(increase)) {
+    if (!update() || !no_request() || screens.manual_target_c != 121 || !furnace_hmi_probe_enabled(increase)) {
         return failed(failure, "After Stop the controller's target is not shown again.", 245);
     }
 
     /* Pause and Resume are requests for the run shown; the state is the controller's. */
-    click(screens.manual_pause_button);
+    furnace_hmi_probe_click(screens.manual_pause_button);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PAUSE, 7U, &request) || screens.manual_paused ||
         request.run_id != 5U) {
         return failed(failure, "Pause is not a request for the session shown.", 214);
@@ -600,7 +529,7 @@ static int manual_commands(const char **failure)
     if (!update() || !screens.manual_paused) {
         return failed(failure, "The controller's pause is not shown.", 215);
     }
-    click(screens.manual_pause_button);
+    furnace_hmi_probe_click(screens.manual_pause_button);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_RESUME, 8U, &request)) {
         return failed(failure, "Resume is not a request.", 216);
     }
@@ -611,50 +540,50 @@ static int manual_commands(const char **failure)
     }
 
     /* Not handed over: shown, nothing assumed. */
-    click(screens.manual_pause_button);
+    furnace_hmi_probe_click(screens.manual_pause_button);
     if (!furnace_hmi_operator_screens_take_request(&screens, &request) ||
         request.kind != FURNACE_HMI_OPERATOR_REQUEST_RESUME) {
         return failed(failure, "Resume is not asked for again.", 218);
     }
     furnace_hmi_operator_screens_request_submitted(&screens, request.kind, 0U);
-    settle();
+    furnace_hmi_probe_settle();
     if (!dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_NOT_SENT_TITLE,
                       FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_BUSY_DETAIL) ||
-        !enabled(screens.manual_pause_button)) {
+        !furnace_hmi_probe_enabled(screens.manual_pause_button)) {
         return failed(failure, "A command the host could not hand over is not shown.", 219);
     }
 
     /* Stop has its own slot: sent while an ordinary command is pending. */
-    click(screens.manual_pause_button);
+    furnace_hmi_probe_click(screens.manual_pause_button);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_RESUME, 9U, &request)) {
         return failed(failure, "Resume is not sent.", 220);
     }
     answer(&state.command_feedback, 9U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
     (void)update();
-    click(screens.manual_stop_button);
-    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 10U, &request) || enabled(screens.manual_stop_button)) {
+    furnace_hmi_probe_click(screens.manual_stop_button);
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 10U, &request) || furnace_hmi_probe_enabled(screens.manual_stop_button)) {
         return failed(failure, "Stop waits for an ordinary command, or is offered twice.", 221);
     }
     answer(&state.stop_feedback, 10U, FURNACE_HMI_FEEDBACK_UNRESOLVED, 5U);
     if (!update() || !dialog_shows(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE,
                                    FURNACE_HMI_UI_STRING_UI_LAB_STOP_UNRESOLVED_DETAIL) ||
-        !enabled(screens.manual_stop_button)) {
+        !furnace_hmi_probe_enabled(screens.manual_stop_button)) {
         return failed(failure, "An unresolved Stop is not shown, or Stop is not offered again.", 222);
     }
 
     /* The session ended: it cools; Exit leaves it and Manual is offered anew. */
     answer(&state.command_feedback, 9U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
-    click(screens.manual_stop_button);
+    furnace_hmi_probe_click(screens.manual_stop_button);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 11U, &request)) {
         return failed(failure, "Stop is not sent again when pressed again.", 223);
     }
     answer(&state.stop_feedback, 11U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     manual_status(FURNACE_HMI_RUN_STATE_COMPLETE);
     if (!update() || !screens.manual_cooling || screens.manual_running ||
-        !enabled(screens.manual_exit_button)) {
+        !furnace_hmi_probe_enabled(screens.manual_exit_button)) {
         return failed(failure, "The ended session is not shown cooling.", 224);
     }
-    click(screens.manual_exit_button);
+    furnace_hmi_probe_click(screens.manual_exit_button);
     if (screens.page != FURNACE_HMI_OPERATOR_PAGE_HOME || !update() ||
         screens.page != FURNACE_HMI_OPERATOR_PAGE_HOME) {
         return failed(failure, "Exit does not leave the ended session.", 225);
@@ -664,7 +593,7 @@ static int manual_commands(const char **failure)
         return failed(failure, "Manual is not offered anew after the session.", 226);
     }
     answer(&state.command_feedback, 12U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
-    if (!update() || !enabled(screens.manual_start_button)) {
+    if (!update() || !furnace_hmi_probe_enabled(screens.manual_start_button)) {
         return failed(failure, "Start is not offered anew after the session.", 227);
     }
 
@@ -672,14 +601,14 @@ static int manual_commands(const char **failure)
     manual_status(FURNACE_HMI_RUN_STATE_RUNNING);
     state.run_id = 6U;
     (void)update();
-    increase = button_with_text(screens.manual_steppers, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_INCREASE));
-    click(increase);
+    increase = furnace_hmi_probe_button_with_text(screens.manual_steppers, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_INCREASE));
+    furnace_hmi_probe_click(increase);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET, 13U, &request) || request.run_id != 6U) {
         return failed(failure, "A target change is not sent for session 6.", 246);
     }
     answer(&state.command_feedback, 13U, FURNACE_HMI_FEEDBACK_PENDING, 0U);
     (void)update();
-    click(increase);
+    furnace_hmi_probe_click(increase);
     answer(&state.command_feedback, 13U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     manual_status(FURNACE_HMI_RUN_STATE_COMPLETE);
     state.run_id = 6U;
@@ -690,20 +619,20 @@ static int manual_commands(const char **failure)
     /* Faulted: Stop only; awaiting a decision: no Pause or Resume (M21-5c decides). */
     manual_status(FURNACE_HMI_RUN_STATE_FAULT);
     state.run_id = 7U;
-    if (!update() || screens.page != FURNACE_HMI_OPERATOR_PAGE_MANUAL || !enabled(screens.manual_stop_button) ||
-        enabled(screens.manual_pause_button) || enabled(increase)) {
+    if (!update() || screens.page != FURNACE_HMI_OPERATOR_PAGE_MANUAL || !furnace_hmi_probe_enabled(screens.manual_stop_button) ||
+        furnace_hmi_probe_enabled(screens.manual_pause_button) || furnace_hmi_probe_enabled(increase)) {
         return failed(failure, "A faulted session offers more than Stop.", 248);
     }
     manual_status(FURNACE_HMI_RUN_STATE_PAUSED);
     state.run_id = 7U;
     state.awaiting_decision = true;
-    if (!update() || enabled(screens.manual_pause_button)) {
+    if (!update() || furnace_hmi_probe_enabled(screens.manual_pause_button)) {
         return failed(failure, "Resume is offered while the controller awaits a decision.", 249);
     }
     state.awaiting_decision = false;
 
     /* A run ID seen again after the controller left Manual is a new session (review L1). */
-    click(screens.manual_stop_button);
+    furnace_hmi_probe_click(screens.manual_stop_button);
     answer(&state.stop_feedback, 32U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 32U, &request)) {
         return failed(failure, "Stop is not sent.", 250);
@@ -711,7 +640,7 @@ static int manual_commands(const char **failure)
     manual_status(FURNACE_HMI_RUN_STATE_COMPLETE);
     state.run_id = 7U;
     (void)update();
-    click(screens.manual_exit_button);
+    furnace_hmi_probe_click(screens.manual_exit_button);
     ready_status();
     (void)update();
     if (!furnace_hmi_operator_screens_navigate(&screens, FURNACE_HMI_OPERATOR_PAGE_MANUAL)) {
@@ -746,12 +675,12 @@ int furnace_hmi_operator_manual_command_check(lv_display_t *display, const char 
 static bool shows(lv_obj_t *root, furnace_hmi_ui_string_id_t id)
 {
     lv_refr_now(NULL);
-    return root != NULL && tree_contains(root, furnace_hmi_ui_string(id));
+    return root != NULL && furnace_hmi_probe_tree_contains(root, furnace_hmi_ui_string(id));
 }
 
 static lv_obj_t *modal_button(furnace_hmi_ui_string_id_t id)
 {
-    return button_with_text(screens.modal, furnace_hmi_ui_string(id));
+    return furnace_hmi_probe_button_with_text(screens.modal, furnace_hmi_ui_string(id));
 }
 
 static void fault_entry(uint8_t index, uint8_t id, bool active, bool latched, bool acknowledged,
@@ -782,7 +711,7 @@ static int fault_commands(const char **failure)
     /* The Faults button opens the controller's entries; a protective trip has no Recover. */
     (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT), 2U);
     lv_refr_now(NULL);
-    click(button_with_text(screens.root, text));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, text));
     if (screens.modal == NULL || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_TITLE) ||
         !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1) ||
         !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_7) ||
@@ -794,13 +723,13 @@ static int fault_commands(const char **failure)
     }
 
     /* While a Stop is pending, no fault command is offered (review F6). */
-    click(screens.manual_stop_button);
+    furnace_hmi_probe_click(screens.manual_stop_button);
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 38U, &request) ||
-        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE))) {
+        furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE))) {
         return failed(failure, "Acknowledge is offered while a Stop is pending.", 313);
     }
     answer(&state.stop_feedback, 38U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
-    if (!update() || !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE))) {
+    if (!update() || !furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE))) {
         return failed(failure, "Acknowledge does not come back after the Stop.", 314);
     }
 
@@ -814,7 +743,7 @@ static int fault_commands(const char **failure)
     if (!furnace_hmi_operator_screens_update(&screens, &state)) {
         return failed(failure, "The status was refused.", 310);
     }
-    settle();
+    furnace_hmi_probe_settle();
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE, 39U, &request) || request.fault_id != 1U) {
         return failed(failure, "A tap acknowledged another entry after the list moved.", 311);
     }
@@ -825,7 +754,7 @@ static int fault_commands(const char **failure)
     }
 
     /* Acknowledge is a request; the entry changes only when the controller says so. */
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_ACKNOWLEDGE));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_FAULT_ACKNOWLEDGE, 40U, &request) ||
         request.fault_id != 1U || request.source != 0U || screens.modal == NULL) {
         return failed(failure, "Acknowledge is not a request for the entry.", 303);
@@ -838,7 +767,7 @@ static int fault_commands(const char **failure)
     }
 
     /* Recover: the controller's reply is shown in the dialog, nothing is assumed. */
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY, 41U, &request) || request.fault_id != 1U) {
         return failed(failure, "Recover is not a request for the entry.", 305);
     }
@@ -847,7 +776,7 @@ static int fault_commands(const char **failure)
         !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_TITLE)) {
         return failed(failure, "A refused recovery is not shown in the Faults dialog.", 306);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_RECOVER));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_FAULT_RECOVERY, 42U, &request)) {
         return failed(failure, "Recover is not offered again.", 307);
     }
@@ -859,7 +788,7 @@ static int fault_commands(const char **failure)
         !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_7)) {
         return failed(failure, "The Faults dialog does not follow the controller's list.", 308);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
     if (screens.modal != NULL) {
         return failed(failure, "The Faults dialog cannot be closed.", 309);
     }
@@ -881,8 +810,8 @@ static int decision_commands(const char **failure)
         .validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT};
     (void)snprintf(title, sizeof(title), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE_FORMAT),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_10));
-    if (!update() || screens.modal == NULL || !tree_contains(screens.modal, title) ||
-        !tree_contains(screens.modal, "1:35") || modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) != NULL ||
+    if (!update() || screens.modal == NULL || !furnace_hmi_probe_tree_contains(screens.modal, title) ||
+        !furnace_hmi_probe_tree_contains(screens.modal, "1:35") || modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE) != NULL ||
         modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE) == NULL ||
         modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW) == NULL) {
         return failed(failure, "The decision panel does not show the decision with Continue and Stop.", 320);
@@ -890,36 +819,36 @@ static int decision_commands(const char **failure)
     /* The countdown follows the controller without rebuilding the panel. */
     lv_obj_t *panel = screens.modal;
     state.decision_remaining_seconds.value = 94;
-    if (!update() || screens.modal != panel || !tree_contains(screens.modal, "1:34")) {
+    if (!update() || screens.modal != panel || !furnace_hmi_probe_tree_contains(screens.modal, "1:34")) {
         return failed(failure, "The decision countdown does not follow the controller.", 321);
     }
     /* The buttons follow the link: a stale link offers neither, and both come back (review H1). */
     state.availability = FURNACE_HMI_STATE_AVAILABILITY_STALE;
     state.decision_remaining_seconds.validity = FURNACE_HMI_VALUE_VALIDITY_STALE;
-    if (!update() || screens.modal != panel || enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE)) ||
-        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW)) || tree_contains(screens.modal, "1:34")) {
+    if (!update() || screens.modal != panel || furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE)) ||
+        furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW)) || furnace_hmi_probe_tree_contains(screens.modal, "1:34")) {
         return failed(failure, "A stale decision looks live or offers commands.", 326);
     }
     state.availability = FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
     state.decision_remaining_seconds.validity = FURNACE_HMI_VALUE_VALIDITY_CURRENT;
-    if (!update() || !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE)) ||
-        !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW))) {
+    if (!update() || !furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE)) ||
+        !furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW))) {
         return failed(failure, "Continue and Stop do not come back with the link.", 327);
     }
     /* Continue is a request for the run; a rejection is shown in the panel and Continue is offered again. */
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CONTINUE, 50U, &request) || request.run_id != 7U ||
-        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE))) {
+        furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE))) {
         return failed(failure, "Continue is not a single request for the run.", 322);
     }
     answer(&state.command_feedback, 50U, FURNACE_HMI_FEEDBACK_REJECTED, 16U);
-    if (!update() || screens.modal == NULL || !tree_contains(screens.modal, title) ||
+    if (!update() || screens.modal == NULL || !furnace_hmi_probe_tree_contains(screens.modal, title) ||
         !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_REASON_CONTINUE_BLOCKED) ||
-        !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE))) {
+        !furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DECISION_CONTINUE))) {
         return failed(failure, "A rejected Continue is not shown in the decision panel.", 323);
     }
     /* Stop from the panel uses the Stop slot. */
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_STOP, 51U, &request) || request.run_id != 7U) {
         return failed(failure, "Stop from the decision panel is not a Stop request.", 324);
     }
@@ -928,7 +857,7 @@ static int decision_commands(const char **failure)
     char unnamed[64];
     (void)snprintf(unnamed, sizeof(unnamed), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_TITLE_FORMAT), 0U);
     if (!update() || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_DECISION_TITLE) ||
-        tree_contains(screens.modal, title) || tree_contains(screens.modal, unnamed)) {
+        furnace_hmi_probe_tree_contains(screens.modal, title) || furnace_hmi_probe_tree_contains(screens.modal, unnamed)) {
         return failed(failure, "A decision without a fault is not titled plainly.", 328);
     }
     /* A decision that becomes a fault closes, and the fault's alert is shown (review M1). */
@@ -941,7 +870,7 @@ static int decision_commands(const char **failure)
         !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_ALERT_OVER_TEMPERATURE_TITLE)) {
         return failed(failure, "The fault after a decision is not alerted.", 329);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
     state.fault_id = 0U;
     state.fault_kind = FURNACE_HMI_FAULT_KIND_NONE;
     /* The panel closes when the controller leaves the decision. */
@@ -966,20 +895,20 @@ static int fault_banner(const char **failure)
     state.fault_total = 1U;
     fault_entry(0U, 7U, false, true, true, FURNACE_HMI_FAULT_RECOVERY_PROTECTIVE_EXTERNAL);
     (void)update();
-    click(screens.manual_exit_button);
+    furnace_hmi_probe_click(screens.manual_exit_button);
     (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BANNER_FORMAT), 1U);
     lv_refr_now(NULL);
-    if (screens.page != FURNACE_HMI_OPERATOR_PAGE_HOME || button_with_text(screens.root, text) == NULL) {
+    if (screens.page != FURNACE_HMI_OPERATOR_PAGE_HOME || furnace_hmi_probe_button_with_text(screens.root, text) == NULL) {
         return failed(failure, "Home has no faults banner while faults remain.", 330);
     }
-    click(button_with_text(screens.root, text));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, text));
     if (screens.modal == NULL || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_7)) {
         return failed(failure, "The faults banner does not open the Faults dialog.", 331);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
     state.fault_count = 0U;
     state.fault_total = 0U;
-    if (!update() || button_with_text(screens.root, text) != NULL) {
+    if (!update() || furnace_hmi_probe_button_with_text(screens.root, text) != NULL) {
         return failed(failure, "The faults banner stays without faults.", 332);
     }
     return 0;
@@ -997,7 +926,7 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
     if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
         return failed(failure, "The operator screens could not be created.", 300);
     }
-    settle();
+    furnace_hmi_probe_settle();
     /* Manual's Faults button lasts through many observations (review M2), with LVGL's timers run
      * between them as the application's GUI loop does. No observation restarts animations: the
      * steppers of a faulted session were enabled and disabled again on each one. */
@@ -1014,7 +943,7 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
     (void)snprintf(faults_text, sizeof(faults_text),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT), 2U);
     lv_refr_now(NULL);
-    if (!enabled(button_with_text(screens.root, faults_text))) {
+    if (!furnace_hmi_probe_enabled(furnace_hmi_probe_button_with_text(screens.root, faults_text))) {
         furnace_hmi_operator_screens_destroy(&screens);
         return failed(failure, "Manual's Faults button does not last.", 340);
     }
@@ -1039,16 +968,16 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
         if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
             return failed(failure, "The operator screens could not be created.", 341);
         }
-        settle();
+        furnace_hmi_probe_settle();
         if (screens.alert_open == 0U || !shows(screens.modal, FURNACE_HMI_UI_STRING_UI_LAB_FAULT_6)) {
             furnace_hmi_operator_screens_destroy(&screens);
             return failed(failure, "A fault without a kind is not alerted by its name.", 344);
         }
-        click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
+        furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE));
         (void)snprintf(faults_text, sizeof(faults_text),
                        furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULTS_BUTTON_FORMAT), 1U);
         lv_refr_now(NULL);
-        click(button_with_text(screens.root, faults_text));
+        furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, faults_text));
         state.stage_index = 1U;
         if (screens.modal == NULL || !update() || !screens.faults_open || screens.modal == NULL) {
             result = failed(failure, "The Faults dialog closes as the run moves.", 342);
@@ -1098,14 +1027,14 @@ static bool give_library(furnace_hmi_operator_library_state_t library_state, uin
     if (!furnace_hmi_operator_screens_set_library(&screens, &library)) {
         return false;
     }
-    settle();
+    furnace_hmi_probe_settle();
     lv_refr_now(NULL);
     return true;
 }
 
 static bool page_says(furnace_hmi_ui_string_id_t id)
 {
-    return tree_contains(screens.root, furnace_hmi_ui_string(id));
+    return furnace_hmi_probe_tree_contains(screens.root, furnace_hmi_ui_string(id));
 }
 
 static int library_checks(const char **failure)
@@ -1135,14 +1064,14 @@ static int library_checks(const char **failure)
     library_program(2U, 11U, "Unreadable", 0U);
     library.programs[2].damaged = true;
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, true) ||
-        !tree_contains(screens.root, "Controller cure 7") || !tree_contains(screens.root, "Eighteen stages")) {
+        !furnace_hmi_probe_tree_contains(screens.root, "Controller cure 7") || !furnace_hmi_probe_tree_contains(screens.root, "Eighteen stages")) {
         return failed(failure, "The controller's programs are not listed by their names.", 405);
     }
     if (!page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UPDATING)) {
         return failed(failure, "A library being read again is not marked as updating.", 406);
     }
     if (!page_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DAMAGED) ||
-        enabled(button_with_text(screens.root, "Unreadable"))) {
+        furnace_hmi_probe_enabled(furnace_hmi_probe_button_with_text(screens.root, "Unreadable"))) {
         return failed(failure, "A damaged program is not shown as damaged, or can be opened.", 407);
     }
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) ||
@@ -1151,17 +1080,17 @@ static int library_checks(const char **failure)
     }
 
     /* Eighteen stages: nine to a page, on two pages. */
-    click(button_with_text(screens.root, "Eighteen stages"));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, "Eighteen stages"));
     if (screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || screens.selected_program != 1U ||
-        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES) || !tree_contains(screens.root, "1 / 2")) {
+        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES) || !furnace_hmi_probe_tree_contains(screens.root, "1 / 2")) {
         return failed(failure, "A program of 18 stages is not shown on two stage pages.", 409);
     }
     /* Values the editors cannot show exactly: not offered for editing. */
     library.programs[1].inexact = true;
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) ||
         !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
-        enabled(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM))) ||
-        !enabled(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)))) {
+        furnace_hmi_probe_enabled(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM))) ||
+        !furnace_hmi_probe_enabled(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)))) {
         return failed(failure, "A program the editors would round can be edited, or not started.", 410);
     }
 
@@ -1173,7 +1102,7 @@ static int library_checks(const char **failure)
     library.programs[1] = first;
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) || screens.selected_program != 0U ||
         screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || screens.favourite_count != 1U ||
-        screens.quick_launch_favourites[0] != 0U || !tree_contains(screens.root, "Eighteen stages")) {
+        screens.quick_launch_favourites[0] != 0U || !furnace_hmi_probe_tree_contains(screens.root, "Eighteen stages")) {
         return failed(failure, "The open program or a favourite does not follow its controller ID.", 411);
     }
     /* Deleted on the controller: its page closes, and it is no favourite. */
@@ -1181,12 +1110,12 @@ static int library_checks(const char **failure)
     library.programs[1] = library.programs[2];
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 2U, false) ||
         screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS || screens.favourite_count != 0U ||
-        tree_contains(screens.root, "Eighteen stages")) {
+        furnace_hmi_probe_tree_contains(screens.root, "Eighteen stages")) {
         return failed(failure, "A program deleted on the controller stays open or a favourite.", 412);
     }
     /* No longer listed: nothing of the previous listing is shown. */
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_UNAVAILABLE, 0U, false) ||
-        tree_contains(screens.root, "Controller cure 7")) {
+        furnace_hmi_probe_tree_contains(screens.root, "Controller cure 7")) {
         return failed(failure, "An unavailable library still shows the previous listing.", 413);
     }
     return 0;
@@ -1202,44 +1131,18 @@ int furnace_hmi_operator_library_check(lv_display_t *display, const char **failu
     if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
         return failed(failure, "The operator screens could not be created.", 400);
     }
-    settle();
+    furnace_hmi_probe_settle();
     const int result = library_checks(failure);
 
     furnace_hmi_operator_screens_destroy(&screens);
     return result;
 }
 
-/* The label that reads text. */
-static lv_obj_t *label_with_text(lv_obj_t *object, const char *text)
-{
-    if (lv_obj_check_type(object, &lv_label_class) && strcmp(lv_label_get_text(object), text) == 0) {
-        return object;
-    }
-    const uint32_t count = lv_obj_get_child_count(object);
-    for (uint32_t index = 0U; index < count; ++index) {
-        lv_obj_t *found = label_with_text(lv_obj_get_child(object, (int32_t)index), text);
-        if (found != NULL) {
-            return found;
-        }
-    }
-    return NULL;
-}
-
-/* The clickable card holding the label that reads text (Settings cards are not buttons). */
-static lv_obj_t *card_with_text(lv_obj_t *root, const char *text)
-{
-    lv_obj_t *object = label_with_text(root, text);
-    while (object != NULL && object != root && !lv_obj_has_flag(object, LV_OBJ_FLAG_CLICKABLE)) {
-        object = lv_obj_get_parent(object);
-    }
-    return object == root ? NULL : object;
-}
-
 /* M21-7b: saves and deletes go to the controller, and only its answer changes anything. */
 static bool modal_says(furnace_hmi_ui_string_id_t id)
 {
     lv_refr_now(NULL);
-    return screens.modal != NULL && tree_contains(screens.modal, furnace_hmi_ui_string(id));
+    return screens.modal != NULL && furnace_hmi_probe_tree_contains(screens.modal, furnace_hmi_ui_string(id));
 }
 
 /* The ordinary slot's answer to submission, as the next observation carries it, with the
@@ -1268,9 +1171,9 @@ static int library_command_checks(const char **failure)
         !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
         return failed(failure, "The library could not be shown.", 501);
     }
-    click(button_with_text(screens.root, "Controller cure 7"));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, "Controller cure 7"));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
     if (!screens.program_editor_active || !next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 21U, &request) ||
         request.program_id != 7U || request.program_revision != 3U || request.acknowledged_duration_s != 0U ||
         strcmp(request.program_name, "Controller cure 7") != 0 || request.program.stage_count != 4U ||
@@ -1287,23 +1190,23 @@ static int library_command_checks(const char **failure)
     state.command_feedback.error_stage = 2U;
     if (!library_answer(21U, FURNACE_HMI_FEEDBACK_REJECTED, 1U) || !screens.program_editor_active ||
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_NOT_ACCEPTED) ||
-        !tree_contains(screens.modal, "Stage 3, Target: must be higher than the previous target.")) {
+        !furnace_hmi_probe_tree_contains(screens.modal, "Stage 3, Target: must be higher than the previous target.")) {
         return failed(failure, "An invalid program is not explained, or the draft is closed.", 504);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
 
     /* Longer than advised: saved only after the operator acknowledges the controller's estimate. */
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 22U, &request)) {
         return failed(failure, "Save cannot be sent again after a refusal.", 505);
     }
     state.command_feedback.curing_estimate_s = 36000U;
     if (!library_answer(22U, FURNACE_HMI_FEEDBACK_REJECTED, 9U) ||
-        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_TITLE) || !tree_contains(screens.modal, "600 min") ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_TITLE) || !furnace_hmi_probe_tree_contains(screens.modal, "600 min") ||
         !no_request()) {
         return failed(failure, "A save needing acknowledgement does not ask for it, or sends by itself.", 506);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 23U, &request) ||
         request.acknowledged_duration_s != 36000U || request.program_id != 7U) {
         return failed(failure, "The acknowledged save does not carry the controller's estimate.", 507);
@@ -1313,19 +1216,19 @@ static int library_command_checks(const char **failure)
         screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_SAVED)) {
         return failed(failure, "A saved program does not close the editor on its details.", 508);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
 
     /* Not known whether it was saved: said so, and the draft stays. */
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 24U, &request) ||
         !library_answer(24U, FURNACE_HMI_FEEDBACK_UNRESOLVED, 0U) || !screens.program_editor_active ||
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE) ||
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNRESOLVED_DETAIL)) {
         return failed(failure, "An unresolved save is not said to be unresolved, or the draft is closed.", 509);
     }
-    click(first_button(screens.modal));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
     if (screens.program_editor_active) {
         return failed(failure, "The editor does not close.", 510);
     }
@@ -1334,9 +1237,9 @@ static int library_command_checks(const char **failure)
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
         return failed(failure, "Programs could not be shown.", 511);
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ADD_STAGE_ACTION)));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ADD_STAGE_ACTION)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 25U, &request) || request.program_id != 0U ||
         request.program_revision != 0U || request.program.stage_count != 1U) {
         return failed(failure, "A new program is not sent as new.", 512);
@@ -1345,12 +1248,12 @@ static int library_command_checks(const char **failure)
         screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) {
         return failed(failure, "A saved new program does not return to Programs.", 513);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
 
     /* Delete: by ID and revision; refused, it stays; deleted, Programs is shown. */
-    click(button_with_text(screens.root, "Controller cure 7"));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT)));
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, "Controller cure 7"));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT)));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 26U, &request) || request.program_id != 7U ||
         request.program_revision != 3U) {
         return failed(failure, "Delete does not name the program and revision shown.", 514);
@@ -1360,23 +1263,23 @@ static int library_command_checks(const char **failure)
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_3)) {
         return failed(failure, "A refused delete is not explained, or leaves the program.", 515);
     }
-    click(first_button(screens.modal));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT)));
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT)));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 27U, &request) ||
         !library_answer(27U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS ||
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED)) {
         return failed(failure, "A deleted program does not return to Programs.", 516);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
 
     /* Settings > Delete programs: one at a time, by ID, while the library changes. */
     screens.settings_tab = 3U;
     if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
         return failed(failure, "Settings could not be shown.", 517);
     }
-    click(card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_PROGRAMS)));
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_ALL));
+    furnace_hmi_probe_click(furnace_hmi_probe_card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_PROGRAMS)));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_ALL));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 28U, &request) || request.program_id != 7U) {
         return failed(failure, "Delete programs does not start with the first program.", 518);
     }
@@ -1393,7 +1296,7 @@ static int library_command_checks(const char **failure)
     (void)snprintf(deleted, sizeof(deleted),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED_DETAIL_FORMAT), 2U);
     if (!library_answer(29U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || !no_request() || screens.settings_deleting ||
-        !tree_contains(screens.root, deleted)) {
+        !furnace_hmi_probe_tree_contains(screens.root, deleted)) {
         return failed(failure, "Delete programs does not report what the controller deleted.", 520);
     }
     return 0;
@@ -1414,7 +1317,7 @@ static int name_checks(const char **failure)
     }
     name[used] = '\0';
     if (screens.modal != NULL) {
-        click(first_button(screens.modal)); /* the previous checks' last message */
+        furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal)); /* the previous checks' last message */
     }
     (void)memset(&library, 0, sizeof(library));
     library_program(0U, 20U, name, 2U);
@@ -1425,34 +1328,34 @@ static int name_checks(const char **failure)
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL)) {
         return failed(failure, "The program could not be shown.", 702);
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
     if (!screens.program_editor_active || strcmp(screens.program_editor_name, name) != 0) {
         return failed(failure, "A name of 31 two-byte characters is cut in the editor.", 703);
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 41U, &request) ||
         strcmp(request.program_name, name) != 0 || !library_answer(41U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U)) {
         return failed(failure, "A name of 31 two-byte characters is cut in the save.", 704);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
 
     /* The keyboard stops at 31 characters. */
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
         return failed(failure, "Programs could not be shown.", 705);
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_PROGRAM_NAME)));
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_PROGRAM_NAME)));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
     lv_obj_t *key = NULL;
     for (int press = 0; press < 32 && screens.modal != NULL; ++press) {
-        key = button_with_text(screens.modal, "1");
-        click(key);
+        key = furnace_hmi_probe_button_with_text(screens.modal, "1");
+        furnace_hmi_probe_click(key);
     }
     if (key == NULL || screens.keyboard_length != 31U ||
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_MAXIMUM_LENGTH)) {
         return failed(failure, "The keyboard takes more than 31 characters.", 706);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY));
     if (screens.modal != NULL || strlen(screens.program_editor_name) != 31U) {
         return failed(failure, "A name of 31 characters is not applied.", 707);
     }
@@ -1469,7 +1372,7 @@ int furnace_hmi_operator_library_command_check(lv_display_t *display, const char
     if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
         return failed(failure, "The operator screens could not be created.", 500);
     }
-    settle();
+    furnace_hmi_probe_settle();
     int result = library_command_checks(failure);
 
     if (result == 0) {
@@ -1511,7 +1414,7 @@ static void proposal(uint32_t transaction, uint32_t revision, bool measured_vali
 static bool modal_contains(const char *text)
 {
     lv_refr_now(NULL);
-    return screens.modal != NULL && tree_contains(screens.modal, text);
+    return screens.modal != NULL && furnace_hmi_probe_tree_contains(screens.modal, text);
 }
 
 /* Start on the program's details, through the screens' own confirmation. */
@@ -1520,9 +1423,9 @@ static bool start_from_details(void)
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
         return false;
     }
-    click(button_with_text(screens.root, "Controller cure 7"));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, "Controller cure 7"));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM));
     return true;
 }
 
@@ -1556,15 +1459,15 @@ static int start_checks(const char **failure)
     proposal(12U, 3U, false);
     if (!update() || !screens.proposal_open ||
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_MEASURED_INVALID) ||
-        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM)) ||
-        !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL))) {
+        furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM)) ||
+        !furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL))) {
         return failed(failure, "A proposal without a valid temperature can be confirmed.", 604);
     }
     proposal(12U, 3U, true);
     if (!update()) {
         return failed(failure, "The proposal could not follow the controller.", 605);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM, 32U, &request) || request.transaction_id != 12U ||
         request.proposal_revision != 3U || request.proposed_stage != 2U || request.program_id != 7U ||
         request.program_revision != 3U || request.accepted_duration_s != 11400U) {
@@ -1576,7 +1479,7 @@ static int start_checks(const char **failure)
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_10) || !no_request()) {
         return failed(failure, "A refused Confirm does not show the proposal again with the reason.", 607);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL, 33U, &request) || request.transaction_id != 12U) {
         return failed(failure, "Cancel does not name the transaction.", 608);
     }
@@ -1601,7 +1504,7 @@ static int start_checks(const char **failure)
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_20)) {
         return failed(failure, "A withdrawn proposal is not said to be withdrawn, with its reason.", 612);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
 
     /* A transaction this display has no proposal for: pointed out once, and cancelled on request. */
     (void)memset(&state.start_proposal, 0, sizeof(state.start_proposal));
@@ -1610,7 +1513,7 @@ static int start_checks(const char **failure)
         !no_request()) {
         return failed(failure, "A waiting transaction is not pointed out, or is cancelled by itself.", 613);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_CANCEL));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_CANCEL));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL, 35U, &request) || request.transaction_id != 15U) {
         return failed(failure, "Cancel of a waiting transaction does not name it.", 614);
     }
@@ -1622,7 +1525,7 @@ static int start_checks(const char **failure)
     if (!update() || !screens.start_waiting_open) {
         return failed(failure, "A second waiting transaction is not pointed out.", 616);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_KEEP));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_KEEP));
     if (!update() || screens.modal != NULL || !no_request()) {
         return failed(failure, "A kept waiting transaction is pointed out again, or cancelled.", 617);
     }
@@ -1631,7 +1534,7 @@ static int start_checks(const char **failure)
         !library_answer(36U, FURNACE_HMI_FEEDBACK_REJECTED, 6U) || !screens.start_waiting_open) {
         return failed(failure, "A Start refused because of a waiting transaction does not point it out.", 618);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_KEEP));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_KEEP));
 
     /* Accepted at once (nothing to confirm): the program is the most recent. */
     state.start_pending_transaction_id = 0U;
@@ -1653,7 +1556,7 @@ int furnace_hmi_operator_start_check(lv_display_t *display, const char **failure
     if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
         return failed(failure, "The operator screens could not be created.", 600);
     }
-    settle();
+    furnace_hmi_probe_settle();
     const int result = start_checks(failure);
 
     furnace_hmi_operator_screens_destroy(&screens);
@@ -1666,8 +1569,8 @@ static bool open_editor_on(const char *name)
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
         return false;
     }
-    click(button_with_text(screens.root, name));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, name));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
     return screens.program_editor_active;
 }
 
@@ -1695,7 +1598,7 @@ static int review_checks(const char **failure)
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false)) {
         return failed(failure, "The library could not change.", 802);
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 51U, &request) || request.program_id != 7U ||
         request.program_revision != 3U || request.program.stages[0].target_c != 40) {
         return failed(failure, "A save names a revision or stages the draft was not made from.", 803);
@@ -1703,29 +1606,29 @@ static int review_checks(const char **failure)
     if (!library_answer(51U, FURNACE_HMI_FEEDBACK_REJECTED, 3U) || !screens.program_editor_active) {
         return failed(failure, "A save refused for a newer revision closes the draft.", 804);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
     /* The library being read again (a new controller session) turns no draft into a new program (H3). */
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_LOADING, 0U, false) ||
         !give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false)) {
         return failed(failure, "The library could not be read again.", 805);
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 52U, &request) || request.program_id != 7U ||
         request.program_revision != 3U) {
         return failed(failure, "A draft becomes a new program after the library is read again.", 806);
     }
     /* The answer belongs to that draft: one opened after it stays open (M7). */
-    click(first_button(screens.modal));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
     if (screens.modal != NULL) {
-        click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES));
+        furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES));
     }
     if (screens.program_editor_active || !open_editor_on("Second cure") ||
         !library_answer(52U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || !screens.program_editor_active) {
         return failed(failure, "A save's answer closes another draft.", 807);
     }
-    click(first_button(screens.modal));
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
 
     /* An inexact program is edited from no page (review H4). */
     library.programs[1].inexact = true;
@@ -1736,9 +1639,9 @@ static int review_checks(const char **failure)
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES)) {
         return failed(failure, "The stages could not be shown.", 809);
     }
-    lv_obj_t *edit = button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM));
-    const bool offered = enabled(edit);
-    click(edit);
+    lv_obj_t *edit = furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM));
+    const bool offered = furnace_hmi_probe_enabled(edit);
+    furnace_hmi_probe_click(edit);
     if (offered || screens.program_editor_active) {
         return failed(failure, "An inexact program can be edited from its stages.", 810);
     }
@@ -1753,7 +1656,7 @@ static int review_checks(const char **failure)
     if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
         return failed(failure, "Settings could not be shown.", 812);
     }
-    click(card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_PROGRAMS)));
+    furnace_hmi_probe_click(furnace_hmi_probe_card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_PROGRAMS)));
     /* Before Confirm, another display deletes the first and saves a fourth. */
     library.programs[0] = library.programs[1];
     library.programs[1] = library.programs[2];
@@ -1761,7 +1664,7 @@ static int review_checks(const char **failure)
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false)) {
         return failed(failure, "The library could not change.", 813);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_ALL));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_ALL));
     uint32_t deleted[4] = {0U, 0U, 0U, 0U};
     for (uint32_t step = 0U; step < 4U; ++step) {
         if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 53U + step, &request)) {
@@ -1774,7 +1677,7 @@ static int review_checks(const char **failure)
         return failed(failure, "Delete programs deletes a program it did not name.", 814);
     }
     if (screens.modal != NULL) {
-        click(first_button(screens.modal));
+        furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
     }
 
     /* Favourites last through a library briefly unavailable (M5). */
@@ -1793,7 +1696,7 @@ static int review_checks(const char **failure)
     /* The controller's estimate is the duration shown, not one from an assumed start (PROG-14). */
     library.programs[2].curing_estimate_s = 6000U;
     if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) || !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) ||
-        !tree_contains(screens.root, "100 min")) {
+        !furnace_hmi_probe_tree_contains(screens.root, "100 min")) {
         return failed(failure, "A program's duration is not the controller's estimate.", 817);
     }
 
@@ -1802,7 +1705,7 @@ static int review_checks(const char **failure)
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL)) {
         return failed(failure, "The program could not be shown.", 818);
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
     library.programs[0].revision = 5U;
     if (screens.modal == NULL || !give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) ||
         screens.modal != NULL || !no_request()) {
@@ -1810,8 +1713,8 @@ static int review_checks(const char **failure)
     }
 
     /* Confirm acts only on the proposal on screen (M1). */
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 60U, &request) || request.program_revision != 5U) {
         return failed(failure, "Start does not name the revision shown.", 820);
     }
@@ -1820,7 +1723,7 @@ static int review_checks(const char **failure)
         return failed(failure, "The proposal is not shown.", 821);
     }
     screens.observation.start_proposal.proposal_revision = 3U; /* newer, not drawn yet */
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM));
     if (!no_request()) {
         return failed(failure, "Confirm names a proposal revision that was not on screen.", 822);
     }
@@ -1844,7 +1747,7 @@ static int review_checks(const char **failure)
     if (!update() || screens.proposal_open || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_ENDED_DETAIL)) {
         return failed(failure, "A proposal ended by a session change disappears without a word.", 825);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
     return 0;
 }
 
@@ -1858,7 +1761,7 @@ int furnace_hmi_operator_library_review_check(lv_display_t *display, const char 
     if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
         return failed(failure, "The operator screens could not be created.", 800);
     }
-    settle();
+    furnace_hmi_probe_settle();
     const int result = review_checks(failure);
 
     furnace_hmi_operator_screens_destroy(&screens);
@@ -1898,7 +1801,7 @@ static bool give_diagnostics(void)
     if (!furnace_hmi_operator_screens_set_diagnostics(&screens, &health_fixture, &history_fixture)) {
         return false;
     }
-    settle();
+    furnace_hmi_probe_settle();
     lv_refr_now(NULL);
     return true;
 }
@@ -1908,7 +1811,7 @@ static bool open_device_tab(furnace_hmi_ui_string_id_t tab)
     if (!show(FURNACE_HMI_OPERATOR_PAGE_DEVICE)) {
         return false;
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(tab)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(tab)));
     lv_refr_now(NULL);
     return true;
 }
@@ -1926,7 +1829,7 @@ static bool log_shows(const char *text)
 
     for (uint8_t page = 0U; page < 4U && !found; ++page) {
         screens.device_page = page;
-        found = give_diagnostics() && tree_contains(screens.root, text);
+        found = give_diagnostics() && furnace_hmi_probe_tree_contains(screens.root, text);
     }
     screens.device_page = 0U;
     return give_diagnostics() && found;
@@ -2012,7 +1915,7 @@ static int diagnostics_checks(const char **failure)
     }
     (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_UNAVAILABLE_FORMAT),
                    furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_NAME_3));
-    if (!tree_contains(screens.root, text) || !page_says(FURNACE_HMI_UI_STRING_CTRL_LOG_OLDER_NOT_SHOWN)) {
+    if (!furnace_hmi_probe_tree_contains(screens.root, text) || !page_says(FURNACE_HMI_UI_STRING_CTRL_LOG_OLDER_NOT_SHOWN)) {
         return failed(failure, "An unavailable log, or older entries not shown, are not said.", 910);
     }
     (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_UNKNOWN_FORMAT), 77U,
@@ -2021,37 +1924,37 @@ static int diagnostics_checks(const char **failure)
         log_shows("+0:00:01")) { /* on a valid clock: its clock time, not the time since its start */
         return failed(failure, "An unknown severity, or an entry on a valid clock, is not shown as it is.", 922);
     }
-    click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_ALARMS)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_ALARMS)));
     lv_refr_now(NULL);
     if (log_shows("Run 12: started") || !log_shows(furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1)) ||
         !log_shows("Run 9: faulted, heating stopped")) {
         return failed(failure, "Alarms does not list only the alarms.", 911);
     }
-    click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_PROGRAMS)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_PROGRAMS)));
     lv_refr_now(NULL);
     /* A faulted run is both a run and an alarm (owner 2026-11-20). */
     if (!log_shows("Run 12: started") || !log_shows("Run 9: faulted, heating stopped") ||
         log_shows(furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_FAULT_1))) {
         return failed(failure, "Programs does not list every run, a faulted one included, or lists more.", 923);
     }
-    click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_MAINTENANCE)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_FILTER_MAINTENANCE)));
     lv_refr_now(NULL);
     if (!page_says(FURNACE_HMI_UI_STRING_CTRL_LOG_MAINTENANCE_NOT_RECORDED)) {
         return failed(failure, "Maintenance does not say that the controller does not record it.", 912);
     }
-    click(button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_ALL)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(device_body(), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_ALL)));
     lv_refr_now(NULL);
-    click(card_with_text(screens.root, "Run 12: started"));
+    furnace_hmi_probe_click(furnace_hmi_probe_card_with_text(screens.root, "Run 12: started"));
     if (screens.modal == NULL || !modal_contains(furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_NAME_2)) ||
         !modal_contains("+1:02:03")) {
         return failed(failure, "An entry's details do not name its log and time.", 913);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
     history_fixture.interrupted = true;
     if (!give_diagnostics() || !page_says(FURNACE_HMI_UI_STRING_CTRL_LOG_NOT_CURRENT)) {
         return failed(failure, "A history not current is not said to be.", 914);
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_REFRESH)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_REFRESH)));
     if (!furnace_hmi_operator_screens_take_history_read(&screens)) {
         return failed(failure, "Refresh does not ask for the history.", 915);
     }
@@ -2080,17 +1983,17 @@ static int diagnostics_checks(const char **failure)
     if (!page_says(FURNACE_HMI_UI_STRING_HEALTH_SUBSYSTEM_1) || !page_says(FURNACE_HMI_UI_STRING_HEALTH_SUBSYSTEM_3) ||
         !page_says(FURNACE_HMI_UI_STRING_HEALTH_SUBSYSTEM_10) || !page_says(FURNACE_HMI_UI_STRING_HEALTH_STATE_0) ||
         !page_says(FURNACE_HMI_UI_STRING_HEALTH_STATE_2) ||
-        !tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_DETAIL_SKIPPED_FORMAT, 3U))) {
+        !furnace_hmi_probe_tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_DETAIL_SKIPPED_FORMAT, 3U))) {
         return failed(failure, "The subsystems are not shown with their states, unknown as unknown.", 917);
     }
     (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_DETAIL_FORMAT), 2U, 3U);
-    if (!tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_FORMAT, 1U)) ||
-        !tree_contains(screens.root, text) || !tree_contains(screens.root, "0x2") ||
-        !tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_SERVICE_FORMAT, 2U))) {
+    if (!furnace_hmi_probe_tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_FAULTS_FORMAT, 1U)) ||
+        !furnace_hmi_probe_tree_contains(screens.root, text) || !furnace_hmi_probe_tree_contains(screens.root, "0x2") ||
+        !furnace_hmi_probe_tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_HEALTH_SERVICE_FORMAT, 2U))) {
         return failed(failure, "The fault counts, starts or service hours are not shown.", 918);
     }
     (void)snprintf(text, sizeof(text), furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_HEALTH_UPTIME_FORMAT), 1U, 2U);
-    if (!tree_contains(screens.root, text) || page_says(FURNACE_HMI_UI_STRING_HEALTH_STALE)) {
+    if (!furnace_hmi_probe_tree_contains(screens.root, text) || page_says(FURNACE_HMI_UI_STRING_HEALTH_STALE)) {
         return failed(failure, "The uptime is not shown, or current health is called stale.", 919);
     }
     health_fixture.current = false;
@@ -2124,7 +2027,7 @@ int furnace_hmi_operator_diagnostics_check(lv_display_t *display, const char **f
     if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
         return failed(failure, "The operator screens could not be created.", 899);
     }
-    settle();
+    furnace_hmi_probe_settle();
     const int result = diagnostics_checks(failure);
 
     furnace_hmi_operator_screens_destroy(&screens);
@@ -2162,9 +2065,9 @@ static bool save_says(const char *name, const char *text)
     if (!open_editor_on(name)) {
         return false;
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
     const bool said = modal_contains(text);
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
     return said && no_request();
 }
 
@@ -2176,13 +2079,13 @@ static bool save_sends(const char *name, uint32_t submission)
     if (!open_editor_on(name)) {
         return false;
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, submission, &request) ||
         !library_answer(submission, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U)) {
-        click(first_button(screens.modal));
+        furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
         return false;
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
     return true;
 }
 
@@ -2226,7 +2129,7 @@ static int unusual_limits_checks(const char **failure)
         !furnace_hmi_operator_screens_set_program_limits(&screens, &unusual, &reference)) {
         return failed(failure, "The unusual limits could not be given.", 1030);
     }
-    settle();
+    furnace_hmi_probe_settle();
     if (!save_sends("Exactly longest", 71U)) {
         return failed(failure, "Curing of exactly the controller's longest, from 23.4 C, is refused.", 1031);
     }
@@ -2269,27 +2172,27 @@ static int limits_checks(const char **failure)
     /* Without the controller's limits nothing is edited, and Manual does not start. */
     screens.selected_program = 0U;
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
-        enabled(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)))) {
+        furnace_hmi_probe_enabled(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)))) {
         return failed(failure, "A program can be edited without the controller's limits.", 1002);
     }
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
         return failed(failure, "Programs could not be shown.", 1003);
     }
-    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
     /* An information dialog closes; it does not cancel (owner 2026-11-20). */
     if (screens.program_editor_active || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_LIMITS_UNKNOWN_TITLE) ||
-        button_with_text(screens.modal, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) == NULL ||
-        button_with_text(screens.modal, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)) != NULL) {
+        furnace_hmi_probe_button_with_text(screens.modal, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CLOSE)) == NULL ||
+        furnace_hmi_probe_button_with_text(screens.modal, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)) != NULL) {
         return failed(failure, "A new program without limits is not refused with a note that closes.", 1004);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
     /* Manual asks for the controller's readiness when it opens; answered, it is ready. */
     if (!show(FURNACE_HMI_OPERATOR_PAGE_MANUAL) ||
         !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PREPARE, 60U, &request)) {
         return failed(failure, "Manual does not ask for the controller's readiness.", 1017);
     }
     answer(&state.command_feedback, 60U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
-    if (!update() || enabled(screens.manual_start_button)) {
+    if (!update() || furnace_hmi_probe_enabled(screens.manual_start_button)) {
         return failed(failure, "Manual starts without the controller's limits.", 1005);
     }
 
@@ -2297,15 +2200,15 @@ static int limits_checks(const char **failure)
     if (!furnace_hmi_operator_screens_set_program_limits(&screens, &fixture_limits, &fixture_reference)) {
         return failed(failure, "The limits could not be given.", 1006);
     }
-    settle();
-    if (!enabled(screens.manual_start_button)) {
+    furnace_hmi_probe_settle();
+    if (!furnace_hmi_probe_enabled(screens.manual_start_button)) {
         return failed(failure, "Manual does not start with the controller's limits.", 1007);
     }
 
     /* One stage reads "1 stage". */
     if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) ||
-        label_with_text(screens.root, formatted(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_ONE_FORMAT, 1U)) == NULL ||
-        tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_FORMAT, 1U))) {
+        furnace_hmi_probe_label_with_text(screens.root, formatted(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_ONE_FORMAT, 1U)) == NULL ||
+        furnace_hmi_probe_tree_contains(screens.root, formatted(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_FORMAT, 1U))) {
         return failed(failure, "One stage does not read as one stage.", 1008);
     }
 
@@ -2327,19 +2230,19 @@ static int limits_checks(const char **failure)
     /* Settings > Programs: the reference, its range, and a change the controller answers. */
     screens.program_editor_active = false;
     screens.settings_tab = 4U;
-    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS) || !tree_contains(screens.root, "23.0 °C") ||
-        !tree_contains(screens.root, "5.0–40.0 °C") ||
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS) || !furnace_hmi_probe_tree_contains(screens.root, "23.0 °C") ||
+        !furnace_hmi_probe_tree_contains(screens.root, "5.0–40.0 °C") ||
         !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_CAPTION)) {
         return failed(failure, "Settings does not show the planning reference and its range.", 1012);
     }
-    click(card_with_text(screens.root, "23.0 °C"));
+    furnace_hmi_probe_click(furnace_hmi_probe_card_with_text(screens.root, "23.0 °C"));
     if (screens.modal == NULL || !modal_contains("5.0") || !modal_contains("40.0") || modal_contains("400")) {
         return failed(failure, "The reference keypad does not state its range in degrees.", 1018);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
-    click(button_with_text(screens.modal, "2"));
-    click(button_with_text(screens.modal, "5"));
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.modal, "2"));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.modal, "5"));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE, 61U, &request) ||
         request.planning_reference_decicelsius != 250 ||
         !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_PENDING)) {
@@ -2347,16 +2250,16 @@ static int limits_checks(const char **failure)
     }
     answer(&state.command_feedback, 61U, FURNACE_HMI_FEEDBACK_REJECTED, 1U);
     if (!update() || !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_OUT_OF_RANGE) ||
-        !tree_contains(screens.root, "23.0 °C")) {
+        !furnace_hmi_probe_tree_contains(screens.root, "23.0 °C")) {
         return failed(failure, "A refusal is not shown, or the value shown is not the one in effect.", 1014);
     }
 
     /* A change whose answer never came may have been applied: said so, not "not applied". */
-    click(card_with_text(screens.root, "23.0 °C"));
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
-    click(button_with_text(screens.modal, "2"));
-    click(button_with_text(screens.modal, "6"));
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY));
+    furnace_hmi_probe_click(furnace_hmi_probe_card_with_text(screens.root, "23.0 °C"));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.modal, "2"));
+    furnace_hmi_probe_click(furnace_hmi_probe_button_with_text(screens.modal, "6"));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE, 62U, &request)) {
         return failed(failure, "A second change is not asked.", 1019);
     }
@@ -2370,8 +2273,8 @@ static int limits_checks(const char **failure)
     if (!furnace_hmi_operator_screens_set_program_limits(&screens, &fixture_limits, &read_again)) {
         return failed(failure, "The limits could not be given.", 1021);
     }
-    settle();
-    if (!tree_contains(screens.root, "26.0 °C") ||
+    furnace_hmi_probe_settle();
+    if (!furnace_hmi_probe_tree_contains(screens.root, "26.0 °C") ||
         page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_UNKNOWN_OUTCOME) ||
         !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_CAPTION)) {
         return failed(failure, "The value read again does not replace the earlier answer.", 1022);
@@ -2383,8 +2286,8 @@ static int limits_checks(const char **failure)
     if (!furnace_hmi_operator_screens_set_program_limits(&screens, &fixture_limits, &running)) {
         return failed(failure, "The limits could not be given.", 1015);
     }
-    settle();
-    click(card_with_text(screens.root, "23.0 °C"));
+    furnace_hmi_probe_settle();
+    furnace_hmi_probe_click(furnace_hmi_probe_card_with_text(screens.root, "23.0 °C"));
     if (screens.modal != NULL || !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_DURING_RUN)) {
         return failed(failure, "The reference is offered for change during execution.", 1016);
     }
@@ -2407,8 +2310,8 @@ static lv_obj_t *clock_step_button(uint32_t field, bool up)
 /* The Date & time card, found by its time (24-hour or 12-hour; the tab shares its label). */
 static lv_obj_t *clock_card(void)
 {
-    lv_obj_t *card = card_with_text(screens.root, "12:01");
-    return card != NULL ? card : card_with_text(screens.root, "12:01 PM");
+    lv_obj_t *card = furnace_hmi_probe_card_with_text(screens.root, "12:01");
+    return card != NULL ? card : furnace_hmi_probe_card_with_text(screens.root, "12:01 PM");
 }
 
 /*
@@ -2428,11 +2331,11 @@ static int clock_checks(const char **failure)
         return failed(failure, "A controller clock not set since its start is not said so.", 1100);
     }
     /* The date format card shows its format with an example date, not "Not set" (found by hand). */
-    if (!tree_contains(screens.root, "31 Dec 2025")) {
+    if (!furnace_hmi_probe_tree_contains(screens.root, "31 Dec 2025")) {
         return failed(failure, "The date format is not shown with an example date.", 1114);
     }
     /* Its choices too, never a zero date (review). */
-    click(card_with_text(screens.root, "31 Dec 2025"));
+    furnace_hmi_probe_click(furnace_hmi_probe_card_with_text(screens.root, "31 Dec 2025"));
     if (screens.modal == NULL || !modal_contains("2025") || modal_contains("Dec 0")) {
         return failed(failure, "The date format choices show a zero date without a clock.", 1120);
     }
@@ -2441,21 +2344,21 @@ static int clock_checks(const char **failure)
     }
     /* An unknown clock's picker starts at 1 Jan 2025 and Set waits for the operator's own date;
      * a step at the limit is no change; the year stays within 2025 to 2099 (review). */
-    click(card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET)));
+    furnace_hmi_probe_click(furnace_hmi_probe_card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET)));
     if (screens.modal == NULL || !modal_contains("1 Jan 2025") ||
-        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME))) {
+        furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME))) {
         return failed(failure, "An unknown clock's placeholder can be set unchanged.", 1115);
     }
-    click(clock_step_button(2U, false));
-    if (!modal_contains("1 Jan 2025") || enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME))) {
+    furnace_hmi_probe_click(clock_step_button(2U, false));
+    if (!modal_contains("1 Jan 2025") || furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME))) {
         return failed(failure, "The year goes below 2025, or a step that changed nothing enables Set.", 1116);
     }
-    click(clock_step_button(2U, true));
-    if (!modal_contains("1 Jan 2026") || !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME))) {
+    furnace_hmi_probe_click(clock_step_button(2U, true));
+    if (!modal_contains("1 Jan 2026") || !furnace_hmi_probe_enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME))) {
         return failed(failure, "A changed date cannot be set.", 1117);
     }
     for (unsigned int step = 0U; step < 80U; ++step) {
-        click(clock_step_button(2U, true));
+        furnace_hmi_probe_click(clock_step_button(2U, true));
     }
     if (!modal_contains("2099") || modal_contains("2100")) {
         return failed(failure, "The year goes beyond 2099.", 1118);
@@ -2471,8 +2374,8 @@ static int clock_checks(const char **failure)
     if (!furnace_hmi_operator_screens_set_clock(&screens, &clock)) {
         return failed(failure, "The clock could not be given.", 1101);
     }
-    settle();
-    if (!tree_contains(screens.root, "12:00") || !tree_contains(screens.root, "UTC") ||
+    furnace_hmi_probe_settle();
+    if (!furnace_hmi_probe_tree_contains(screens.root, "12:00") || !furnace_hmi_probe_tree_contains(screens.root, "UTC") ||
         page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET)) {
         return failed(failure, "The controller's time is not shown in UTC.", 1102);
     }
@@ -2480,17 +2383,17 @@ static int clock_checks(const char **failure)
     if (!furnace_hmi_operator_screens_set_clock(&screens, &clock)) {
         return failed(failure, "The clock could not be given.", 1103);
     }
-    settle();
-    if (!tree_contains(screens.root, "12:01")) {
+    furnace_hmi_probe_settle();
+    if (!furnace_hmi_probe_tree_contains(screens.root, "12:01")) {
         return failed(failure, "The next minute is not shown.", 1104);
     }
 
     /* Set date & time: the picker says UTC; Set sends the picked minute; a refusal is shown. */
-    click(clock_card());
+    furnace_hmi_probe_click(clock_card());
     if (screens.modal == NULL || !modal_contains("UTC")) {
         return failed(failure, "The date and time picker does not say UTC.", 1105);
     }
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, 70U, &request) ||
         request.clock_wall_ms != 1795435260000LL) {
         return failed(failure, "Set date & time does not ask the controller for the picked minute.", 1106);
@@ -2500,9 +2403,9 @@ static int clock_checks(const char **failure)
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_SESSION_ACTIVE)) {
         return failed(failure, "A refusal during execution is not shown with its reason.", 1107);
     }
-    click(first_button(screens.modal));
-    click(clock_card());
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
+    furnace_hmi_probe_click(clock_card());
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, 71U, &request)) {
         return failed(failure, "A second setting is not asked.", 1108);
     }
@@ -2512,9 +2415,9 @@ static int clock_checks(const char **failure)
         modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_REFUSED_TITLE)) {
         return failed(failure, "A setting without an answer is said to be not set.", 1109);
     }
-    click(first_button(screens.modal));
-    click(clock_card());
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
+    furnace_hmi_probe_click(clock_card());
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, 72U, &request)) {
         return failed(failure, "A third setting is not asked.", 1110);
     }
@@ -2522,9 +2425,9 @@ static int clock_checks(const char **failure)
     if (!update() || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_TIME_SET_TITLE)) {
         return failed(failure, "An applied setting is not confirmed.", 1111);
     }
-    click(first_button(screens.modal));
-    click(clock_card());
-    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
+    furnace_hmi_probe_click(clock_card());
+    furnace_hmi_probe_click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
     if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, 73U, &request)) {
         return failed(failure, "A fourth setting is not asked.", 1124);
     }
@@ -2533,7 +2436,7 @@ static int clock_checks(const char **failure)
         !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_OUT_OF_RANGE)) {
         return failed(failure, "A time outside the controller's range is not refused with its reason.", 1125);
     }
-    click(first_button(screens.modal));
+    furnace_hmi_probe_click(furnace_hmi_probe_first_button(screens.modal));
 
     /* A minute later only what shows the clock is drawn again: not Display (review). */
     screens.settings_tab = 0U;
@@ -2558,8 +2461,8 @@ static int clock_checks(const char **failure)
     history_fixture.logs[1].state = FURNACE_HMI_HISTORY_LOG_READ;
     history_fixture.logs[2].state = FURNACE_HMI_HISTORY_LOG_READ;
     if (!open_device_tab(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LOG) || !give_diagnostics() ||
-        !log_shows("30 Nov 2026") || tree_contains(screens.root, "days ago") ||
-        tree_contains(screens.root, "4294967")) {
+        !log_shows("30 Nov 2026") || furnace_hmi_probe_tree_contains(screens.root, "days ago") ||
+        furnace_hmi_probe_tree_contains(screens.root, "4294967")) {
         return failed(failure, "An entry dated after the clock is not shown with its date only.", 1127);
     }
     screens.settings_tab = 1U;
@@ -2572,7 +2475,7 @@ static int clock_checks(const char **failure)
     if (!furnace_hmi_operator_screens_set_clock(&screens, &clock)) {
         return failed(failure, "The clock could not be given.", 1112);
     }
-    settle();
+    furnace_hmi_probe_settle();
     if (!page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE) ||
         page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET)) {
         return failed(failure, "Without a controller clock the time is not said to be unavailable.", 1113);
@@ -2589,7 +2492,7 @@ int furnace_hmi_operator_clock_check(lv_display_t *display, const char **failure
     if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
         return failed(failure, "The operator screens could not be created.", 1099);
     }
-    settle();
+    furnace_hmi_probe_settle();
     const int result = clock_checks(failure);
 
     furnace_hmi_operator_screens_destroy(&screens);
@@ -2605,7 +2508,7 @@ int furnace_hmi_operator_limits_check(lv_display_t *display, const char **failur
     if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
         return failed(failure, "The operator screens could not be created.", 1000);
     }
-    settle();
+    furnace_hmi_probe_settle();
     const int result = limits_checks(failure);
 
     furnace_hmi_operator_screens_destroy(&screens);

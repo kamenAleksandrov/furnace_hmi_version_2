@@ -7,6 +7,7 @@ add_library(
   furnace_hmi_operator_content_checks
   STATIC
   src/operator_content_checks.c
+  src/screen_probe.c
 )
 add_library(
   furnace_hmi::operator_content_checks
