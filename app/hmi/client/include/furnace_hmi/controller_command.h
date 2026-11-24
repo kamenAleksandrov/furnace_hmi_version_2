@@ -30,6 +30,8 @@ typedef enum {
     FURNACE_HMI_COMMAND_PROGRAM_START,
     FURNACE_HMI_COMMAND_START_CONFIRM,
     FURNACE_HMI_COMMAND_START_CANCEL,
+    /* M21-7d: an operator setting (SETTING_CHANGE). */
+    FURNACE_HMI_COMMAND_SETTING_CHANGE,
     FURNACE_HMI_COMMAND_COUNT,
 } furnace_hmi_command_kind_t;
 
@@ -81,7 +83,16 @@ typedef struct {
     uint8_t proposed_stage;
     /** Confirm: the duration the operator accepted, when the proposal requires it. */
     uint32_t accepted_duration_s;
+    /** Setting change: the setting (PLANNING_REFERENCE 1) and its value (0.1 °C). */
+    uint8_t setting;
+    int32_t setting_value;
 } furnace_hmi_command_t;
+
+/** SETTING_RESULT results (controller interface, Settings). */
+#define FURNACE_HMI_SETTING_RESULT_APPLIED 0U
+#define FURNACE_HMI_SETTING_RESULT_OUT_OF_RANGE 1U
+#define FURNACE_HMI_SETTING_RESULT_SESSION_ACTIVE 2U
+#define FURNACE_HMI_SETTING_RESULT_BUSY 3U
 
 /** Where a command stands. Only the controller's result makes it accepted or rejected (API-03). */
 typedef enum {
@@ -153,7 +164,8 @@ typedef struct {
     /**
      * The controller's reason: RUN_COMMAND_* reason, COMMAND_REJECTED reason,
      * FAULT_ACKNOWLEDGE_RESULT result, FAULT_RECOVERY_RESULT reply,
-     * PROGRAM_SAVE_RESULT or PROGRAM_DELETE_RESULT result, or START_REJECTED reason.
+     * PROGRAM_SAVE_RESULT or PROGRAM_DELETE_RESULT result, START_REJECTED reason, or
+     * SETTING_RESULT result (APPLIED 0, OUT_OF_RANGE 1, SESSION_ACTIVE 2, BUSY 3).
      */
     uint8_t reason;
     /** RUN_COMMAND_*: pause-reason codes that block a Resume or Continue. */
@@ -176,6 +188,8 @@ typedef struct {
     int32_t planning_reference_decicelsius;
     /** Program Start and Confirm: the transaction; START_ACCEPTED: the run is run_id. */
     uint32_t transaction_id;
+    /** SETTING_RESULT: the value in effect afterwards, whatever the result. */
+    int32_t setting_value;
 } furnace_hmi_command_outcome_t;
 
 /** The latest command the HMI refused before sending; it never replaces a slot's outcome. */

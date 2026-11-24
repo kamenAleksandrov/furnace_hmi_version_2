@@ -63,6 +63,9 @@ typedef struct {
     /* What the scripted STATUS reports besides its defaults (M21-7a). */
     uint32_t status_library_revision;
     struct furnace_wire_start_status status_start;
+    /* SETTINGS_REQUEST (M21-7d), which the client sends by itself. */
+    size_t settings_sent;
+    uint32_t last_settings_id;
     /* Diagnostic reads (M21-7c), which the client sends by itself: the newest of each. */
     size_t health_sent;
     uint32_t last_health_id;
@@ -150,6 +153,10 @@ static void drain_client(void)
                 fx.last_read_type = frame.msg_type;
                 fx.reads_sent++;
                 break;
+            case FURNACE_WIRE_MSG_SETTINGS_REQUEST:
+                fx.last_settings_id = fx.in.u.settings_request.envelope.request_id;
+                fx.settings_sent++;
+                break;
             case FURNACE_WIRE_MSG_HEALTH_REQUEST:
                 fx.last_health_id = fx.in.u.health_request.envelope.request_id;
                 fx.health_sent++;
@@ -228,8 +235,8 @@ static void begin(const char *name)
 static void end(void)
 {
     EXPECT(!fx.forbidden_sent,
-           "only HELLO, HEARTBEAT, SNAPSHOT_REQUEST, CAPABILITIES_REQUEST, library and "
-           "diagnostic reads");
+           "only HELLO, HEARTBEAT, SNAPSHOT_REQUEST, CAPABILITIES_REQUEST, library, settings "
+           "and diagnostic reads");
 }
 
 /* ---- the scripted controller ------------------------------------------------------------ */
@@ -428,6 +435,15 @@ static void send_command_rejected(uint32_t request_id, uint8_t reason)
     send_out();
 }
 
+/* The snapshot's SETTINGS (request_id 0), state STORED. */
+static void send_snapshot_settings(int32_t reference)
+{
+    start_out(FURNACE_WIRE_MSG_SETTINGS);
+    fx.out.u.settings.settings_state = 2U;
+    fx.out.u.settings.planning_reference = reference;
+    send_out();
+}
+
 /* HELLO answered, CAPABILITIES and a complete snapshot: run seq 5, fault seq 3, one fault. */
 static void synchronize(uint8_t session, uint32_t status_sequence)
 {
@@ -435,6 +451,7 @@ static void synchronize(uint8_t session, uint32_t status_sequence)
     send_capabilities(0U, session);
     send_status(status_sequence, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, session);
     send_fault_list(0U, status_sequence, 1U, 0U, 1U);
+    send_snapshot_settings(230);
     send_snapshot_end(0U, status_sequence, 3U, 5U);
     advance(10U);
 }
@@ -1192,6 +1209,8 @@ static const struct furnace_wire_envelope *last_envelope(void)
         return &m->u.start_confirm.envelope;
     case FURNACE_WIRE_MSG_START_CANCEL:
         return &m->u.start_cancel.envelope;
+    case FURNACE_WIRE_MSG_SETTING_CHANGE:
+        return &m->u.setting_change.envelope;
     default:
         return NULL;
     }
@@ -2305,6 +2324,178 @@ static void program_delete(void)
     end();
 }
 
+/* ---- the controller's program limits and the planning reference (M21-7d) ------------------ */
+
+#define SETTINGS_STATE_STORED 2U
+#define SETTING_PLANNING_REFERENCE 1U
+#define SETTING_APPLIED 0U
+#define SETTING_OUT_OF_RANGE 1U
+#define REJECT_NOT_CONFIGURED 8U
+
+static void send_settings(uint32_t request_id, int32_t reference)
+{
+    start_out(FURNACE_WIRE_MSG_SETTINGS);
+    fx.out.u.settings.request_id = request_id;
+    fx.out.u.settings.settings_state = SETTINGS_STATE_STORED;
+    fx.out.u.settings.planning_reference = reference;
+    send_out();
+}
+
+static void send_setting_result(uint8_t result, int32_t value)
+{
+    start_out(FURNACE_WIRE_MSG_SETTING_RESULT);
+    fx.out.u.setting_result.request_id = last_request_id();
+    fx.out.u.setting_result.setting = SETTING_PLANNING_REFERENCE;
+    fx.out.u.setting_result.result = result;
+    fx.out.u.setting_result.value = value;
+    send_out();
+    advance(10U);
+}
+
+static void program_limits_reported(void)
+{
+    const furnace_hmi_controller_observation_t *o = obs();
+
+    begin("program limits reported");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    fill_capabilities(0U, SESSION_A);
+    fx.out.u.capabilities.max_stages = 12U;
+    fx.out.u.capabilities.stage_kinds = 0x6U;
+    fx.out.u.capabilities.target_min = 200;
+    fx.out.u.capabilities.target_max = 1805;
+    fx.out.u.capabilities.rate_min = 2;
+    fx.out.u.capabilities.rate_max = 25;
+    fx.out.u.capabilities.curing_max_minutes = 1440U;
+    fx.out.u.capabilities.recommended_curing_minutes = 600U;
+    fx.out.u.capabilities.planning_reference_min = 50;
+    fx.out.u.capabilities.planning_reference_max = 400;
+    fx.out.u.capabilities.name_max_code_points = 20U;
+    fx.out.u.capabilities.name_max_bytes = 80U;
+    fx.out.u.capabilities.library_capacity = 9U;
+    send_out();
+    advance(10U);
+    EXPECT(o->capabilities_valid && o->max_stages == 12U && o->stage_kinds == 0x6U &&
+               o->target_min_decicelsius == 200 && o->target_max_decicelsius == 1805 &&
+               o->rate_min_decicelsius_per_min == 2 && o->rate_max_decicelsius_per_min == 25,
+           "stage, target and rate limits as reported");
+    EXPECT(o->curing_max_minutes == 1440U && o->recommended_curing_minutes == 600U &&
+               o->planning_reference_min_decicelsius == 50 &&
+               o->planning_reference_max_decicelsius == 400 && o->name_max_code_points == 20U &&
+               o->name_max_bytes == 80U && o->library_capacity == 9U,
+           "duration, reference, name and library limits as reported");
+    /* Without a configuration the controller reports limits 0: kept as 0, never a default. */
+    fill_capabilities(0U, SESSION_A);
+    fx.out.u.capabilities.configured = false;
+    fx.out.u.capabilities.max_stages = 0U;
+    send_out();
+    advance(10U);
+    EXPECT(o->capabilities_valid && !o->configured && o->max_stages == 0U &&
+               o->target_max_decicelsius == 0 && o->planning_reference_max_decicelsius == 0,
+           "an unconfigured controller's limits are 0");
+    end();
+}
+
+static void planning_reference_from_the_snapshot(void)
+{
+    const furnace_hmi_controller_observation_t *o = obs();
+
+    begin("planning reference from the snapshot");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_capabilities(0U, SESSION_A);
+    EXPECT(!o->settings_valid, "no reference before the controller gives one");
+    send_status(10U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_list(0U, 10U, 1U, 0U, 1U);
+    send_settings(0U, 235);
+    send_snapshot_end(0U, 10U, 3U, 5U);
+    advance(10U);
+    EXPECT(o->settings_valid && o->settings_state == SETTINGS_STATE_STORED &&
+               o->planning_reference_decicelsius == 235,
+           "the snapshot's SETTINGS is the reference");
+    /* Another controller session: its own settings, none until its snapshot gives them. */
+    send_hello_ack(HELLO_OK, SESSION_B);
+    send_capabilities(0U, SESSION_B);
+    advance(10U);
+    EXPECT(!o->settings_valid, "a new controller session discards the reference");
+    end();
+}
+
+/* A snapshot without SETTINGS: the client asks for them, once, and takes the answer. */
+static void settings_read_when_missing(void)
+{
+    const furnace_hmi_controller_observation_t *o = obs();
+
+    begin("settings read when missing");
+    send_hello_ack(HELLO_OK, SESSION_A);
+    send_capabilities(0U, SESSION_A);
+    send_status(10U, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    send_fault_list(0U, 10U, 1U, 0U, 1U);
+    send_snapshot_end(0U, 10U, 3U, 5U);
+    advance(100U);
+    EXPECT(!o->settings_valid && fx.settings_sent == 1U, "SETTINGS_REQUEST after a snapshot without them");
+    send_settings(fx.last_settings_id, 240);
+    advance(FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS + 100U);
+    EXPECT(o->settings_valid && o->planning_reference_decicelsius == 240 && fx.settings_sent == 1U,
+           "the answer is the reference, and it is not asked again");
+    end();
+}
+
+/* A change without a result may have been applied: the client reads the value in effect again. */
+static void unresolved_change_reads_settings(void)
+{
+    const furnace_hmi_controller_observation_t *o = obs();
+    const furnace_hmi_command_t command = {.kind = FURNACE_HMI_COMMAND_SETTING_CHANGE,
+                                           .setting = SETTING_PLANNING_REFERENCE,
+                                           .setting_value = 250};
+
+    begin_commands("unresolved change reads settings");
+    EXPECT(fx.settings_sent == 0U, "no read while the snapshot gave them");
+    (void)submit_command(&command, 1U);
+    keep_current(30000U);
+    /* Unanswered, the read is asked again after the sync timeout: at least one. */
+    EXPECT(o->command.state == FURNACE_HMI_COMMAND_UNRESOLVED, "the change is unresolved");
+    EXPECT(fx.settings_sent >= 1U, "an unresolved change is followed by SETTINGS_REQUEST");
+    send_settings(fx.last_settings_id, 250);
+    advance(10U);
+    EXPECT(o->planning_reference_decicelsius == 250, "the value in effect is read");
+    end();
+}
+
+static void planning_reference_changed(void)
+{
+    const furnace_hmi_controller_observation_t *o = obs();
+    const furnace_hmi_command_outcome_t *c = &o->command;
+    const struct furnace_wire_setting_change *m = &fx.last_command.u.setting_change;
+    furnace_hmi_command_t command = {.kind = FURNACE_HMI_COMMAND_SETTING_CHANGE,
+                                     .setting = SETTING_PLANNING_REFERENCE,
+                                     .setting_value = 250};
+
+    begin_commands("planning reference changed");
+    (void)submit_command(&command, 1U);
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_SETTING_CHANGE &&
+               m->setting == SETTING_PLANNING_REFERENCE && m->value == 250,
+           "SETTING_CHANGE names the setting and the value");
+    send_setting_result(SETTING_APPLIED, 250);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->setting_value == 250 &&
+               o->settings_valid && o->planning_reference_decicelsius == 250,
+           "APPLIED is accepted and the value in effect is the reference");
+    command.setting_value = 500;
+    (void)submit_command(&command, 2U);
+    send_setting_result(SETTING_OUT_OF_RANGE, 250);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && c->reason == SETTING_OUT_OF_RANGE &&
+               o->planning_reference_decicelsius == 250,
+           "OUT_OF_RANGE is rejected and the value in effect stays");
+    (void)submit_command(&command, 3U);
+    start_out(FURNACE_WIRE_MSG_COMMAND_REJECTED);
+    fx.out.u.command_rejected.request_id = last_request_id();
+    fx.out.u.command_rejected.msg_type = FURNACE_WIRE_MSG_SETTING_CHANGE;
+    fx.out.u.command_rejected.reason = REJECT_NOT_CONFIGURED;
+    send_out();
+    advance(10U);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REFUSED && c->reason == REJECT_NOT_CONFIGURED,
+           "a service refusal of the change is refused");
+    end();
+}
+
 static furnace_hmi_command_t start_command(void)
 {
     const furnace_hmi_command_t c = {
@@ -3094,6 +3285,11 @@ int controller_client_tests_run(void)
     program_save_refused_unless_encodable();
     library_change_waits_before_a_retry();
     program_delete();
+    program_limits_reported();
+    planning_reference_from_the_snapshot();
+    planning_reference_changed();
+    settings_read_when_missing();
+    unresolved_change_reads_settings();
     program_start_accepted();
     program_start_proposed_and_confirmed();
     proposal_invalidated();

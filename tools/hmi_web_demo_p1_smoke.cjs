@@ -59,7 +59,7 @@ const THEME_PROBE = `(()=>{
   loading:'loadDemoProgram(0)',graph:"beginDemoRun(0,60);runView='graph';render()",split:"beginDemoRun(0,60);runView='split';render()",furnace:"beginDemoRun(0,60);runView='furnace';render()",
   fault:"playScenario('overtemperature');window.clearInterval(scenarioPlayer.timer);for(let i=0;i<70;i++)stepScenario();render()",
   manual:"mainPage='manual';render()",overview:"switchMain('device','overview')",log:"switchMain('device','log')",maintenance:"switchMain('device','maintenance')",history:"switchMain('device','history')",info:"switchMain('device','info')",health:"switchMain('device','health')",
-  display:"switchMain('settings');tab='display';render()",time:"switchMain('settings');tab='time';render();openClockDialog()",system:"switchMain('settings');tab='system';render();resetScopes()",
+  display:"switchMain('settings');tab='display';render()",settingsPrograms:"switchMain('settings');tab='programs';render()",time:"switchMain('settings');tab='time';render();openClockDialog()",system:"switchMain('settings');tab='system';render();resetScopes()",
   connections:"demoFixtures.connection='enabled';switchMain('settings');tab='connections';render()",text:'render();previewTextKeyboard()',numeric:'render();previewNumericKeyboard()'};
  apply(true);
  try{for(const [name,js] of Object.entries(states)){resetDemoState();demoFixtures.connection='disabled';new Function(js)();walk(name);}}
@@ -89,7 +89,7 @@ const PSEUDO_PROBE = `(()=>{
   fault:"playScenario('overtemperature');window.clearInterval(scenarioPlayer.timer);for(let i=0;i<70;i++)stepScenario();render()",
   link:"playScenario('link-lost');window.clearInterval(scenarioPlayer.timer);for(let i=0;i<60;i++)stepScenario();render()",
   manual:"mainPage='manual';render()",overview:"switchMain('device','overview')",log:"switchMain('device','log')",maintenance:"switchMain('device','maintenance')",history:"switchMain('device','history')",info:"switchMain('device','info')",health:"switchMain('device','health')",
-  display:"switchMain('settings');tab='display';render()",dim:"switchMain('settings');tab='display';render();[...document.querySelectorAll('#content button.card')][0].click()",time:"switchMain('settings');tab='time';render();openClockDialog()",
+  display:"switchMain('settings');tab='display';render()",dim:"switchMain('settings');tab='display';render();[...document.querySelectorAll('#content button.card')][0].click()",settingsPrograms:"switchMain('settings');tab='programs';render()",time:"switchMain('settings');tab='time';render();openClockDialog()",
   system:"switchMain('settings');tab='system';render();resetScopes()",connections:"demoFixtures.connection='enabled';switchMain('settings');tab='connections';render()",
   text:'render();previewTextKeyboard()',numeric:'render();previewNumericKeyboard()'};
  hmiStringOverride=pseudo;
@@ -238,6 +238,12 @@ const PRESENTATION_CHOICE = `(()=>{
     await waitFor('!controller.pending && mainPage === "programs" && programRoute === "detail"');
     assert.strictEqual(await evaluate('(()=>{const p=programCatalogue[selectedProgram];return p.name==="Customer cure A"&&!p.library&&p.count===1&&p.stages[0].target===120&&document.querySelector(".program-toolbar h2").textContent==="Customer cure A"})()'), true);
     const created = await evaluate('selectedProgram');
+    // A one-stage program reads "1 stage" on its card and in its Start dialog (M21-7d, as the LVGL screens).
+    await evaluate('mainPage="programs";programRoute="library";render()');
+    assert.strictEqual(await evaluate('[...document.querySelectorAll(".program-card")].find(c => c.textContent.includes("Customer cure A")).querySelector(".program-summary span").textContent'), '1 stage');
+    await evaluate('confirmStart(' + created + ')');
+    assert.match(await evaluate('document.getElementById("message-text").textContent'), /^1 stage · /);
+    await evaluate('document.getElementById("message").close()');
     await evaluate('demoFixtures.program="empty";render()');
     assert.strictEqual(await evaluate('visiblePrograms().map(p => p.name).join("|")'), 'Customer cure A');
     await evaluate('demoFixtures.program="full";startDemo()');
@@ -477,7 +483,47 @@ const PRESENTATION_CHOICE = `(()=>{
     // Settings cards: one Display page (no More); the brightness gauge (no number), dim choice (Off by default), Discard.
     assert.strictEqual(await evaluate('(()=>{switchMain(\'settings\');tab=\'display\';render();const more=[...document.querySelectorAll(\'#content button\')].some(b=>/More/.test(b.textContent))||/%/.test(document.querySelector(\'.gauge-card\').textContent)||candidate.dim!==0;document.querySelectorAll(\'.gauge-steps button\')[2].click();const b30=candidate.brightness;document.querySelector(\'.gauge button[aria-label="Increase brightness"]\').click();const b40=candidate.brightness;[...document.querySelectorAll(\'#content button.card\')].find(c=>/Dim when idle/.test(c.textContent)).click();const choices=[...document.querySelectorAll(\'#message-body .choice-grid button\')].map(b=>b.textContent).join(\',\');[...document.querySelectorAll(\'#message-body .choice-grid button\')].find(b=>b.textContent===\'5 min\').click();const dim=candidate.dim+\'|\'+/5 min/.test(document.getElementById(\'content\').textContent);[...document.querySelectorAll(\'#content button\')].find(b=>b.textContent===\'Discard\').click();return [more,b30,b40,choices,dim,candidate.brightness,candidate.dim].join(\'|\')})()'), 'false|30|40|Off,1 min,2 min,5 min,10 min,30 min|5|true|80|0');
     // Settings rail: Connections only when the controller enables it; System (power icon) holds reset/delete/restart; no Clock source.
-    assert.strictEqual(await evaluate('(()=>{const rail=()=>[...document.querySelectorAll(\'.rail button\')].map(b=>b.textContent).join(\',\');const off=rail();const power=!!document.querySelector(\'.rail use[href="#i-power"]\');tab=\'time\';render();const clock=/Clock source/.test(document.getElementById(\'content\').textContent);demoFixtures.connection=\'enabled\';render();const on=rail();[...document.querySelectorAll(\'.rail button\')].find(b=>b.textContent===\'Connections\').click();const page=tab+\':\'+/Server/.test(document.getElementById(\'content\').textContent);demoFixtures.connection=\'disabled\';render();const fallback=tab;return [off,power,clock,on,page,fallback].join(\'|\')})()'), 'Display & interaction,Date & time,System|true|false|Display & interaction,Date & time,Connections,System|connections:true|display');
+    assert.strictEqual(await evaluate('(()=>{const rail=()=>[...document.querySelectorAll(\'.rail button\')].map(b=>b.textContent).join(\',\');const off=rail();const power=!!document.querySelector(\'.rail use[href="#i-power"]\');tab=\'time\';render();const clock=/Clock source/.test(document.getElementById(\'content\').textContent);demoFixtures.connection=\'enabled\';render();const on=rail();[...document.querySelectorAll(\'.rail button\')].find(b=>b.textContent===\'Connections\').click();const page=tab+\':\'+/Server/.test(document.getElementById(\'content\').textContent);demoFixtures.connection=\'disabled\';render();const fallback=tab;return [off,power,clock,on,page,fallback].join(\'|\')})()'), 'Display & interaction,Date & time,System,Programs|true|false|Display & interaction,Date & time,Connections,System,Programs|connections:true|display');
+    // Settings > Programs (M21-7d, as the LVGL screens): the planning reference (5.0-40.0 C in 0.1 C steps) is changed through
+    // its keypad while no program or Manual session runs; the controller refuses a value outside its range and keeps the value
+    // in effect. The allowed range and the measured start are information. Ramps start from the reference (23 C, whole degrees).
+    await evaluate('switchMain("settings");tab="programs";render()');
+    assert.strictEqual(await evaluate('[...document.querySelectorAll("#content .card-value")].map(e => e.textContent).join("|")'), '23.0 °C|5.0–40.0 °C|Measured');
+    assert.strictEqual(await evaluate('[...document.querySelectorAll("#content .card")].map(c => c.tagName + (c.querySelector(".card-tag") ? "+set" : "")).join("|")'), 'BUTTON+set|DIV|DIV');
+    assert.strictEqual(await evaluate('document.getElementById("content").scrollHeight <= document.getElementById("content").clientHeight + 1'), true);
+    assert.strictEqual(await evaluate('(() => { const rail = document.querySelector(".rail"), screen = document.querySelector(".screen"); return rail.scrollHeight <= rail.clientHeight + 1 && rail.getBoundingClientRect().bottom <= screen.getBoundingClientRect().bottom + 1; })()'), true);
+    assert.strictEqual(await evaluate('plannedAt(programCatalogue[0], 0) + "|" + planningStartC()'), '23|23');
+    // The keypad applies 25.0; 45.0 is refused by the keypad, which stays open and leaves the value in effect.
+    await evaluate('document.querySelector("#content .card.span-2").click()');
+    assert.strictEqual(await evaluate('!!touchKeyboard && touchKeyboard.kind === "number" && touchKeyboard.options.min === 5 && touchKeyboard.options.max === 40'), true);
+    await evaluate('document.getElementById("keyboard-input").value = "25.0"; applyKeyboard()');
+    assert.strictEqual(await evaluate('controllerLimits().planningReference.value + "|" + document.querySelector("#content .card.span-2 .card-value").textContent + "|" + document.querySelector("#content .card.span-2 .card-caption").textContent'), '250|25.0 °C|Applied by the controller.');
+    await evaluate('document.querySelector("#content .card.span-2").click(); document.getElementById("keyboard-input").value = "45.0"; applyKeyboard()');
+    assert.strictEqual(await evaluate('(!!touchKeyboard) + "|" + controllerLimits().planningReference.value'), 'true|250');
+    await evaluate('closeTouchKeyboard(false)');
+    // The controller itself refuses 45.0 (outside its range) and keeps 25.0.
+    assert.strictEqual(await evaluate('setPlanningReference(450) + "|" + controllerLimits().planningReference.value + "|" + document.querySelector("#content .card.span-2 .card-caption").textContent'), 'false|250|Refused: outside the allowed range.');
+    // During a program run the reference is not offered: no Set tag, a plain card, the run caption, and no change.
+    await evaluate('beginDemoRun(0, 60); mainPage = "settings"; tab = "programs"; render()');
+    assert.strictEqual(await evaluate('(() => { const ref = document.querySelector("#content .card"); return [ref.tagName, !ref.querySelector(".card-tag"), ref.querySelector(".card-caption").textContent, setPlanningReference(230), controllerLimits().planningReference.value].join("|"); })()'), 'DIV|true|Can be changed when no program or Manual session runs.|false|250');
+    await evaluate('resetDemoState(); setPlanningReference(230)');
+    assert.strictEqual(await evaluate('controllerLimits().planningReference.value + "|" + planningStartC()'), '230|23');
+    // Program rules (M21-7d, the controller's, with the planning reference): a Heating target that does not rise, a target over
+    // 180 C and curing over 48 h are refused with the controller's texts, in the stage dialog and the program editor alike; a Hold
+    // needs a Heating stage first; the editor refuses more than 18 stages. Manual's values stay inside the controller's limits.
+    await evaluate('mainPage = "programs"; programRoute = "library"; render(); openProgramEditor(-1); programEditor.name = "Rule check"');
+    assert.strictEqual(await evaluate('(() => { programEditor.stages = [{kind: "Heating", target: 60, rateTenths: 10, minutes: 37}, {kind: "Heating", target: 50, rateTenths: 10, minutes: 27}]; openStageEditor(1); const dialog = stageErrors()[0]; closeStageEditor(); return dialog === t("UI_LAB_STAGE_ERROR_START_FORMAT", 2) && programEditorErrors()[0] === dialog; })()'), true);
+    assert.strictEqual(await evaluate('(() => { programEditor.stages = [{kind: "Heating", target: 190, rateTenths: 10, minutes: 167}]; openStageEditor(0); const dialog = stageErrors()[0]; closeStageEditor(); return [dialog === t("UI_LAB_STAGE_ERROR_TARGET_FORMAT", 1, 20, 180), programEditorErrors()[0] === t("UI_LAB_PROGRAM_ERROR_TARGET_FORMAT", 1, 20, 180) && /20–180/.test(dialog)].join("|"); })()'), 'true|true');
+    assert.strictEqual(await evaluate('(() => { programEditor.stages = [{kind: "Heating", target: 40, rateTenths: 10, minutes: 17}, {kind: "Hold", target: 40, rateTenths: 0, minutes: 2880}]; const error = programEditorErrors()[0]; return error === t("UI_LAB_STAGE_ERROR_TOTAL_FORMAT", 48, 0) && /48 h 00 min/.test(error); })()'), true);
+    // A Hold beyond the longest curing is a Hold error, as the controller reports it (review).
+    assert.strictEqual(await evaluate('(() => { programEditor.stages = [{kind: "Heating", target: 40, rateTenths: 10, minutes: 17}, {kind: "Hold", target: 40, rateTenths: 0, minutes: 2881}]; return programEditorErrors()[0] === t("UI_LAB_STAGE_ERROR_HOLD_LONG_FORMAT", 2, 48, 0); })()'), true);
+    assert.strictEqual(await evaluate('(() => { programEditor.stages = [{kind: "Heating", target: 40, rateTenths: 10, minutes: 17}, {kind: "Hold", target: 40, rateTenths: 0, minutes: 2863}]; return programEditorErrors().length; })()'), 0);
+    assert.strictEqual(await evaluate('(() => { programEditor.stages = [{kind: "Hold", target: 30, rateTenths: 0, minutes: 5}]; return programEditorErrors()[0] === t("UI_LAB_STAGE_ERROR_HOLD_FIRST_FORMAT", 1); })()'), true);
+    assert.strictEqual(await evaluate('(() => { programEditor.stages = Array.from({length: 19}, (_, i) => ({kind: "Heating", target: 30 + i, rateTenths: 10, minutes: 1})); return programEditorErrors()[0] === t("UI_LAB_PROGRAM_ERROR_STAGES", 18); })()'), true);
+    assert.strictEqual(await evaluate('(() => { setManualValue("target", 190); const high = manualDraft.target; setManualValue("target", 5); const low = manualDraft.target; setManualValue("rate", 9); const fast = manualDraft.rate; setManualValue("rate", 0); const slow = manualDraft.rate; manualDraft = {target: 121, rate: 1.9}; return [high, low, fast, slow].join("|"); })()'), '180|20|3|0.1');
+    await evaluate('cancelProgramEditor()');
+    assert.strictEqual(await evaluate('mainPage + "|" + programEditor'), 'programs|null');
+    await evaluate('switchMain("settings")');
     // Set date & time: 31 Jan -> Feb clamps the day; Cancel changes nothing; Set moves the clock; 12-hour adds AM/PM.
     assert.strictEqual(await evaluate('(()=>{tab=\'time\';render();const before=clockOffsetMs;document.querySelector(\'.clock-card\').click();const cols=()=>[...document.querySelectorAll(\'#message-body .clock-column\')];const value=n=>cols()[n].querySelector(\'strong\').textContent;const step=(n,dir)=>cols()[n].querySelectorAll(\'button\')[dir>0?0:1].click();while(value(1)!==\'Jan\')step(1,1);while(value(0)!==\'31\')step(0,1);step(1,1);const clamped=(value(0)===String(daysInMonth(+value(2),2)))+\' \'+value(1);[...document.querySelectorAll(\'#message-actions button\')].find(b=>b.textContent===\'Cancel\').click();const unchanged=clockOffsetMs===before;document.querySelector(\'.clock-card\').click();step(2,1);[...document.querySelectorAll(\'#message-actions button\')].find(b=>b.textContent===\'Set date & time\').click();const moved=clockNow().getFullYear()===new Date().getFullYear()+1&&document.getElementById(\'message-title\').textContent===\'Date and time set\';document.getElementById(\'message\').close();clockOffsetMs=0;candidate.format=\'12-hour\';render();document.querySelector(\'.clock-card\').click();const twelve=cols().length===6&&/^(AM|PM)$/.test(value(5));document.getElementById(\'message\').close();candidate.format=\'24-hour\';render();return [clamped,unchanged,moved,twelve].join(\'|\')})()'), 'true Feb|true|true|true');
     await sleep(50);
@@ -497,6 +543,8 @@ const PRESENTATION_CHOICE = `(()=>{
     await evaluate('document.querySelector(\'#demo-scale [data-value="fit"]\').click()');
     await evaluate('document.querySelector(\'#demo-size [data-value="800x480"]\').click()');
     await evaluate('tell(\'P1 dialog\',\'Dialog fixture\')');
+    // An information dialog (tell) closes with Close, never Cancel (M21-7d; the choice and confirm dialogs keep Cancel).
+    assert.strictEqual(await evaluate('[...document.querySelectorAll("#message-actions button")].map(b => b.textContent).join("|")'), 'Close');
     assert.strictEqual(await evaluate('document.getElementById(\'message\').open'), true);
     assert.strictEqual(await evaluate('(()=>{const r=document.getElementById(\'message\').getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1})()'), true);
     await evaluate('document.getElementById(\'message\').close()');

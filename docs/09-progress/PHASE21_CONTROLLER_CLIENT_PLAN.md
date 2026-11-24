@@ -355,6 +355,72 @@ pull request stacked on it:
 Owner 2026-11-20: the lab parity stays for now (it may be removed later); the text fixes are
 quality and are required; the planning reference's range is the controller's, not the HMI's.
 
+**Design (started 2026-11-20, owner: "ready for M21-7d").** Two draft pull requests, stacked:
+M21-7d-1 (limits, planning reference, text fixes) on M21-7c, and M21-7d-2 (the labs' Start and
+save dialogs) on M21-7d-1, so each stays reviewable.
+
+1. **Client:** the observation keeps every `CAPABILITIES` program limit (0 without a
+   configuration) and the planning reference from the snapshot's `SETTINGS`; a new controller
+   session discards it. `SETTING_CHANGE` is a command in the ordinary slot; `SETTING_RESULT`'s
+   value in effect becomes the reference whatever the result; `APPLIED` is accepted, the others
+   rejected with the controller's code; `COMMAND_REJECTED` (for example `NOT_CONFIGURED`) refuses.
+   The HMI does not ask for `SETTINGS` again on its own: another client's change is seen at the
+   next snapshot (a gap while the HMI is the only client).
+2. **The screens' limits** (one plain-data type, the lab's simulated values and the
+   controller's, never mixed):
+   - The editor holds whole degrees: `target_min` is rounded up and `target_max` down to whole
+     degrees, so the HMI never offers a value the controller refuses; rates are tenths, exact.
+   - The stage rules are the controller's (furnace `core/program`): each Heating target within
+     the limits and above the previous Heating target, the first only within the limits; a rate
+     within the limits; a Hold after a Heating stage, 1 minute or more. The HMI's own rule that the
+     first target lies above 25 C goes.
+   - The total: the curing estimate from the planning reference, computed as the controller does
+     (each Heating stage from the previous target, rounded up to a second; a stage already at its
+     target takes no time), at most `curing_max_minutes`; the HMI's 48 h goes.
+   - Stages: at most `max_stages`; a kind the controller does not allow is not offered.
+   - Manual's target and rate take the same limits (MAN-03).
+   - Without limits (not yet reported, or an unconfigured controller) New program, Edit and
+     Manual Start are not offered, with a note; the controller decides anyway.
+   - The library's programs are checked against the controller's limits when shown, not the
+     HMI's.
+3. **The planning reference:** Settings gains a "Programs" category (interface Q17) with the
+   assumed start temperature: its value, the controller's range, and Change (a keypad in
+   0.1 C, within the range); the controller's answer is shown (applied, out of range, refused
+   during a run, busy, refused). Not offered while execution is active
+   (`settings_changes_permitted`). The labs simulate it with the controller's fixture (23.0 C,
+   5.0 to 40.0 C).
+4. **The estimate:** the program graph, the editor's preview and the stage minutes ramp from
+   the planning reference, labelled as an estimate from it; a program card keeps the controller's
+   stored estimate.
+5. **Text fixes:** an information-only dialog closes with "Close"; one stage reads "1 stage".
+6. **M21-7d-2:** the labs simulate the controller's Start proposal, the acknowledgement of a long
+   program and refusals, so their Start and save dialogs are the controller's.
+
+**M21-7d-1 done (2026-11-20, draft):** as designed, with these choices made in the work:
+- Settings > Programs is the fifth category, after System, so the earlier categories keep their
+  numbers and captures. Its range reads "5.0–40.0 °C"; the longer form did not fit its card.
+- Manual needs the limits, not the reference. Without the limits Manual shows a note; New
+  program, Edit and Save show "Program limits not available", a dialog that closes.
+- An unresolved change is shown as unknown, and the client reads `SETTINGS` again (also when a
+  snapshot lacked them); an earlier answer is cleared when the value in effect changes; Applied
+  says when the controller has no settings store (`settings_state` `NONE`).
+- A Hold beyond `curing_max_minutes` is refused as a Hold, as the controller reports it; the
+  error texts name the controller's limits ("target must be 20–180 °C").
+- Found operating the HMI against the controller: a tenths keypad stated its range in raw tenths
+  ("50 to 400"); it now states 5.0 to 40.0, step 0.1 (also the rate keypads).
+- Review fixes (three AI reviews in the HMI roles, not the required human reviews): the above,
+  and a keypad open during a page update keeps working (it already broke on library updates).
+
+**Not in M21-7d-1, recorded:**
+- The editors' stage minutes start at the reference rounded to whole degrees; the total is
+  checked with the exact reference, so the minutes shown can differ by a minute from the check.
+- `recommended_curing_minutes` and `name_max_code_points` are kept but not yet used (the save's
+  acknowledgement and the 31-character keyboard already cover them).
+- The labs' delivered programs keep minutes authored from 25 C.
+- Another client's change of the reference is seen at the next snapshot, or when a change of this
+  HMI is unresolved; the HMI does not poll `SETTINGS`.
+- Seen, not changed: the Display card "Default Running view" overlaps its value on the HMI.
+
 ### M21-7e, the controller's clock (firmware and HMI)
 
 Added 2026-11-20 (owner): the furnace controller keeps the time, in universal time (UTC); the HMI
@@ -372,6 +438,19 @@ diagnostics can already hold a wall clock (`furnace_diag_set_wall_clock`, the `W
   Device log take it; without a valid time nothing is invented (as now).
 - **Owner questions:** is the time shown in UTC or in a local time zone the operator chooses on the
   display; may the time be set during a run; must the controller ask for the time after a restart.
+
+**Owner answers (2026-11-20):**
+- **Display:** UTC, unless offering every local time zone is practical. A full zone database with
+  summer-time rules is not, on this display, so the time is shown in UTC; a local zone is a later
+  option.
+- **During a run:** the operator cannot leave the Running view during a run, so the HMI cannot set
+  the time then. Remote (PLC) control while a run executes is open: it is to be thought through
+  and handled when that control is designed.
+- **After a restart:** a hardware clock is to be tried (HW-BLOCK-013). Without one the controller
+  does not ask the operator for the time at every start; the time stays unknown until someone sets
+  it.
+
+The design takes these answers. M21-7e follows M21-7d-2 and starts with the furnace plan.
 
 ### M21-5 design
 

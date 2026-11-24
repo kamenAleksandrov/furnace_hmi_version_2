@@ -197,10 +197,18 @@ void furnace_hmi_operator_fixture_content(
     content->recent_count = 2U;
     content->clock = (furnace_hmi_operator_clock_t){ 2026U, 9U, 14U, 14U, 32U };
     content->clock_known = true;
-    content->max_rate_tenths_c_per_minute = 30;
-    content->max_temperature_c = 180;
-    content->default_duration_minutes = 720;
-    content->limits_known = true;
+    /* The simulated controller's limits and planning reference (M21-7d): the furnace firmware's
+     * fixture profile A (tests/common/profile_fixture.c) and its default reference, 23.0 C within
+     * 5.0 to 40.0 C. Test fixtures, not product values (T-08). */
+    content->program_limits = (furnace_hmi_operator_program_limits_t){
+        .known = true, .max_stages = 18U, .hold_allowed = true, .target_min_c = 20, .target_max_c = 180,
+        .rate_min_tenths = 1, .rate_max_tenths = 30, .curing_max_minutes = 48 * 60,
+        .name_max_code_points = 31U,
+    };
+    content->planning_reference = (furnace_hmi_operator_planning_reference_t){
+        .known = true, .decicelsius = 230, .min_decicelsius = 50, .max_decicelsius = 400,
+        .change_permitted = true, .storable = true,
+    };
     log_build(content);
     content->log_known = true;
     content->simulated_responses = true;

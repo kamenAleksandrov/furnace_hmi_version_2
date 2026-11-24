@@ -33,6 +33,8 @@
 #define SAVE_SAVED 0U
 #define DELETE_DELETED 0U
 #define LIBRARY_UNRESOLVED 10U
+#define SETTING_PLANNING_REFERENCE 1U
+#define SETTING_APPLIED FURNACE_HMI_SETTING_RESULT_APPLIED
 /* Start transaction codes: the start reason DUPLICATE_REQUEST and the STATUS start states. */
 #define START_DUPLICATE_REQUEST 5U
 #define START_STATE_CONSUMED 4U
@@ -371,6 +373,12 @@ static bool encode_command(furnace_hmi_controller_client_t *c, const furnace_hmi
         env = &m->u.start_cancel.envelope;
         m->u.start_cancel.transaction_id = cmd->transaction_id;
         break;
+    case FURNACE_HMI_COMMAND_SETTING_CHANGE:
+        m->type = FURNACE_WIRE_MSG_SETTING_CHANGE;
+        env = &m->u.setting_change.envelope;
+        m->u.setting_change.setting = cmd->setting;
+        m->u.setting_change.value = cmd->setting_value;
+        break;
     case FURNACE_HMI_COMMAND_NONE:
     case FURNACE_HMI_COMMAND_COUNT:
     default:
@@ -402,6 +410,10 @@ static void unresolve(furnace_hmi_controller_client_t *c, bool stop,
     furnace_hmi_command_outcome_t *o = outcome_of(c, stop);
 
     if (o->state == FURNACE_HMI_COMMAND_PENDING) {
+        /* It may have been applied: the value in effect is read again (M21-7d review). */
+        if (o->kind == FURNACE_HMI_COMMAND_SETTING_CHANGE) {
+            c->settings_wanted = true;
+        }
         o->state = FURNACE_HMI_COMMAND_UNRESOLVED;
         o->unresolved_cause = cause;
         changed(c);
@@ -482,6 +494,8 @@ static furnace_hmi_command_kind_t kind_of_message(uint16_t msg_type)
         return FURNACE_HMI_COMMAND_START_CONFIRM;
     case FURNACE_WIRE_MSG_START_CANCEL:
         return FURNACE_HMI_COMMAND_START_CANCEL;
+    case FURNACE_WIRE_MSG_SETTING_CHANGE:
+        return FURNACE_HMI_COMMAND_SETTING_CHANGE;
     default:
         return FURNACE_HMI_COMMAND_NONE;
     }
@@ -599,6 +613,45 @@ static void on_program_delete_result(furnace_hmi_controller_client_t *c,
         return;
     }
     complete(c, o, r->result == DELETE_DELETED, r->result);
+}
+
+/* ---- the planning reference (M21-7d; controller interface, Settings) ---------------------- */
+
+static void on_settings(furnace_hmi_controller_client_t *c, const struct furnace_wire_settings *s)
+{
+    furnace_hmi_controller_observation_t *o = &c->observation;
+
+    /* SETTINGS names no session: taken only from the session whose identity is known. */
+    if (!o->identity_known) {
+        saturating_increment(&o->frames_ignored);
+        return;
+    }
+    if (s->request_id != 0U && s->request_id == c->settings_request_id) {
+        c->settings_request_id = 0U;
+        c->client_session_confirmed = true;
+    }
+    o->settings_valid = true;
+    o->settings_state = s->settings_state;
+    o->planning_reference_decicelsius = s->planning_reference;
+    changed(c);
+}
+
+static void on_setting_result(furnace_hmi_controller_client_t *c,
+                              const struct furnace_wire_setting_result *r)
+{
+    furnace_hmi_command_outcome_t *o =
+        pending_command(c, r->request_id, FURNACE_HMI_COMMAND_SETTING_CHANGE);
+
+    if (o == NULL) {
+        return;
+    }
+    /* The value in effect afterwards, whatever the result (interface, Settings). */
+    o->setting_value = r->value;
+    if (r->setting == SETTING_PLANNING_REFERENCE) {
+        c->observation.settings_valid = true;
+        c->observation.planning_reference_decicelsius = r->value;
+    }
+    complete(c, o, r->result == SETTING_APPLIED, r->result);
 }
 
 /* The pending Start-transaction command this result answers, of any of the given kinds. */
@@ -968,6 +1021,10 @@ static void discard_session_data(furnace_hmi_controller_client_t *c)
     furnace_hmi_controller_observation_t *o = &c->observation;
 
     o->capabilities_valid = false;
+    o->settings_valid = false;
+    /* The new session's snapshot gives its settings. */
+    c->settings_wanted = false;
+    c->settings_request_id = 0U;
     o->status_valid = false;
     o->faults_valid = false;
     o->faults_outdated = false;
@@ -1133,6 +1190,19 @@ static void on_capabilities(furnace_hmi_controller_client_t *c,
     o->heartbeat_interval_ms = caps->heartbeat_interval_ms;
     o->link_silence_ms = caps->link_silence_ms;
     o->manual_max_minutes = caps->manual_max_minutes;
+    o->max_stages = caps->max_stages;
+    o->stage_kinds = caps->stage_kinds;
+    o->target_min_decicelsius = caps->target_min;
+    o->target_max_decicelsius = caps->target_max;
+    o->rate_min_decicelsius_per_min = caps->rate_min;
+    o->rate_max_decicelsius_per_min = caps->rate_max;
+    o->curing_max_minutes = caps->curing_max_minutes;
+    o->recommended_curing_minutes = caps->recommended_curing_minutes;
+    o->planning_reference_min_decicelsius = caps->planning_reference_min;
+    o->planning_reference_max_decicelsius = caps->planning_reference_max;
+    o->name_max_code_points = caps->name_max_code_points;
+    o->name_max_bytes = caps->name_max_bytes;
+    o->library_capacity = caps->library_capacity;
     o->capabilities_valid = true;
     changed(c);
 }
@@ -1180,6 +1250,7 @@ static void copy_status(furnace_hmi_controller_observation_t *o, const struct fu
     o->execution_active = s->lifecycle.execution_active;
     o->heating_authorized = s->lifecycle.heating_authorized;
     o->navigation_permitted = s->lifecycle.navigation_permitted;
+    o->settings_changes_permitted = s->lifecycle.settings_changes_permitted;
     o->fan_feedback = s->equipment.fan_feedback;
     o->door_state = s->equipment.door_state;
     o->emergency_active = s->equipment.emergency_active;
@@ -1322,6 +1393,9 @@ static void on_snapshot_end(furnace_hmi_controller_client_t *c,
     if (o->capabilities_valid && o->status_valid) {
         set_link(c, FURNACE_HMI_LINK_CONNECTED);
     }
+    if (!o->settings_valid) {
+        c->settings_wanted = true; /* the snapshot lacked SETTINGS (M21-7d review) */
+    }
     if (c->newest_fault_event_seen > end->fault_sequence) {
         refresh(c); /* a fault changed after the snapshot's instant */
     }
@@ -1358,13 +1432,18 @@ static void on_command_rejected(furnace_hmi_controller_client_t *c,
     const bool snapshot = (o->snapshot_request == FURNACE_HMI_REQUEST_PENDING) &&
                           (r->request_id == o->snapshot_request_id);
     const bool capabilities = (r->request_id != 0U) && (r->request_id == c->capabilities_request_id);
+    /* A refused settings read is not asked again until the next reason to (M21-7d review). */
+    const bool settings = (r->request_id != 0U) && (r->request_id == c->settings_request_id);
     /* A refused library read is asked again after its timeout, like a lost answer. */
     const bool library = (c->library_step != LIBRARY_IDLE) && (r->request_id == c->library_request_id);
     /* Likewise a refused diagnostic read. */
     const bool diagnostic = furnace_hmi_diagnostics_on_rejected(&c->diagnostics, r->request_id);
     const bool command = command_rejected(c, r->request_id, r->msg_type, r->reason);
 
-    if (!snapshot && !capabilities && !library && !diagnostic && !command) {
+    if (settings) {
+        c->settings_request_id = 0U;
+    }
+    if (!snapshot && !capabilities && !settings && !library && !diagnostic && !command) {
         return;
     }
     if (snapshot) {
@@ -1722,9 +1801,43 @@ static void on_frame(furnace_hmi_controller_client_t *c, const struct furnace_wi
         furnace_hmi_diagnostics_on_history_page(&c->diagnostics, &m->u.event_history_page,
                                                 c->now_ms);
         break;
+    case FURNACE_WIRE_MSG_SETTINGS:
+        on_settings(c, &m->u.settings);
+        break;
+    case FURNACE_WIRE_MSG_SETTING_RESULT:
+        on_setting_result(c, &m->u.setting_result);
+        break;
     default:
-        break; /* SETTINGS and estimates: M21-7d */
+        break; /* PROGRAM_ESTIMATE: not asked for (the controller's stored estimate is shown) */
     }
+}
+
+/*
+ * SETTINGS_REQUEST when wanted (M21-7d review): the snapshot lacked them, or a
+ * change ended unresolved. One at a time; asked again without an answer.
+ */
+static void settings_time(furnace_hmi_controller_client_t *c)
+{
+    if (c->observation.link != FURNACE_HMI_LINK_CONNECTED) {
+        return;
+    }
+    if (c->settings_request_id != 0U &&
+        elapsed(c->now_ms, c->settings_requested_ms, FURNACE_HMI_CLIENT_SYNC_TIMEOUT_MS)) {
+        c->settings_request_id = 0U;
+        c->settings_wanted = true;
+    }
+    if (!c->settings_wanted || c->settings_request_id != 0U) {
+        return;
+    }
+    (void)memset(&c->out, 0, sizeof(c->out));
+    c->out.type = FURNACE_WIRE_MSG_SETTINGS_REQUEST;
+    if (!fill_envelope(c, &c->out.u.settings_request.envelope)) {
+        return; /* a new client session is opening; asked once connected */
+    }
+    c->settings_wanted = false;
+    c->settings_request_id = c->out.u.settings_request.envelope.request_id;
+    c->settings_requested_ms = c->now_ms;
+    send_out(c);
 }
 
 /*
@@ -1897,6 +2010,7 @@ void furnace_hmi_controller_client_poll(furnace_hmi_controller_client_t *client,
     on_time(client);
     on_command_time(client);
     library_time(client);
+    settings_time(client);
     diagnostics_time(client);
     update_availability(client);
 }

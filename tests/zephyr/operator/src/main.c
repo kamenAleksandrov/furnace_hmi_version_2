@@ -179,6 +179,17 @@ ZTEST(furnace_hmi_operator, test_operator_screens_show_controller_diagnostics)
     zassert_equal(result, 0, "check %d: %s", result, failure);
 }
 
+ZTEST(furnace_hmi_operator, test_editors_take_the_controller_limits)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_limits_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
 /* A program Start, Confirm and Cancel as controller commands (M21-7b). */
 ZTEST(furnace_hmi_operator, test_program_start_as_commands)
 {
@@ -262,27 +273,35 @@ ZTEST(furnace_hmi_operator, test_library_changes_as_commands)
     zassert_false(furnace_hmi_operator_command_for(&request, &command), "a delete names a program");
 }
 
-/* The controller's library in the screens' units (M21-7b). */
+/* The controller's limits (fixture profile A) and planning reference, as the screens take them. */
+static const furnace_hmi_operator_program_limits_t limits_a = {
+    .known = true, .max_stages = 18U, .hold_allowed = true, .target_min_c = 20, .target_max_c = 180,
+    .rate_min_tenths = 1, .rate_max_tenths = 30, .curing_max_minutes = 2880, .name_max_code_points = 31U};
+static const furnace_hmi_operator_planning_reference_t reference_23 = {
+    .known = true, .decicelsius = 230, .min_decicelsius = 50, .max_decicelsius = 400, .change_permitted = true};
+
+/* The controller's library in the screens' units (M21-7b; M21-7d: its limits and reference). */
 ZTEST(furnace_hmi_operator, test_the_controller_library_for_the_screens)
 {
     static furnace_hmi_controller_library_t in;
     static furnace_hmi_operator_library_t out;
+    static const furnace_hmi_operator_planning_reference_t no_reference = {.known = false};
 
     (void)memset(&in, 0, sizeof(in));
-    furnace_hmi_operator_library_from_controller(&in, &out);
+    furnace_hmi_operator_library_from_controller(&in, &limits_a, &reference_23, &out);
     zassert_equal(out.state, FURNACE_HMI_OPERATOR_LIBRARY_LOADING, "no listing yet: being read");
     in.state = FURNACE_HMI_LIBRARY_UNAVAILABLE;
     in.count = 1U;
-    furnace_hmi_operator_library_from_controller(&in, &out);
+    furnace_hmi_operator_library_from_controller(&in, &limits_a, &reference_23, &out);
     zassert_true(out.state == FURNACE_HMI_OPERATOR_LIBRARY_UNAVAILABLE && out.count == 0U);
     in.state = FURNACE_HMI_LIBRARY_TOO_LARGE;
-    furnace_hmi_operator_library_from_controller(&in, &out);
+    furnace_hmi_operator_library_from_controller(&in, &limits_a, &reference_23, &out);
     zassert_true(out.state == FURNACE_HMI_OPERATOR_LIBRARY_TOO_LARGE && out.count == 0U);
 
     in.state = FURNACE_HMI_LIBRARY_CURRENT;
     in.updating = true;
     in.count = 3U;
-    /* 0: Heating to 85.0 C at 1.5 C/min from 25 C (40 min), Hold 30 min. */
+    /* 0: Heating to 85.0 C at 1.5 C/min from the reference 23.0 C (42 min), Hold 30 min. */
     in.programs[0].program_id = 4U;
     in.programs[0].program_revision = 6U;
     (void)strcpy(in.programs[0].name, "Kür 120");
@@ -299,7 +318,7 @@ ZTEST(furnace_hmi_operator, test_the_controller_library_for_the_screens)
     /* 2: damaged. */
     in.programs[2].program_id = 8U;
     in.programs[2].damaged = true;
-    furnace_hmi_operator_library_from_controller(&in, &out);
+    furnace_hmi_operator_library_from_controller(&in, &limits_a, &reference_23, &out);
     zassert_true(out.state == FURNACE_HMI_OPERATOR_LIBRARY_CURRENT && out.updating && out.count == 3U);
 
     const furnace_hmi_operator_program_t *p = &out.programs[0];
@@ -307,34 +326,86 @@ ZTEST(furnace_hmi_operator, test_the_controller_library_for_the_screens)
                  "identity and the UTF-8 name");
     zassert_true(!p->damaged && !p->inexact && p->stage_count == 2U);
     zassert_true(p->stages[0].kind == FURNACE_HMI_OPERATOR_STAGE_HEATING && p->stages[0].target_c == 85 &&
-                     p->stages[0].rate_tenths_c_per_minute == 15 && p->stages[0].minutes == 40,
-                 "Heating in whole degrees, its minutes from 25 C");
+                     p->stages[0].rate_tenths_c_per_minute == 15 && p->stages[0].minutes == 42,
+                 "Heating in whole degrees, its minutes from the planning reference");
     zassert_true(p->stages[1].kind == FURNACE_HMI_OPERATOR_STAGE_HOLD && p->stages[1].target_c == 85 &&
                      p->stages[1].minutes == 30 && p->stages[1].rate_tenths_c_per_minute == 0,
                  "Hold at the previous target");
     zassert_true(out.programs[1].inexact && out.programs[1].stages[0].target_c == 86,
                  "85.5 C is shown rounded and marked inexact");
     zassert_true(out.programs[2].damaged && !out.programs[2].inexact && out.programs[2].stage_count == 0U);
+    /* Without a reference no start is assumed: the first ramp takes no time (PROG-14). */
+    furnace_hmi_operator_library_from_controller(&in, &limits_a, &no_reference, &out);
+    zassert_true(out.programs[0].stages[0].minutes == 1 && !out.programs[0].inexact,
+                 "no reference: the first ramp is not estimated");
 
-    /* Outside the editors' range: a rate of 0, over 3.0 C/min, over 180 C, a Hold of 0 min. */
+    /* Outside the controller's limits: a rate of 0, over 3.0 C/min, over 180 C, below 20 C, a Hold of 0 min. */
     static const struct {
         int32_t target;
         int32_t rate;
         uint32_t hold;
-    } outside[] = {{850, 0, 30U}, {850, 31, 30U}, {1810, 15, 30U}, {850, 15, 0U}};
+    } outside[] = {{850, 0, 30U}, {850, 31, 30U}, {1810, 15, 30U}, {190, 15, 30U}, {850, 15, 0U}};
     for (size_t i = 0U; i < ARRAY_SIZE(outside); i++) {
         in.programs[0].stages[0].target_decicelsius = outside[i].target;
         in.programs[0].stages[0].rate_decicelsius_per_min = outside[i].rate;
         in.programs[0].stages[1].duration_minutes = outside[i].hold;
-        furnace_hmi_operator_library_from_controller(&in, &out);
+        furnace_hmi_operator_library_from_controller(&in, &limits_a, &reference_23, &out);
         zassert_true(out.programs[0].inexact, "case %u is not inexact", (unsigned int)i);
     }
     in.programs[0].stages[0].target_decicelsius = 850;
     in.programs[0].stages[0].rate_decicelsius_per_min = 15;
     in.programs[0].stages[1].duration_minutes = 30U;
     in.programs[0].stages[1].kind = 3U;
-    furnace_hmi_operator_library_from_controller(&in, &out);
+    furnace_hmi_operator_library_from_controller(&in, &limits_a, &reference_23, &out);
     zassert_true(out.programs[0].inexact, "an unknown stage kind is inexact");
+}
+
+/* The controller's CAPABILITIES and SETTINGS as the screens' limits and reference (M21-7d). */
+ZTEST(furnace_hmi_operator, test_the_controller_limits_for_the_screens)
+{
+    static furnace_hmi_controller_observation_t o;
+    furnace_hmi_operator_program_limits_t limits;
+    furnace_hmi_operator_planning_reference_t reference;
+
+    (void)memset(&o, 0, sizeof(o));
+    furnace_hmi_operator_limits_from_controller(&o, &limits, &reference);
+    zassert_true(!limits.known && !reference.known, "nothing before CAPABILITIES");
+
+    o.capabilities_valid = true;
+    o.configured = true;
+    o.max_stages = 12U;
+    o.stage_kinds = 0x2U; /* Heating only */
+    o.target_min_decicelsius = 205;
+    o.target_max_decicelsius = 1805;
+    o.rate_min_decicelsius_per_min = 2;
+    o.rate_max_decicelsius_per_min = 25;
+    o.curing_max_minutes = 1440U;
+    o.name_max_code_points = 31U;
+    o.planning_reference_min_decicelsius = 50;
+    o.planning_reference_max_decicelsius = 400;
+    furnace_hmi_operator_limits_from_controller(&o, &limits, &reference);
+    zassert_true(limits.known && limits.max_stages == 12U && !limits.hold_allowed &&
+                     limits.target_min_c == 21 && limits.target_max_c == 180 && limits.rate_min_tenths == 2 &&
+                     limits.rate_max_tenths == 25 && limits.curing_max_minutes == 1440,
+                 "targets rounded inward to whole degrees; rates, stages and kinds as reported");
+    zassert_false(reference.known, "no reference before SETTINGS");
+
+    o.settings_valid = true;
+    o.planning_reference_decicelsius = 235;
+    o.status_valid = true;
+    o.settings_changes_permitted = false;
+    furnace_hmi_operator_limits_from_controller(&o, &limits, &reference);
+    zassert_true(reference.known && reference.decicelsius == 235 && reference.min_decicelsius == 50 &&
+                     reference.max_decicelsius == 400 && !reference.change_permitted,
+                 "the reference, its range, and no change during execution");
+
+    o.configured = false;
+    furnace_hmi_operator_limits_from_controller(&o, &limits, &reference);
+    zassert_true(!limits.known && !reference.known, "an unconfigured controller offers nothing");
+    o.configured = true;
+    o.target_min_decicelsius = 1801;
+    furnace_hmi_operator_limits_from_controller(&o, &limits, &reference);
+    zassert_false(limits.known, "no whole degree within the range");
 }
 
 ZTEST_SUITE(furnace_hmi_operator, NULL, NULL, NULL, NULL, NULL);

@@ -166,6 +166,34 @@ typedef struct {
     uint32_t link_silence_ms;
     /** The longest Manual session; a Manual Start asks for it (owner 2026-11-11). */
     uint32_t manual_max_minutes;
+    /**
+     * The program limits of this furnace model (M21-7d; controller interface,
+     * Capabilities): 0 without a configuration, never an HMI default. The
+     * editors take them and never raise one; the controller validates anyway.
+     */
+    uint8_t max_stages;
+    /** Bit n for stage kind n (HEATING 1, HOLD 2). */
+    uint32_t stage_kinds;
+    int32_t target_min_decicelsius;
+    int32_t target_max_decicelsius;
+    int32_t rate_min_decicelsius_per_min;
+    int32_t rate_max_decicelsius_per_min;
+    uint32_t curing_max_minutes;
+    /** The advisory duration a longer program is acknowledged against (0 none). */
+    uint32_t recommended_curing_minutes;
+    /** The settable range of the planning reference. */
+    int32_t planning_reference_min_decicelsius;
+    int32_t planning_reference_max_decicelsius;
+    uint8_t name_max_code_points;
+    uint8_t name_max_bytes;
+    uint8_t library_capacity;
+
+    /* SETTINGS of this session (the snapshot's, then each SETTING_RESULT's value in effect). */
+    bool settings_valid;
+    /** NONE 0, DEFAULT 1, STORED 2, REJECTED 3 (controller interface, Settings). */
+    uint8_t settings_state;
+    /** The planning reference: the assumed start of a program's estimate (PROG-12). */
+    int32_t planning_reference_decicelsius;
 
     /* The newest STATUS of this session. */
     bool status_valid;
@@ -211,6 +239,8 @@ typedef struct {
     bool heating_authorized;
     /** The controller's lifecycle decides navigation, never a local flag (interface: Lifecycle). */
     bool navigation_permitted;
+    /** Operator settings may change (false while execution is active; M21-7d). */
+    bool settings_changes_permitted;
     uint8_t fan_feedback;
     uint8_t door_state;
     bool emergency_active;

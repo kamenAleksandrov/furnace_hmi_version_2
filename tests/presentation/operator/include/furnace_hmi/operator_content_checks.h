@@ -114,6 +114,17 @@ int furnace_hmi_operator_library_review_check(lv_display_t *display, const char 
  */
 int furnace_hmi_operator_diagnostics_check(lv_display_t *display, const char **failure);
 
+/*
+ * M21-7d: without the controller's limits a program is not edited (a note that
+ * closes) and Manual does not start; with them they are. One stage reads "1
+ * stage". The editor refuses a falling Heating target, a target above the
+ * controller's maximum and curing beyond its longest. Settings > Programs
+ * shows the planning reference and its range, asks the controller for a
+ * change, shows its refusal with the value in effect, and offers no change
+ * during execution. Same contract as furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_limits_check(lv_display_t *display, const char **failure);
+
 #ifdef __cplusplus
 }
 #endif

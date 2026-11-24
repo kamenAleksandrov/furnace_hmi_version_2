@@ -727,3 +727,49 @@ ZTEST(controller_workflows, test_e_device_log_and_health)
     zassert_true(history_has(LOG_CRITICAL, EVENT_FAULT, false), "no fault in the log");
     zassert_true(run_seen, "no run start in the general log");
 }
+
+/* M21-7d: the controller's program limits and its planning reference, read and changed. */
+static bool settings_known(void)
+{
+    return obs.capabilities_valid && obs.settings_valid;
+}
+
+static furnace_hmi_command_outcome_t change_reference(int32_t decicelsius)
+{
+    return run((furnace_hmi_command_t){
+        .kind = FURNACE_HMI_COMMAND_SETTING_CHANGE, .setting = 1U, .setting_value = decicelsius});
+}
+
+ZTEST(controller_workflows, test_f_limits_and_planning_reference)
+{
+    zassert_true(wait_until(not_executing), "execution still active");
+    zassert_true(wait_until(settings_known), "no capabilities or settings");
+    printk("workflow: limits stages %u kinds 0x%x target %d..%d rate %d..%d curing %u reference %d (%d..%d) "
+           "state %u\n",
+           obs.max_stages, (unsigned int)obs.stage_kinds, obs.target_min_decicelsius,
+           obs.target_max_decicelsius, obs.rate_min_decicelsius_per_min, obs.rate_max_decicelsius_per_min,
+           obs.curing_max_minutes, obs.planning_reference_decicelsius,
+           obs.planning_reference_min_decicelsius, obs.planning_reference_max_decicelsius, obs.settings_state);
+    zassert_true(obs.configured && obs.max_stages > 0U && obs.target_min_decicelsius <= obs.target_max_decicelsius &&
+                     obs.rate_min_decicelsius_per_min >= 1 && obs.curing_max_minutes > 0U,
+                 "the controller's limits are reported");
+    zassert_true(obs.planning_reference_min_decicelsius <= obs.planning_reference_decicelsius &&
+                     obs.planning_reference_decicelsius <= obs.planning_reference_max_decicelsius,
+                 "the reference lies within its range");
+
+    const int32_t before = obs.planning_reference_decicelsius;
+    const int32_t wanted = before == obs.planning_reference_max_decicelsius ? before - 1 : before + 1;
+    furnace_hmi_command_outcome_t o = change_reference(wanted);
+
+    zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "APPLIED expected: reason %u", o.reason);
+    zassert_equal(o.setting_value, wanted);
+    refresh();
+    zassert_equal(obs.planning_reference_decicelsius, wanted, "the value in effect is the reference");
+
+    o = change_reference(obs.planning_reference_max_decicelsius + 1);
+    zassert_equal(o.state, FURNACE_HMI_COMMAND_REJECTED);
+    zassert_equal(o.reason, 1U, "OUT_OF_RANGE expected: %u", o.reason);
+    zassert_equal(o.setting_value, wanted, "the value in effect stays");
+
+    zassert_equal(change_reference(before).state, FURNACE_HMI_COMMAND_ACCEPTED, "restored");
+}

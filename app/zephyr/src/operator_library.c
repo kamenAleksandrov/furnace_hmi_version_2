@@ -14,8 +14,59 @@ _Static_assert(FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY >=
                    FURNACE_HMI_CONTROLLER_PROGRAM_NAME_CAPACITY + 1U,
                "the screens hold every name");
 
-/* The screens' programs start from room temperature (the UI lab's fixtures: 25 C). */
-#define START_DECICELSIUS 250
+/* A program's first ramp starts at the planning reference (PROG-12); without one, at its first
+ * target, so no temperature is assumed (PROG-14). */
+#define NO_REFERENCE INT32_MIN
+/* SETTINGS settings_state NONE: the controller has no settings store (interface, Settings). */
+#define SETTINGS_STATE_NONE 0U
+
+/* Whole degrees within [low, high] tenths: low rounded up, high rounded down. */
+static int32_t ceil_degrees(int32_t tenths)
+{
+    const int64_t t = tenths;
+    return (int32_t)(t >= 0 ? (t + 9) / 10 : -((-t) / 10));
+}
+
+static int32_t floor_degrees(int32_t tenths)
+{
+    const int64_t t = tenths;
+    return (int32_t)(t >= 0 ? t / 10 : -((-t + 9) / 10));
+}
+
+void furnace_hmi_operator_limits_from_controller(const furnace_hmi_controller_observation_t *o,
+                                                 furnace_hmi_operator_program_limits_t *limits,
+                                                 furnace_hmi_operator_planning_reference_t *reference)
+{
+    (void)memset(limits, 0, sizeof(*limits));
+    (void)memset(reference, 0, sizeof(*reference));
+    /* The controller's own consistency rule (furnace_program_limits_are_valid). */
+    if (!o->capabilities_valid || !o->configured || o->max_stages == 0U ||
+        o->target_min_decicelsius > o->target_max_decicelsius || o->rate_min_decicelsius_per_min < 1 ||
+        o->rate_min_decicelsius_per_min > o->rate_max_decicelsius_per_min || o->curing_max_minutes == 0U ||
+        (o->stage_kinds & (1U << FURNACE_HMI_CONTROLLER_STAGE_HEATING)) == 0U) {
+        return;
+    }
+    limits->target_min_c = ceil_degrees(o->target_min_decicelsius);
+    limits->target_max_c = floor_degrees(o->target_max_decicelsius);
+    if (limits->target_min_c > limits->target_max_c) {
+        return; /* no whole degree within the range: nothing the editors can offer */
+    }
+    limits->known = true;
+    limits->max_stages = o->max_stages < FURNACE_HMI_OPERATOR_MAX_STAGES ? o->max_stages
+                                                                         : (uint8_t)FURNACE_HMI_OPERATOR_MAX_STAGES;
+    limits->hold_allowed = (o->stage_kinds & (1U << FURNACE_HMI_CONTROLLER_STAGE_HOLD)) != 0U;
+    limits->rate_min_tenths = o->rate_min_decicelsius_per_min;
+    limits->rate_max_tenths = o->rate_max_decicelsius_per_min;
+    limits->curing_max_minutes = o->curing_max_minutes > (uint32_t)INT32_MAX ? INT32_MAX
+                                                                             : (int32_t)o->curing_max_minutes;
+    limits->name_max_code_points = o->name_max_code_points;
+    reference->known = o->settings_valid;
+    reference->decicelsius = o->planning_reference_decicelsius;
+    reference->min_decicelsius = o->planning_reference_min_decicelsius;
+    reference->max_decicelsius = o->planning_reference_max_decicelsius;
+    reference->change_permitted = o->status_valid && o->settings_changes_permitted;
+    reference->storable = o->settings_state != SETTINGS_STATE_NONE;
+}
 
 static furnace_hmi_operator_library_state_t state_of(furnace_hmi_library_state_t state)
 {
@@ -32,9 +83,11 @@ static furnace_hmi_operator_library_state_t state_of(furnace_hmi_library_state_t
 }
 
 /* One program; false when a value cannot be shown exactly (a damaged one has none to show). */
-static bool program_of(const furnace_hmi_controller_program_t *in, furnace_hmi_operator_program_t *out)
+static bool program_of(const furnace_hmi_controller_program_t *in,
+                       const furnace_hmi_operator_program_limits_t *limits, int32_t start,
+                       furnace_hmi_operator_program_t *out)
 {
-    int32_t previous = START_DECICELSIUS;
+    int32_t previous = start;
     bool exact = in->stage_count > 0U && in->stage_count <= FURNACE_HMI_CONTROLLER_MAX_STAGES;
 
     out->present = true;
@@ -58,7 +111,7 @@ static bool program_of(const furnace_hmi_controller_program_t *in, furnace_hmi_o
 
         if (s->kind == FURNACE_HMI_CONTROLLER_STAGE_HOLD) {
             t->kind = FURNACE_HMI_OPERATOR_STAGE_HOLD;
-            t->target_c = previous / 10;
+            t->target_c = (previous == NO_REFERENCE ? 0 : previous) / 10;
             t->rate_tenths_c_per_minute = 0;
             t->minutes = (int32_t)s->duration_minutes;
             exact = exact && s->duration_minutes >= 1U &&
@@ -67,17 +120,23 @@ static bool program_of(const furnace_hmi_controller_program_t *in, furnace_hmi_o
         }
         const int32_t target = s->target_decicelsius;
         const int32_t rate = s->rate_decicelsius_per_min;
-        const int32_t rise = target > previous ? target - previous : previous - target;
+        if (previous == NO_REFERENCE) {
+            previous = target; /* no reference: the first ramp takes no time */
+        }
+        const int64_t rise = target > previous ? (int64_t)target - previous : (int64_t)previous - target;
 
+        /* Exact: what the editors can show and save again unchanged, within the controller's limits. */
         exact = exact && s->kind == FURNACE_HMI_CONTROLLER_STAGE_HEATING && target % 10 == 0 &&
-                target >= 0 && target <= FURNACE_HMI_OPERATOR_PROGRAM_MAX_TEMPERATURE_C * 10 &&
-                rate >= 1 && rate <= FURNACE_HMI_OPERATOR_PROGRAM_MAX_RATE_TENTHS;
+                (!limits->known ||
+                 (target >= limits->target_min_c * 10 && target <= limits->target_max_c * 10 &&
+                  rate >= limits->rate_min_tenths && rate <= limits->rate_max_tenths));
         t->kind = FURNACE_HMI_OPERATOR_STAGE_HEATING;
         /* Rounded to the nearest degree for the display only; inexact marks it. */
-        t->target_c = (target + (target >= 0 ? 5 : -5)) / 10;
+        t->target_c = (int32_t)(((int64_t)target + (target >= 0 ? 5 : -5)) / 10);
         t->rate_tenths_c_per_minute = rate;
         /* Minutes of the ramp at the rate, at least one (the fixtures' rule). */
-        t->minutes = rate > 0 ? (rise + rate - 1) / rate : 0;
+        const int64_t minutes = rate > 0 ? (rise + rate - 1) / rate : 0;
+        t->minutes = minutes > INT32_MAX ? INT32_MAX : (int32_t)minutes;
         if (t->minutes < 1) {
             t->minutes = 1;
         }
@@ -87,8 +146,11 @@ static bool program_of(const furnace_hmi_controller_program_t *in, furnace_hmi_o
 }
 
 void furnace_hmi_operator_library_from_controller(const furnace_hmi_controller_library_t *library,
+                                                  const furnace_hmi_operator_program_limits_t *limits,
+                                                  const furnace_hmi_operator_planning_reference_t *reference,
                                                   furnace_hmi_operator_library_t *out)
 {
+    const int32_t start = reference->known ? reference->decicelsius : NO_REFERENCE;
     (void)memset(out, 0, sizeof(*out));
     out->state = state_of(library->state);
     if (out->state != FURNACE_HMI_OPERATOR_LIBRARY_CURRENT) {
@@ -99,6 +161,6 @@ void furnace_hmi_operator_library_from_controller(const furnace_hmi_controller_l
                      ? library->count
                      : (uint8_t)FURNACE_HMI_CONTROLLER_MAX_PROGRAMS;
     for (uint8_t i = 0U; i < out->count; i++) {
-        out->programs[i].inexact = !program_of(&library->programs[i], &out->programs[i]);
+        out->programs[i].inexact = !program_of(&library->programs[i], limits, start, &out->programs[i]);
     }
 }

@@ -49,8 +49,20 @@
 #define OPERATOR_GRAPH_TOP (OPERATOR_GRAPH_INSET + 36)
 #define OPERATOR_GRAPH_BOTTOM (OPERATOR_GRAPH_INSET + 20)
 #define OPERATOR_GRAPH_GRID operator_color(FURNACE_HMI_COLOR_GRAPH_GRID)
-#define OPERATOR_MAX_PROGRAM_TEMPERATURE_C FURNACE_HMI_OPERATOR_PROGRAM_MAX_TEMPERATURE_C
-#define OPERATOR_MAX_PROGRAM_RATE_TENTHS FURNACE_HMI_OPERATOR_PROGRAM_MAX_RATE_TENTHS
+/* M21-7d: the controller's program limits in effect (furnace_hmi_operator_program_limits_t). */
+#define OPERATOR_TARGET_MIN_C(e) ((e)->program_limits.target_min_c)
+#define OPERATOR_TARGET_MAX_C(e) ((e)->program_limits.target_max_c)
+#define OPERATOR_RATE_MIN(e) ((e)->program_limits.rate_min_tenths)
+#define OPERATOR_RATE_MAX(e) ((e)->program_limits.rate_max_tenths)
+#define OPERATOR_STAGES_MAX(e) ((e)->program_limits.max_stages)
+/* The graphs' upper bound without the controller's limits, and the cooling model's scale (the
+ * screens' own estimate, independent of any controller limit). */
+#define OPERATOR_GRAPH_DEFAULT_MAX_C 180
+/* SETTING_RESULT results (controller interface, Settings). */
+#define OPERATOR_SETTING_RESULT_OUT_OF_RANGE 1U
+#define OPERATOR_SETTING_RESULT_SESSION_ACTIVE 2U
+#define OPERATOR_SETTING_RESULT_BUSY 3U
+#define OPERATOR_COOLING_MODEL_SCALE_C 180
 /* Touch keyboards: keys fill their row height but never drop below the touch minimum. */
 #define OPERATOR_KEY_MIN_HEIGHT 48
 /* Numeric keypad panel width: narrower, taller keys instead of wide slabs. */
@@ -141,6 +153,8 @@ typedef enum {
     OPERATOR_ACTION_SETTINGS_CHOOSE,
     OPERATOR_ACTION_SETTINGS_TOGGLE_TIME_FORMAT,
     OPERATOR_ACTION_SETTINGS_SHOW_CLOCK,
+    /* M21-7d: Settings > Programs, the planning reference's keypad. */
+    OPERATOR_ACTION_SETTINGS_EDIT_REFERENCE,
     OPERATOR_ACTION_SETTINGS_CLOCK_STEP,
     OPERATOR_ACTION_SETTINGS_CLOCK_SET,
     OPERATOR_ACTION_SETTINGS_SHOW_CONNECTION_SETUP,
@@ -430,6 +444,12 @@ static bool toggle_program_favourite(
 
 static operator_stage_fixture_t program_stage(const furnace_hmi_operator_screens_t *explorer, size_t index);
 static size_t program_authored_stage_count(const furnace_hmi_operator_program_t *program);
+static int32_t reference_start_c(const furnace_hmi_operator_screens_t *explorer, int32_t otherwise);
+static void format_decicelsius(int32_t decicelsius, char *buffer, size_t capacity);
+static void post_request(furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_request_kind_t kind);
+static void format_keyboard_value(char *buffer, size_t capacity, int32_t value, bool rate_tenths);
+static bool rebuild_page_keeping_modal(furnace_hmi_operator_screens_t *explorer);
+static void manual_within_limits(furnace_hmi_operator_screens_t *explorer);
 
 static void clear_staged_session(furnace_hmi_operator_screens_t *explorer)
 {
@@ -497,7 +517,9 @@ static void update_heating_relationship(furnace_hmi_operator_screens_t *explorer
     if (rate <= 0) {
         rate = 1;
     }
-    const int32_t start_temperature = explorer->selected_stage == 0 ? 25 : program_stage(explorer, explorer->selected_stage - 1U).target_c;
+    const int32_t start_temperature = explorer->selected_stage == 0
+        ? reference_start_c(explorer, explorer->draft_target_c)
+        : program_stage(explorer, explorer->selected_stage - 1U).target_c;
     const int64_t change = explorer->draft_target_c > start_temperature
         ? (int64_t)explorer->draft_target_c - start_temperature : (int64_t)start_temperature - explorer->draft_target_c;
     if (explorer->draft_heating_duration_drives_rate) {
@@ -578,14 +600,14 @@ static int32_t program_curing_minutes(const furnace_hmi_operator_program_t *prog
     return minutes > INT32_MAX ? INT32_MAX : (int32_t)minutes;
 }
 
-/* Highest target within the controller limit (30 C for a program without stages). */
+/* Highest target (30 C for a program without stages). */
 static int32_t program_peak_c(const furnace_hmi_operator_program_t *program)
 {
     int32_t peak = 30;
     for (size_t index = 0U; program != NULL && index < program->stage_count; ++index) {
         if (program->stages[index].target_c > peak) { peak = program->stages[index].target_c; }
     }
-    return peak > OPERATOR_MAX_PROGRAM_TEMPERATURE_C ? OPERATOR_MAX_PROGRAM_TEMPERATURE_C : peak;
+    return peak;
 }
 
 static const char *program_duration(const furnace_hmi_operator_program_t *program)
@@ -736,7 +758,8 @@ static size_t stage_session_count(const furnace_hmi_operator_screens_t *explorer
 
 static int32_t stage_start_temperature(const furnace_hmi_operator_screens_t *explorer, size_t index)
 {
-    return index == 0U ? 25 : explorer->staged_targets[index - 1U];
+    return index == 0U ? reference_start_c(explorer, explorer->staged_targets[0])
+                       : explorer->staged_targets[index - 1U];
 }
 
 static void stage_session_record_starts(furnace_hmi_operator_screens_t *explorer)
@@ -840,7 +863,7 @@ static void stage_session_add_after(furnace_hmi_operator_screens_t *explorer)
 {
     store_selected_stage_draft(explorer);
     const size_t count = explorer->staged_stage_count;
-    if (count >= FURNACE_HMI_OPERATOR_MAX_STAGES || explorer->selected_stage >= count) {
+    if (count >= OPERATOR_STAGES_MAX(explorer) || explorer->selected_stage >= count) {
         return;
     }
     const size_t at = (size_t)explorer->selected_stage + 1U;
@@ -849,8 +872,8 @@ static void stage_session_add_after(furnace_hmi_operator_screens_t *explorer)
         stage_slot_set(explorer, index, &slot);
     }
     const int32_t start = explorer->staged_targets[explorer->selected_stage];
-    const int32_t target = start + 20 > OPERATOR_MAX_PROGRAM_TEMPERATURE_C
-        ? OPERATOR_MAX_PROGRAM_TEMPERATURE_C : start + 20;
+    const int32_t target = start + 20 > OPERATOR_TARGET_MAX_C(explorer)
+        ? OPERATOR_TARGET_MAX_C(explorer) : start + 20;
     operator_stage_slot_t slot;
     memset(&slot, 0, sizeof(slot));
     slot.target = target;
@@ -887,43 +910,154 @@ static void stage_session_delete(furnace_hmi_operator_screens_t *explorer)
     load_stage_draft(explorer, explorer->selected_stage);
 }
 
+/* ---- M21-7d: the controller's limits, rules and estimate -------------------------------------
+ * The editors check a program as the controller does (furnace core/program) against the limits it
+ * reported, and estimate its curing from the planning reference as the controller does; the
+ * controller validates every save anyway. */
+
+/* The planning reference in whole degrees (nearest); without one, `otherwise`: no assumed
+ * temperature is invented (interface, PROG-14). */
+static int32_t reference_start_c(const furnace_hmi_operator_screens_t *explorer, int32_t otherwise)
+{
+    if (!explorer->planning_reference.known) {
+        return otherwise;
+    }
+    const int64_t d = explorer->planning_reference.decicelsius;
+    return (int32_t)((d + (d >= 0 ? 5 : -5)) / 10);
+}
+
+/* The editors and Manual are offered only with the controller's limits and reference. */
+static bool editing_offered(const furnace_hmi_operator_screens_t *explorer)
+{
+    return explorer->program_limits.known && explorer->planning_reference.known;
+}
+
+/* The controller's curing estimate in seconds (PROF-06): each Heating stage from the previous
+ * Heating target, the first from the planning reference, rounded up to a second; a stage already
+ * at its target takes none; a Hold its minutes. */
+static int64_t curing_estimate_seconds(const furnace_hmi_operator_screens_t *explorer, const uint8_t *kinds,
+                                       const int32_t *targets_c, const int32_t *rates,
+                                       const int32_t *minutes, size_t count)
+{
+    int64_t from = explorer->planning_reference.decicelsius;
+    int64_t seconds = 0;
+    for (size_t index = 0U; index < count; ++index) {
+        if (kinds[index] == OPERATOR_DRAFT_STAGE_HOLD) {
+            seconds += minutes[index] > 0 ? (int64_t)minutes[index] * 60 : 0;
+            continue;
+        }
+        const int64_t target = (int64_t)targets_c[index] * 10;
+        if (target > from && rates[index] > 0) {
+            seconds += ((target - from) * 60 + rates[index] - 1) / rates[index];
+        }
+        from = target;
+    }
+    return seconds;
+}
+
+/* The first problem with these stages under the controller's rules, in stage order; the stage's
+ * index in *at, or count for the total. `editor` picks the program editor's texts. */
+static furnace_hmi_ui_string_id_t stage_rules_problem(const furnace_hmi_operator_screens_t *explorer,
+                                                      const uint8_t *kinds, const int32_t *targets_c,
+                                                      const int32_t *rates, const int32_t *minutes,
+                                                      size_t count, bool editor, size_t *at)
+{
+    const furnace_hmi_operator_program_limits_t *limits = &explorer->program_limits;
+    bool heated = false;
+    int32_t previous = 0;
+    for (size_t index = 0U; index < count; ++index) {
+        furnace_hmi_ui_string_id_t problem = FURNACE_HMI_UI_STRING_COUNT;
+        *at = index;
+        if (kinds[index] == OPERATOR_DRAFT_STAGE_HOLD) {
+            if (!limits->hold_allowed) {
+                problem = FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_KIND_FORMAT;
+            }
+            else if (!heated) {
+                problem = FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_HOLD_FIRST_FORMAT;
+            }
+            else if (minutes[index] < 1) {
+                problem = editor ? FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_DURATION_FORMAT
+                                 : FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_DURATION_FORMAT;
+            }
+            else if (minutes[index] > limits->curing_max_minutes) {
+                problem = FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_HOLD_LONG_FORMAT;
+            }
+        }
+        else if (targets_c[index] < limits->target_min_c || targets_c[index] > limits->target_max_c) {
+            problem = editor ? FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_TARGET_FORMAT
+                             : FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TARGET_FORMAT;
+        }
+        else if (heated && targets_c[index] <= previous) {
+            problem = FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_START_FORMAT;
+        }
+        else if (rates[index] < limits->rate_min_tenths || rates[index] > limits->rate_max_tenths) {
+            problem = editor ? FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_RATE_FORMAT
+                             : FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_RATE_FORMAT;
+        }
+        else {
+            heated = true;
+            previous = targets_c[index];
+        }
+        if (problem != FURNACE_HMI_UI_STRING_COUNT) {
+            return problem;
+        }
+    }
+    *at = count;
+    if (curing_estimate_seconds(explorer, kinds, targets_c, rates, minutes, count) >
+        (int64_t)limits->curing_max_minutes * 60) {
+        return FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TOTAL_FORMAT;
+    }
+    return FURNACE_HMI_UI_STRING_COUNT;
+}
+
+/* The problem as its text: a stage's number, or the controller's longest curing. */
+static void stage_rules_text(const furnace_hmi_operator_screens_t *explorer, furnace_hmi_ui_string_id_t problem,
+                             size_t at, char *buffer, size_t capacity)
+{
+    const furnace_hmi_operator_program_limits_t *limits = &explorer->program_limits;
+    const unsigned int stage = (unsigned int)at + 1U;
+    const long hours = (long)(limits->curing_max_minutes / 60);
+    const long minutes = (long)(limits->curing_max_minutes % 60);
+    char low[24];
+    char high[24];
+
+    switch (problem) {
+    case FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TOTAL_FORMAT:
+        (void)snprintf(buffer, capacity, ui_string(problem), hours, minutes);
+        break;
+    case FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_HOLD_LONG_FORMAT:
+        (void)snprintf(buffer, capacity, ui_string(problem), stage, hours, minutes);
+        break;
+    case FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TARGET_FORMAT:
+    case FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_TARGET_FORMAT:
+        (void)snprintf(buffer, capacity, ui_string(problem), stage, (long)limits->target_min_c,
+                       (long)limits->target_max_c);
+        break;
+    case FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_RATE_FORMAT:
+    case FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_RATE_FORMAT:
+        format_decicelsius(limits->rate_min_tenths, low, sizeof(low));
+        format_decicelsius(limits->rate_max_tenths, high, sizeof(high));
+        (void)snprintf(buffer, capacity, ui_string(problem), stage, low, high);
+        break;
+    default:
+        (void)snprintf(buffer, capacity, ui_string(problem), stage);
+        break;
+    }
+}
+
 /* Web stageErrors: the first problem, if any, in stage order. */
 static bool stage_session_error(const furnace_hmi_operator_screens_t *explorer, char *buffer, size_t capacity)
 {
+    size_t at = 0U;
     buffer[0] = '\0';
-    int32_t start = 25;
-    int64_t total = 0;
-    for (size_t index = 0U; index < explorer->staged_stage_count; ++index) {
-        const int32_t target = explorer->staged_targets[index];
-        const int32_t rate = explorer->staged_rates[index];
-        const int32_t duration = explorer->staged_durations[index];
-        const bool heating = explorer->staged_kinds[index] == OPERATOR_DRAFT_STAGE_HEATING;
-        const bool hold = explorer->staged_kinds[index] == OPERATOR_DRAFT_STAGE_HOLD;
-        furnace_hmi_ui_string_id_t problem = FURNACE_HMI_UI_STRING_COUNT;
-        if (target < 0 || target > OPERATOR_MAX_PROGRAM_TEMPERATURE_C) {
-            problem = FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TARGET_FORMAT;
-        }
-        else if (heating && target <= start) {
-            problem = FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_START_FORMAT;
-        }
-        else if (!hold && (rate < 1 || rate > OPERATOR_MAX_PROGRAM_RATE_TENTHS)) {
-            problem = FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_RATE_FORMAT;
-        }
-        else if (heating && duration < 1) {
-            problem = FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_DURATION_FORMAT;
-        }
-        if (problem != FURNACE_HMI_UI_STRING_COUNT) {
-            (void)snprintf(buffer, capacity, ui_string(problem), (unsigned int)index + 1U);
-            return true;
-        }
-        total += duration > 0 ? duration : 0;
-        start = target;
+    const furnace_hmi_ui_string_id_t problem = stage_rules_problem(
+        explorer, explorer->staged_kinds, explorer->staged_targets, explorer->staged_rates,
+        explorer->staged_durations, explorer->staged_stage_count, false, &at);
+    if (problem == FURNACE_HMI_UI_STRING_COUNT) {
+        return false;
     }
-    if (total > 48 * 60) {
-        (void)snprintf(buffer, capacity, "%s", ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TOTAL));
-        return true;
-    }
-    return false;
+    stage_rules_text(explorer, problem, at, buffer, capacity);
+    return true;
 }
 
 /* Leave the dialog for the page it was opened from; `keep` saves the session. */
@@ -977,7 +1111,8 @@ static void prepare_program_preview(furnace_hmi_operator_screens_t *explorer, co
     explorer->preview_graph_state.availability = FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
     const size_t authored = program_authored_stage_count(program);
     explorer->preview_graph_state.graph_sample_count = authored + 2U;
-    explorer->preview_graph_state.graph_samples[0].planned_temperature_c = 25;
+    explorer->preview_graph_state.graph_samples[0].planned_temperature_c =
+        reference_start_c(explorer, authored > 0U ? program_stage(explorer, 0U).target_c : 30);
     uint32_t minutes = 0;
     for (size_t i = 0; i < authored; ++i) {
         operator_stage_fixture_t stage = program_stage(explorer, i);
@@ -2326,6 +2461,7 @@ enum {
     OPERATOR_KEYBOARD_TARGET_MANUAL_TARGET,
     OPERATOR_KEYBOARD_TARGET_MANUAL_RATE,
     OPERATOR_KEYBOARD_TARGET_STAGE_POSITION,
+    OPERATOR_KEYBOARD_TARGET_PLANNING_REFERENCE,
 };
 
 enum {
@@ -2647,11 +2783,24 @@ static void keyboard_update_feedback(furnace_hmi_operator_screens_t *explorer)
     }
     else {
         char range[96];
-        (void)snprintf(range, sizeof(range),
-                       ui_string(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_RANGE_FORMAT),
-                       (long)explorer->keyboard_minimum,
-                       (long)explorer->keyboard_maximum,
-                       (long)explorer->keyboard_step);
+        if (explorer->keyboard_rate_tenths != 0U) {
+            /* Tenths are entered and stated as decimals, never as raw tenths (M21-7d). */
+            char low[24];
+            char high[24];
+            char step[24];
+            format_keyboard_value(low, sizeof(low), explorer->keyboard_minimum, true);
+            format_keyboard_value(high, sizeof(high), explorer->keyboard_maximum, true);
+            format_keyboard_value(step, sizeof(step), explorer->keyboard_step, true);
+            (void)snprintf(range, sizeof(range), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_RANGE_TEXT_FORMAT),
+                           low, high, step);
+        }
+        else {
+            (void)snprintf(range, sizeof(range),
+                           ui_string(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_RANGE_FORMAT),
+                           (long)explorer->keyboard_minimum,
+                           (long)explorer->keyboard_maximum,
+                           (long)explorer->keyboard_step);
+        }
         lv_label_set_text(explorer->keyboard_hint, range);
         lv_obj_set_style_text_color(explorer->keyboard_hint, OPERATOR_MUTED, LV_PART_MAIN);
     }
@@ -3135,6 +3284,8 @@ static bool keyboard_open_text(
                           target, stage, 0, 0, 0, false);
 }
 
+static void change_planning_reference(furnace_hmi_operator_screens_t *explorer, int32_t decicelsius);
+
 static bool keyboard_open_number(
     furnace_hmi_operator_screens_t *explorer,
     const char *title,
@@ -3205,6 +3356,9 @@ static void keyboard_apply_value(furnace_hmi_operator_screens_t *explorer)
     }
     else if (target == OPERATOR_KEYBOARD_TARGET_MANUAL_RATE) {
         explorer->manual_rate_tenths_c_per_minute = numeric_value;
+    }
+    else if (target == OPERATOR_KEYBOARD_TARGET_PLANNING_REFERENCE) {
+        change_planning_reference(explorer, numeric_value);
     }
     const bool manual_value = target == OPERATOR_KEYBOARD_TARGET_MANUAL_TARGET ||
         target == OPERATOR_KEYBOARD_TARGET_MANUAL_RATE;
@@ -3363,8 +3517,10 @@ static bool open_dialog(
     lv_obj_set_flex_flow(actions, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(actions, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(actions, 8, LV_PART_MAIN);
-    const char *dismiss_text = primary_action == OPERATOR_ACTION_CLOSE_MODAL && primary_text != NULL
-        ? primary_text : ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL);
+    /* Information only (no action besides dismissing) closes; a choice is cancelled. */
+    const bool information = primary_action == OPERATOR_ACTION_CLOSE_MODAL;
+    const char *dismiss_text = information && primary_text != NULL ? primary_text
+        : ui_string(information ? FURNACE_HMI_UI_STRING_UI_LAB_CLOSE : FURNACE_HMI_UI_STRING_UI_LAB_CANCEL);
     lv_obj_t *cancel = create_modal_button(
         explorer,
         actions,
@@ -3631,7 +3787,8 @@ static bool manual_cooling_minutes(const furnace_hmi_operator_screens_t *explore
         *minutes = 0U;
         return true;
     }
-    const int32_t rate_tenths = current * 10 / 180 > 4 ? current * 10 / 180 : 4;
+    const int32_t rate_tenths = current * 10 / OPERATOR_COOLING_MODEL_SCALE_C > 4
+        ? current * 10 / OPERATOR_COOLING_MODEL_SCALE_C : 4;
     *minutes = (uint32_t)(((current - 30) * 10 + rate_tenths - 1) / rate_tenths);
     return true;
 }
@@ -3707,7 +3864,8 @@ static void prepare_manual_prediction(furnace_hmi_operator_screens_t *explorer)
         preview->graph_sample_count = count;
         explorer->trajectory_uses_program_preview = true;
         explorer->trajectory_domain_minimum_temperature_c = 0;
-        explorer->trajectory_domain_maximum_temperature_c = OPERATOR_MAX_PROGRAM_TEMPERATURE_C;
+        explorer->trajectory_domain_maximum_temperature_c = explorer->program_limits.known
+        ? OPERATOR_TARGET_MAX_C(explorer) : OPERATOR_GRAPH_DEFAULT_MAX_C;
         explorer->trajectory_domain_maximum_seconds = end;
         explorer->trajectory_domain_initialized = true;
         return;
@@ -3734,7 +3892,8 @@ static void prepare_manual_prediction(furnace_hmi_operator_screens_t *explorer)
     preview->graph_sample_count = count;
     explorer->trajectory_uses_program_preview = true;
     explorer->trajectory_domain_minimum_temperature_c = 0;
-    explorer->trajectory_domain_maximum_temperature_c = OPERATOR_MAX_PROGRAM_TEMPERATURE_C;
+    explorer->trajectory_domain_maximum_temperature_c = explorer->program_limits.known
+        ? OPERATOR_TARGET_MAX_C(explorer) : OPERATOR_GRAPH_DEFAULT_MAX_C;
     explorer->trajectory_domain_maximum_seconds = end;
     explorer->trajectory_domain_initialized = true;
 }
@@ -3872,9 +4031,11 @@ static void refresh_manual_readings(furnace_hmi_operator_screens_t *explorer)
         add_manual_reading(strip, FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_EST_TO_TARGET, to_target);
         const bool waiting = !explorer->simulated_responses &&
             !(state->start_ready.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT && state->start_ready.value);
-        lv_obj_t *note = create_label(strip, ui_string(waiting ? FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_NOT_READY_NOTE
-                                                               : FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_IDLE_NOTE),
-                                      &furnace_hmi_font_regular_13, OPERATOR_MUTED);
+        const furnace_hmi_ui_string_id_t note_text =
+            !explorer->program_limits.known ? FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_LIMITS_UNKNOWN_NOTE
+            : waiting                       ? FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_NOT_READY_NOTE
+                                            : FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_IDLE_NOTE;
+        lv_obj_t *note = create_label(strip, ui_string(note_text), &furnace_hmi_font_regular_13, OPERATOR_MUTED);
         if (note != NULL) {
             lv_obj_set_width(note, 0);
             lv_obj_set_flex_grow(note, 1);
@@ -3992,11 +4153,20 @@ static void set_subtree_disabled(lv_obj_t *parent, bool disabled)
     }
 }
 
+/* M21-7d: the editors wait for the controller's limits and planning reference. */
+static void show_limits_unknown(furnace_hmi_operator_screens_t *explorer)
+{
+    (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIMITS_UNKNOWN_TITLE),
+                      ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIMITS_UNKNOWN_DETAIL),
+                      OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+}
+
 /* Without simulated answers: Start only when the controller is ready, one command per slot. */
 static bool manual_start_possible(const furnace_hmi_operator_screens_t *explorer)
 {
     const furnace_hmi_dashboard_state_t *state = explorer->state;
-    return state_is_current(state) && !explorer->command_awaiting && !explorer->manual_running &&
+    return state_is_current(state) && explorer->program_limits.known && !explorer->command_awaiting &&
+           !explorer->manual_running &&
            state->start_ready.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT && state->start_ready.value &&
            state->manual_max_minutes.validity == FURNACE_HMI_VALUE_VALIDITY_CURRENT &&
            state->manual_max_minutes.value > 0;
@@ -4477,7 +4647,9 @@ static bool make_program_card(
     char duration[32];
     char maximum[32];
     (void)snprintf(stage_count, sizeof(stage_count),
-                   ui_string(FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_FORMAT),
+                   ui_string(program_authored_stage_count(program) == 1U
+                                 ? FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_ONE_FORMAT
+                                 : FURNACE_HMI_UI_STRING_UI_LAB_STAGE_COUNT_FORMAT),
                    (unsigned int)program_authored_stage_count(program));
     const char *duration_text = program_duration(program);
     size_t duration_length = strlen(duration_text);
@@ -4781,7 +4953,7 @@ static bool build_program_editor(furnace_hmi_operator_screens_t *explorer)
             lv_obj_set_style_text_font(compact_labels[index], &furnace_hmi_font_semibold_14, LV_PART_MAIN);
         }
     }
-    if (count >= FURNACE_HMI_OPERATOR_MAX_STAGES) { lv_obj_add_state(add, LV_STATE_DISABLED); }
+    if (count >= OPERATOR_STAGES_MAX(explorer)) { lv_obj_add_state(add, LV_STATE_DISABLED); }
     if (count == 0U) { lv_obj_add_state(edit, LV_STATE_DISABLED); }
 
     /* Stage cards match Program stages; tapping a card edits that stage. */
@@ -5444,7 +5616,8 @@ static bool build_program_detail(furnace_hmi_operator_screens_t *explorer)
         lv_obj_set_grid_cell(button, LV_GRID_ALIGN_STRETCH, (int32_t)index, 1,
                              LV_GRID_ALIGN_STRETCH, 0, 1);
         /* The editors would round what they cannot show: such a program is not edited here. */
-        if (entries[index].action == OPERATOR_ACTION_PROGRAM_EDITOR && program->inexact) {
+        if (entries[index].action == OPERATOR_ACTION_PROGRAM_EDITOR &&
+            (program->inexact || !editing_offered(explorer))) {
             lv_obj_add_state(button, LV_STATE_DISABLED);
         }
     }
@@ -5667,7 +5840,7 @@ static bool build_stage_dialog(furnace_hmi_operator_screens_t *explorer)
     if (create_label(heading, of, &furnace_hmi_font_semibold_15, OPERATOR_TEXT) == NULL ||
         make_stage_icon_button(explorer, top, OPERATOR_TONE_PRIMARY, FURNACE_HMI_ICON_PLUS,
                                OPERATOR_ACTION_ADD_STAGE_AFTER,
-                               count < FURNACE_HMI_OPERATOR_MAX_STAGES) == NULL) {
+                               count < OPERATOR_STAGES_MAX(explorer)) == NULL) {
         return false;
     }
 
@@ -7682,14 +7855,13 @@ enum {
     OPERATOR_SETTINGS_TAB_TIME,
     OPERATOR_SETTINGS_TAB_CONNECTIONS,
     OPERATOR_SETTINGS_TAB_SYSTEM,
+    /* M21-7d (interface Q17): after System, so the earlier categories keep their numbers. */
+    OPERATOR_SETTINGS_TAB_PROGRAMS,
     OPERATOR_SETTINGS_TAB_COUNT,
 };
 
 enum {
-    OPERATOR_SETTINGS_NUMBER_RATE = 0,
-    OPERATOR_SETTINGS_NUMBER_TEMPERATURE,
-    OPERATOR_SETTINGS_NUMBER_DURATION,
-    OPERATOR_SETTINGS_NUMBER_BRIGHTNESS,
+    OPERATOR_SETTINGS_NUMBER_BRIGHTNESS = 0,
     OPERATOR_SETTINGS_NUMBER_DIM,
     OPERATOR_SETTINGS_NUMBER_COUNT,
 };
@@ -7699,6 +7871,7 @@ static const furnace_hmi_ui_string_id_t settings_tab_ids[] = {
     FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_TIME,
     FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CONNECTIONS,
     FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SYSTEM,
+    FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS,
 };
 
 /* Connections is listed only when the controller reports server/Bluetooth enabled. */
@@ -7793,6 +7966,7 @@ static const char *settings_tab_subtitle(uint8_t tab)
         FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SUBTITLE_TIME,
         FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SUBTITLE_CONNECTIONS,
         FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SUBTITLE_SYSTEM,
+        FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SUBTITLE_PROGRAMS,
     };
     return ui_string(ids[tab % OPERATOR_SETTINGS_TAB_COUNT]);
 }
@@ -8022,6 +8196,7 @@ static lv_obj_t *create_settings_category_button(
     }
     static const furnace_hmi_icon_t settings_tab_icons[] = {
         FURNACE_HMI_ICON_SUN, FURNACE_HMI_ICON_CLOCK, FURNACE_HMI_ICON_SIGNAL, FURNACE_HMI_ICON_POWER,
+        FURNACE_HMI_ICON_PROGRAM,
     };
     const bool active = explorer->settings_tab == tab;
     style_rail_button(button, settings_tab_icons[tab % (sizeof(settings_tab_icons) / sizeof(settings_tab_icons[0]))]);
@@ -8755,6 +8930,130 @@ static bool settings_build_time(furnace_hmi_operator_screens_t *explorer, lv_obj
            settings_build_footer(explorer, body);
 }
 
+/* ---- M21-7d: Settings > Programs, the planning reference (furnace PROG-12) -------------------- */
+
+static void format_decicelsius(int32_t decicelsius, char *buffer, size_t capacity);
+
+/* 0.1 degrees with the unit, "23.0 °C". */
+static void reference_text(char *buffer, size_t capacity, int32_t decicelsius)
+{
+    char number[24];
+    format_decicelsius(decicelsius, number, sizeof(number));
+    (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_VALUE_FORMAT), number);
+}
+
+static furnace_hmi_ui_string_id_t setting_outcome_text(furnace_hmi_operator_setting_outcome_t outcome)
+{
+    switch (outcome) {
+    case FURNACE_HMI_OPERATOR_SETTING_PENDING:
+        return FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_PENDING;
+    case FURNACE_HMI_OPERATOR_SETTING_APPLIED:
+        return FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_APPLIED;
+    case FURNACE_HMI_OPERATOR_SETTING_OUT_OF_RANGE:
+        return FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_OUT_OF_RANGE;
+    case FURNACE_HMI_OPERATOR_SETTING_SESSION_ACTIVE:
+        return FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_SESSION_ACTIVE;
+    case FURNACE_HMI_OPERATOR_SETTING_BUSY:
+        return FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_BUSY;
+    case FURNACE_HMI_OPERATOR_SETTING_NOT_APPLIED:
+        return FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_NOT_APPLIED;
+    case FURNACE_HMI_OPERATOR_SETTING_UNKNOWN:
+        return FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_UNKNOWN_OUTCOME;
+    default:
+        return FURNACE_HMI_UI_STRING_COUNT;
+    }
+}
+
+/* Offered with a known reference and range, and not while execution is active. */
+static bool planning_reference_changeable(const furnace_hmi_operator_screens_t *explorer)
+{
+    const furnace_hmi_operator_planning_reference_t *r = &explorer->planning_reference;
+    return r->known && r->change_permitted && r->min_decicelsius <= r->max_decicelsius &&
+           r->max_decicelsius > 0 && explorer->setting_outcome != FURNACE_HMI_OPERATOR_SETTING_PENDING &&
+           (explorer->simulated_responses ||
+            (!explorer->command_awaiting && !stop_in_progress(explorer) &&
+             explorer->request.kind == FURNACE_HMI_OPERATOR_REQUEST_NONE));
+}
+
+static void change_planning_reference(furnace_hmi_operator_screens_t *explorer, int32_t decicelsius)
+{
+    furnace_hmi_operator_planning_reference_t *r = &explorer->planning_reference;
+    if (!planning_reference_changeable(explorer)) {
+        /* It became unchangeable while the keypad was open: nothing is sent, and that is said. */
+        explorer->setting_outcome = FURNACE_HMI_OPERATOR_SETTING_NOT_APPLIED;
+        return;
+    }
+    if (explorer->simulated_responses) {
+        /* The lab's controller: its rule (interface, Settings), no message. */
+        const bool within = decicelsius >= r->min_decicelsius && decicelsius <= r->max_decicelsius;
+        if (within) {
+            r->decicelsius = decicelsius;
+        }
+        explorer->setting_outcome = within ? FURNACE_HMI_OPERATOR_SETTING_APPLIED
+                                           : FURNACE_HMI_OPERATOR_SETTING_OUT_OF_RANGE;
+        return;
+    }
+    post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE);
+    if (explorer->request.kind == FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE) {
+        explorer->request.planning_reference_decicelsius = decicelsius;
+        explorer->setting_outcome = FURNACE_HMI_OPERATOR_SETTING_PENDING;
+    }
+    else {
+        explorer->setting_outcome = FURNACE_HMI_OPERATOR_SETTING_NOT_APPLIED;
+    }
+}
+
+static bool settings_build_programs(furnace_hmi_operator_screens_t *explorer, lv_obj_t *body)
+{
+    lv_obj_t *grid = create_card_grid(body, 3U, 2U);
+    if (grid == NULL) {
+        return false;
+    }
+    const furnace_hmi_operator_planning_reference_t *r = &explorer->planning_reference;
+    char value[24];
+    char range[48];
+    char low[16];
+    char high[16];
+    if (r->known) {
+        reference_text(value, sizeof(value), r->decicelsius);
+        format_decicelsius(r->min_decicelsius, low, sizeof(low));
+        format_decicelsius(r->max_decicelsius, high, sizeof(high));
+        (void)snprintf(range, sizeof(range), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_RANGE_FORMAT),
+                       low, high);
+    }
+    else {
+        copy_text_bounded(value, sizeof(value), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE));
+        copy_text_bounded(range, sizeof(range), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE));
+    }
+    const bool changeable = planning_reference_changeable(explorer);
+    furnace_hmi_ui_string_id_t outcome = setting_outcome_text(explorer->setting_outcome);
+    if (explorer->setting_outcome == FURNACE_HMI_OPERATOR_SETTING_APPLIED && !r->storable) {
+        outcome = FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_NOT_STORED;
+    }
+    const char *caption = !r->known ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_UNKNOWN)
+        : !r->change_permitted ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_DURING_RUN)
+        : outcome != FURNACE_HMI_UI_STRING_COUNT ? ui_string(outcome)
+        : ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_CAPTION);
+    const operator_card_t cards[] = {
+        { .label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE), .value = value,
+          .caption = caption, .tag = changeable ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET) : NULL,
+          .tag_color = OPERATOR_MUTED, .tag_icon = FURNACE_HMI_ICON_PENCIL, .has_tag_icon = changeable,
+          .edge = changeable ? OPERATOR_TONE_TILE : OPERATOR_TONE_FLAT,
+          .action = OPERATOR_ACTION_SETTINGS_EDIT_REFERENCE,
+          .column = 0U, .row = 0U, .column_span = 2U, .row_span = 2U,
+          .value_font = &furnace_hmi_font_semibold_48,
+          .caption_font = &furnace_hmi_font_regular_13, .centred = true },
+        { .label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_RANGE), .value = range,
+          .caption = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_RANGE_CAPTION),
+          .edge = OPERATOR_TONE_FLAT, .column = 2U, .row = 0U },
+        { .label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_START),
+          .value = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_START_VALUE),
+          .caption = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE_START_CAPTION),
+          .edge = OPERATOR_TONE_FLAT, .column = 2U, .row = 1U },
+    };
+    return settings_add_cards(explorer, grid, cards, sizeof(cards) / sizeof(cards[0]));
+}
+
 static bool settings_build_connections(furnace_hmi_operator_screens_t *explorer, lv_obj_t *body)
 {
     lv_obj_t *grid = create_card_grid(body, 2U, 2U);
@@ -9093,6 +9392,8 @@ static bool build_settings(furnace_hmi_operator_screens_t *explorer)
         return settings_build_connections(explorer, body);
     case OPERATOR_SETTINGS_TAB_SYSTEM:
         return settings_build_system(explorer, body);
+    case OPERATOR_SETTINGS_TAB_PROGRAMS:
+        return settings_build_programs(explorer, body);
     default:
         return false;
     }
@@ -9730,6 +10031,22 @@ static void ordinary_command_done(furnace_hmi_operator_screens_t *explorer,
         start_change_done(explorer, kind, feedback);
         return;
     }
+    if (kind == FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE) {
+        /* Settings shows the controller's answer; the value in effect comes with the observation. */
+        explorer->setting_outcome =
+            feedback->state == FURNACE_HMI_FEEDBACK_ACCEPTED ? FURNACE_HMI_OPERATOR_SETTING_APPLIED
+            : feedback->state == FURNACE_HMI_FEEDBACK_UNRESOLVED ? FURNACE_HMI_OPERATOR_SETTING_UNKNOWN
+            : feedback->state != FURNACE_HMI_FEEDBACK_REJECTED ? FURNACE_HMI_OPERATOR_SETTING_NOT_APPLIED
+            : feedback->reason == OPERATOR_SETTING_RESULT_OUT_OF_RANGE ? FURNACE_HMI_OPERATOR_SETTING_OUT_OF_RANGE
+            : feedback->reason == OPERATOR_SETTING_RESULT_SESSION_ACTIVE ? FURNACE_HMI_OPERATOR_SETTING_SESSION_ACTIVE
+            : feedback->reason == OPERATOR_SETTING_RESULT_BUSY ? FURNACE_HMI_OPERATOR_SETTING_BUSY
+                                                               : FURNACE_HMI_OPERATOR_SETTING_NOT_APPLIED;
+        if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_SETTINGS) {
+            (void)rebuild_page_keeping_modal(explorer);
+        }
+        flush_manual_retarget(explorer);
+        return;
+    }
     if (feedback->state != FURNACE_HMI_FEEDBACK_ACCEPTED) {
         if (kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET) {
             /* Not applied: the controller's target and rate are shown again; nothing is resent. */
@@ -9782,11 +10099,6 @@ static bool program_editor_error(const furnace_hmi_operator_screens_t *explorer,
 {
     buffer[0] = '\0';
     const size_t count = editor_stage_count(explorer);
-    int64_t total = 0;
-    for (size_t index = 0U; index < count; ++index) {
-        const operator_stage_fixture_t stage = program_stage(explorer, index);
-        total += stage.duration_minutes > 0 ? stage.duration_minutes : 0;
-    }
     furnace_hmi_ui_string_id_t problem = FURNACE_HMI_UI_STRING_COUNT;
     if (text_is_blank(explorer->program_editor_name)) {
         problem = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_NAME;
@@ -9794,31 +10106,31 @@ static bool program_editor_error(const furnace_hmi_operator_screens_t *explorer,
     else if (count == 0U) {
         problem = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_NO_STAGES;
     }
-    else if (total > 48 * 60) {
-        problem = FURNACE_HMI_UI_STRING_UI_LAB_STAGE_ERROR_TOTAL;
+    else if (count > explorer->program_limits.max_stages) {
+        problem = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_STAGES;
     }
     if (problem != FURNACE_HMI_UI_STRING_COUNT) {
-        (void)snprintf(buffer, capacity, "%s", ui_string(problem));
+        (void)snprintf(buffer, capacity, ui_string(problem), (unsigned int)explorer->program_limits.max_stages);
         return true;
     }
+    uint8_t kinds[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t targets[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t rates[FURNACE_HMI_OPERATOR_MAX_STAGES];
+    int32_t minutes[FURNACE_HMI_OPERATOR_MAX_STAGES];
     for (size_t index = 0U; index < count; ++index) {
         const operator_stage_fixture_t stage = program_stage(explorer, index);
-        const bool heating = fixture_stage_kind(&stage) == OPERATOR_DRAFT_STAGE_HEATING;
-        if (stage.target_c < 0 || stage.target_c > OPERATOR_MAX_PROGRAM_TEMPERATURE_C) {
-            problem = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_TARGET_FORMAT;
-        }
-        else if (heating && (stage.delta_c_per_minute < 1 || stage.delta_c_per_minute > OPERATOR_MAX_PROGRAM_RATE_TENTHS)) {
-            problem = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_RATE_FORMAT;
-        }
-        else if (stage.duration_minutes < 1) {
-            problem = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_ERROR_DURATION_FORMAT;
-        }
-        if (problem != FURNACE_HMI_UI_STRING_COUNT) {
-            (void)snprintf(buffer, capacity, ui_string(problem), (unsigned int)index + 1U);
-            return true;
-        }
+        kinds[index] = (uint8_t)fixture_stage_kind(&stage);
+        targets[index] = stage.target_c;
+        rates[index] = stage.delta_c_per_minute;
+        minutes[index] = stage.duration_minutes;
     }
-    return false;
+    size_t at = 0U;
+    problem = stage_rules_problem(explorer, kinds, targets, rates, minutes, count, true, &at);
+    if (problem == FURNACE_HMI_UI_STRING_COUNT) {
+        return false;
+    }
+    stage_rules_text(explorer, problem, at, buffer, capacity);
+    return true;
 }
 
 /* The program editor's draft as a program (stages only; no name or identity). */
@@ -10775,6 +11087,10 @@ static void apply_action(
             (selected_program_entry(explorer)->inexact || selected_program_entry(explorer)->damaged)) {
             break;
         }
+        if (!editing_offered(explorer)) {
+            show_limits_unknown(explorer);
+            break;
+        }
         begin_program_editor(explorer, false);
         (void)furnace_hmi_operator_screens_navigate(explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR);
         break;
@@ -10798,7 +11114,9 @@ static void apply_action(
                        ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM_TITLE_FORMAT),
                        program_name_text(explorer, explorer->selected_program));
         (void)snprintf(detail, sizeof(detail),
-                       ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM_DETAIL_FORMAT),
+                       ui_string(program_authored_stage_count(program) == 1U
+                                     ? FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM_DETAIL_ONE_FORMAT
+                                     : FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM_DETAIL_FORMAT),
                        (unsigned int)program_authored_stage_count(program),
                        program_duration(program), program_maximum(program));
         (void)open_dialog(explorer, title, detail, OPERATOR_ACTION_RUNNING,
@@ -10900,38 +11218,38 @@ static void apply_action(
         (void)keyboard_open_number(
             explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_TARGET),
             explorer->manual_target_c, OPERATOR_KEYBOARD_TARGET_MANUAL_TARGET, 0U,
-            0, OPERATOR_MAX_PROGRAM_TEMPERATURE_C, 1, false);
+            OPERATOR_TARGET_MIN_C(explorer), OPERATOR_TARGET_MAX_C(explorer), 1, false);
         break;
     case OPERATOR_ACTION_MANUAL_EDIT_RATE:
         (void)keyboard_open_number(
             explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_MANUAL_RATE),
             explorer->manual_rate_tenths_c_per_minute,
             OPERATOR_KEYBOARD_TARGET_MANUAL_RATE, 0U,
-            1, OPERATOR_MAX_PROGRAM_RATE_TENTHS, 1, true);
+            OPERATOR_RATE_MIN(explorer), OPERATOR_RATE_MAX(explorer), 1, true);
         break;
     case OPERATOR_ACTION_MANUAL_DECREMENT_TARGET:
-        if (explorer->manual_target_c > 0) {
+        if (explorer->manual_target_c > OPERATOR_TARGET_MIN_C(explorer)) {
             --explorer->manual_target_c;
             manual_value_changed(explorer);
             (void)update_manual_prediction(explorer);
         }
         break;
     case OPERATOR_ACTION_MANUAL_INCREMENT_TARGET:
-        if (explorer->manual_target_c < OPERATOR_MAX_PROGRAM_TEMPERATURE_C) {
+        if (explorer->manual_target_c < OPERATOR_TARGET_MAX_C(explorer)) {
             ++explorer->manual_target_c;
             manual_value_changed(explorer);
             (void)update_manual_prediction(explorer);
         }
         break;
     case OPERATOR_ACTION_MANUAL_DECREMENT_RATE:
-        if (explorer->manual_rate_tenths_c_per_minute > 1) {
+        if (explorer->manual_rate_tenths_c_per_minute > OPERATOR_RATE_MIN(explorer)) {
             --explorer->manual_rate_tenths_c_per_minute;
             manual_value_changed(explorer);
             (void)update_manual_prediction(explorer);
         }
         break;
     case OPERATOR_ACTION_MANUAL_INCREMENT_RATE:
-        if (explorer->manual_rate_tenths_c_per_minute < OPERATOR_MAX_PROGRAM_RATE_TENTHS) {
+        if (explorer->manual_rate_tenths_c_per_minute < OPERATOR_RATE_MAX(explorer)) {
             ++explorer->manual_rate_tenths_c_per_minute;
             manual_value_changed(explorer);
             (void)update_manual_prediction(explorer);
@@ -11117,6 +11435,15 @@ static void apply_action(
     case OPERATOR_ACTION_SETTINGS_TOGGLE_TIME_FORMAT:
         explorer->settings_candidate_24_hour = !explorer->settings_candidate_24_hour;
         (void)rebuild_page(explorer);
+        break;
+    case OPERATOR_ACTION_SETTINGS_EDIT_REFERENCE:
+        if (planning_reference_changeable(explorer)) {
+            (void)keyboard_open_number(
+                explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_REFERENCE),
+                explorer->planning_reference.decicelsius, OPERATOR_KEYBOARD_TARGET_PLANNING_REFERENCE, 0U,
+                explorer->planning_reference.min_decicelsius, explorer->planning_reference.max_decicelsius,
+                1, true);
+        }
         break;
     case OPERATOR_ACTION_SETTINGS_SHOW_CLOCK:
         explorer->clock_draft = explorer->clock;
@@ -11359,7 +11686,8 @@ static void apply_action(
             (void)keyboard_open_number(
                 explorer, ui_string(FURNACE_HMI_UI_STRING_DASHBOARD_TARGET),
                 explorer->draft_target_c, OPERATOR_KEYBOARD_TARGET_DRAFT_TARGET,
-                explorer->selected_stage, 0, OPERATOR_MAX_PROGRAM_TEMPERATURE_C, 1, false);
+                explorer->selected_stage, OPERATOR_TARGET_MIN_C(explorer), OPERATOR_TARGET_MAX_C(explorer), 1,
+                false);
         }
         else if (value == OPERATOR_KEYBOARD_TARGET_DRAFT_RATE) {
             const int32_t rate = explorer->draft_rate_tenths_c_per_minute < 0
@@ -11368,7 +11696,7 @@ static void apply_action(
             (void)keyboard_open_number(
                 explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_RATE), rate,
                 OPERATOR_KEYBOARD_TARGET_DRAFT_RATE, explorer->selected_stage,
-                1, OPERATOR_MAX_PROGRAM_RATE_TENTHS, 1, true);
+                OPERATOR_RATE_MIN(explorer), OPERATOR_RATE_MAX(explorer), 1, true);
         }
         else if (value == OPERATOR_KEYBOARD_TARGET_DRAFT_DURATION) {
             (void)keyboard_open_number(
@@ -11378,8 +11706,11 @@ static void apply_action(
         }
         break;
     case OPERATOR_ACTION_SHOW_SAVE:
-        /* Web saveProgramEditor: Save program saves at once. */
-        if (explorer->program_editor_active) {
+        /* Web saveProgramEditor: Save program saves at once; not without the controller's limits. */
+        if (explorer->program_editor_active && !editing_offered(explorer)) {
+            show_limits_unknown(explorer);
+        }
+        else if (explorer->program_editor_active) {
             commit_program_editor(explorer);
         }
         break;
@@ -11445,15 +11776,26 @@ static void apply_action(
     }
     case OPERATOR_ACTION_ADD_STAGE:
         if (explorer->program_editor_active) {
-            if (explorer->staged_stage_count < FURNACE_HMI_OPERATOR_MAX_STAGES) {
+            if (explorer->staged_stage_count < OPERATOR_STAGES_MAX(explorer)) {
                 explorer->program_editor_dirty = true;
                 explorer->selected_stage = explorer->staged_stage_count;
                 explorer->staged_stage_count++;
-                explorer->draft_target_c = 120;
-                explorer->draft_rate_tenths_c_per_minute = 10;
-                explorer->draft_duration_minutes = 95;
+                {
+                    const size_t added = explorer->selected_stage;
+                    const int32_t previous = added > 0U ? explorer->staged_targets[added - 1U]
+                                                        : OPERATOR_TARGET_MIN_C(explorer) - 1;
+                    int32_t target = previous + 1 > 120 ? previous + 1 : 120;
+                    target = target > OPERATOR_TARGET_MAX_C(explorer) ? OPERATOR_TARGET_MAX_C(explorer) : target;
+                    target = target < OPERATOR_TARGET_MIN_C(explorer) ? OPERATOR_TARGET_MIN_C(explorer) : target;
+                    explorer->draft_target_c = target;
+                }
+                explorer->draft_rate_tenths_c_per_minute =
+                    10 < OPERATOR_RATE_MIN(explorer) ? OPERATOR_RATE_MIN(explorer)
+                    : 10 > OPERATOR_RATE_MAX(explorer) ? OPERATOR_RATE_MAX(explorer) : 10;
+                explorer->draft_duration_minutes = 1;
                 explorer->draft_stage_kind = OPERATOR_DRAFT_STAGE_HEATING;
                 explorer->draft_cooling_rate_enabled = false;
+                update_heating_relationship(explorer);
                 explorer->staged_name_valid[explorer->selected_stage] = false;
                 store_selected_stage_draft(explorer);
                 (void)furnace_hmi_operator_screens_navigate(
@@ -11465,6 +11807,10 @@ static void apply_action(
         /* fall through */
     case OPERATOR_ACTION_NEW_DRAFT:
         if (action == OPERATOR_ACTION_NEW_DRAFT) {
+            if (!editing_offered(explorer)) {
+                show_limits_unknown(explorer);
+                break;
+            }
             begin_program_editor(explorer, true);
             (void)furnace_hmi_operator_screens_navigate(
                 explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR);
@@ -11612,23 +11958,24 @@ static void apply_action(
         }
         break;
     case OPERATOR_ACTION_DECREMENT_TARGET:
-        if (explorer->draft_target_c > 0) { explorer->draft_target_c -= 1; }
+        if (explorer->draft_target_c > OPERATOR_TARGET_MIN_C(explorer)) { explorer->draft_target_c -= 1; }
         update_heating_relationship(explorer);
         (void)rebuild_page(explorer);
         break;
     case OPERATOR_ACTION_INCREMENT_TARGET:
-        if (explorer->draft_target_c < OPERATOR_MAX_PROGRAM_TEMPERATURE_C) { explorer->draft_target_c += 1; }
+        if (explorer->draft_target_c < OPERATOR_TARGET_MAX_C(explorer)) { explorer->draft_target_c += 1; }
         update_heating_relationship(explorer);
         (void)rebuild_page(explorer);
         break;
     case OPERATOR_ACTION_DECREMENT_RATE:
-        if (explorer->draft_rate_tenths_c_per_minute > -OPERATOR_MAX_PROGRAM_RATE_TENTHS && explorer->draft_rate_tenths_c_per_minute != 1) { explorer->draft_rate_tenths_c_per_minute -= 1; }
+        if (explorer->draft_rate_tenths_c_per_minute > -OPERATOR_RATE_MAX(explorer) && explorer->draft_rate_tenths_c_per_minute != 1 &&
+            !(explorer->draft_rate_tenths_c_per_minute > 0 && explorer->draft_rate_tenths_c_per_minute <= OPERATOR_RATE_MIN(explorer))) { explorer->draft_rate_tenths_c_per_minute -= 1; }
         explorer->draft_heating_duration_drives_rate = false;
         update_heating_relationship(explorer);
         (void)rebuild_page(explorer);
         break;
     case OPERATOR_ACTION_INCREMENT_RATE:
-        if (explorer->draft_rate_tenths_c_per_minute < OPERATOR_MAX_PROGRAM_RATE_TENTHS && explorer->draft_rate_tenths_c_per_minute != -1) { explorer->draft_rate_tenths_c_per_minute += 1; }
+        if (explorer->draft_rate_tenths_c_per_minute < OPERATOR_RATE_MAX(explorer) && explorer->draft_rate_tenths_c_per_minute != -1) { explorer->draft_rate_tenths_c_per_minute += 1; }
         explorer->draft_heating_duration_drives_rate = false;
         update_heating_relationship(explorer);
         (void)rebuild_page(explorer);
@@ -11658,7 +12005,9 @@ static void apply_action(
         break;
     case OPERATOR_ACTION_SET_DRAFT_HOLD:
         explorer->draft_stage_kind = OPERATOR_DRAFT_STAGE_HOLD;
-        explorer->draft_target_c = explorer->selected_stage == 0 ? 25 : program_stage(explorer, explorer->selected_stage - 1U).target_c;
+        explorer->draft_target_c = explorer->selected_stage == 0
+            ? reference_start_c(explorer, explorer->draft_target_c)
+            : program_stage(explorer, explorer->selected_stage - 1U).target_c;
         explorer->draft_rate_tenths_c_per_minute = 0;
         (void)rebuild_page(explorer);
         break;
@@ -11883,9 +12232,10 @@ bool furnace_hmi_operator_screens_create(
     explorer->library_known = content->library_known;
     explorer->clock_known = content->clock_known;
     explorer->log_known = content->log_known;
-    explorer->limits_known = content->limits_known;
     explorer->device_catalogue_known = content->device_catalogue_known;
     explorer->simulated_responses = content->simulated_responses;
+    explorer->program_limits = content->program_limits;
+    explorer->planning_reference = content->planning_reference;
     if (content->device_catalogue_known) {
         explorer->device_catalogue = content->device_catalogue;
     }
@@ -11919,11 +12269,6 @@ bool furnace_hmi_operator_screens_create(
     }
     explorer->settings_restart_assessment = 0U;
     explorer->settings_restart_result = 0U;
-    if (content->limits_known) {
-        explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_RATE] = content->max_rate_tenths_c_per_minute;
-        explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_TEMPERATURE] = content->max_temperature_c;
-        explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_DURATION] = content->default_duration_minutes;
-    }
     explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_BRIGHTNESS] = 80;
     explorer->settings_saved_numeric[OPERATOR_SETTINGS_NUMBER_DIM] = 0;
     memcpy(explorer->settings_candidate_numeric, explorer->settings_saved_numeric,
@@ -11947,6 +12292,7 @@ bool furnace_hmi_operator_screens_create(
    explorer->selected_stage = 2U;
     explorer->manual_target_c = 120;
     explorer->manual_rate_tenths_c_per_minute = 20;
+    manual_within_limits(explorer);
     explorer->manual_running = false;
     explorer->manual_paused = false;
     explorer->manual_light_on = false;
@@ -12162,6 +12508,13 @@ bool furnace_hmi_operator_screens_update(furnace_hmi_operator_screens_t *explore
  */
 static bool rebuild_page_keeping_modal(furnace_hmi_operator_screens_t *explorer)
 {
+    /* An open keypad keeps working: its objects live in the modal, which is kept (review). */
+    lv_obj_t *keyboard_input = explorer->keyboard_input;
+    lv_obj_t *keyboard_hint = explorer->keyboard_hint;
+    lv_obj_t *keyboard_apply = explorer->keyboard_apply;
+    lv_obj_t *keyboard_layout = explorer->keyboard_layout;
+    const size_t keyboard_button_count = explorer->keyboard_button_count;
+    const uint8_t keyboard_mode = explorer->keyboard_mode;
     lv_obj_t *modal = explorer->modal;
     const size_t modal_count = explorer->modal_action_count;
     const uint8_t alert_open = explorer->alert_open;
@@ -12184,6 +12537,12 @@ static bool rebuild_page_keeping_modal(furnace_hmi_operator_screens_t *explorer)
     explorer->decision_time_label = decision_time_label;
     explorer->decision_continue_button = decision_continue;
     explorer->decision_stop_button = decision_stop;
+    explorer->keyboard_input = keyboard_input;
+    explorer->keyboard_hint = keyboard_hint;
+    explorer->keyboard_apply = keyboard_apply;
+    explorer->keyboard_layout = keyboard_layout;
+    explorer->keyboard_button_count = keyboard_button_count;
+    explorer->keyboard_mode = keyboard_mode;
     if (modal != NULL) { lv_obj_move_to_index(modal, -1); }
     return rebuilt;
 }
@@ -12522,6 +12881,85 @@ bool furnace_hmi_operator_screens_set_diagnostics(furnace_hmi_operator_screens_t
         return rebuild_page_keeping_modal(explorer);
     }
     return true;
+}
+
+/* Manual's values within the controller's limits (MAN-03). */
+static void manual_within_limits(furnace_hmi_operator_screens_t *explorer)
+{
+    if (!explorer->program_limits.known) {
+        return;
+    }
+    if (explorer->manual_target_c < OPERATOR_TARGET_MIN_C(explorer)) {
+        explorer->manual_target_c = OPERATOR_TARGET_MIN_C(explorer);
+    }
+    if (explorer->manual_target_c > OPERATOR_TARGET_MAX_C(explorer)) {
+        explorer->manual_target_c = OPERATOR_TARGET_MAX_C(explorer);
+    }
+    if (explorer->manual_rate_tenths_c_per_minute < OPERATOR_RATE_MIN(explorer)) {
+        explorer->manual_rate_tenths_c_per_minute = OPERATOR_RATE_MIN(explorer);
+    }
+    if (explorer->manual_rate_tenths_c_per_minute > OPERATOR_RATE_MAX(explorer)) {
+        explorer->manual_rate_tenths_c_per_minute = OPERATOR_RATE_MAX(explorer);
+    }
+}
+
+bool furnace_hmi_operator_program_limits_equal(const furnace_hmi_operator_program_limits_t *a,
+                                               const furnace_hmi_operator_program_limits_t *b)
+{
+    return a->known == b->known && a->max_stages == b->max_stages && a->hold_allowed == b->hold_allowed &&
+           a->target_min_c == b->target_min_c && a->target_max_c == b->target_max_c &&
+           a->rate_min_tenths == b->rate_min_tenths && a->rate_max_tenths == b->rate_max_tenths &&
+           a->curing_max_minutes == b->curing_max_minutes && a->name_max_code_points == b->name_max_code_points;
+}
+
+bool furnace_hmi_operator_planning_reference_equal(const furnace_hmi_operator_planning_reference_t *a,
+                                                   const furnace_hmi_operator_planning_reference_t *b)
+{
+    return a->known == b->known && a->decicelsius == b->decicelsius &&
+           a->min_decicelsius == b->min_decicelsius && a->max_decicelsius == b->max_decicelsius &&
+           a->change_permitted == b->change_permitted && a->storable == b->storable;
+}
+
+bool furnace_hmi_operator_screens_set_program_limits(
+    furnace_hmi_operator_screens_t *explorer, const furnace_hmi_operator_program_limits_t *limits,
+    const furnace_hmi_operator_planning_reference_t *reference)
+{
+    if (explorer == NULL || explorer->root == NULL || limits == NULL || reference == NULL) {
+        return false;
+    }
+    if (furnace_hmi_operator_program_limits_equal(&explorer->program_limits, limits) &&
+        furnace_hmi_operator_planning_reference_equal(&explorer->planning_reference, reference)) {
+        return true;
+    }
+    explorer->program_limits = *limits;
+    /* Limits the editors could not hold offer nothing (the host checks them too). */
+    if (explorer->program_limits.max_stages > FURNACE_HMI_OPERATOR_MAX_STAGES ||
+        explorer->program_limits.max_stages == 0U ||
+        explorer->program_limits.target_min_c > explorer->program_limits.target_max_c ||
+        explorer->program_limits.target_max_c <= 0 || explorer->program_limits.rate_min_tenths < 1 ||
+        explorer->program_limits.rate_min_tenths > explorer->program_limits.rate_max_tenths ||
+        explorer->program_limits.curing_max_minutes <= 0) {
+        explorer->program_limits.known = false;
+    }
+    /* An answer shown for an earlier value no longer describes the value in effect. */
+    if (explorer->setting_outcome != FURNACE_HMI_OPERATOR_SETTING_PENDING &&
+        (reference->known != explorer->planning_reference.known ||
+         reference->decicelsius != explorer->planning_reference.decicelsius)) {
+        explorer->setting_outcome = FURNACE_HMI_OPERATOR_SETTING_IDLE;
+    }
+    explorer->planning_reference = *reference;
+    /* A keypad holds the range of the limits it opened with: it closes. */
+    if (explorer->keyboard_mode != 0U) {
+        clear_modal(explorer);
+    }
+    if (!explorer->manual_running) {
+        manual_within_limits(explorer);
+    }
+    if (!rebuild_page_keeping_modal(explorer)) {
+        return false;
+    }
+    /* What the controller's state enables and shows (Manual Start among it) follows the limits too. */
+    return explorer->state == NULL || furnace_hmi_operator_screens_update(explorer, explorer->state);
 }
 
 bool furnace_hmi_operator_screens_take_history_read(furnace_hmi_operator_screens_t *explorer)
