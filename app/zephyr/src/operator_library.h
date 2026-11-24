@@ -19,6 +19,14 @@ void furnace_hmi_operator_library_from_controller(const furnace_hmi_controller_l
                                                   furnace_hmi_operator_library_t *out);
 
 /*
+ * The controller's clock as the screens show it (M21-7e): reported while this controller session
+ * has given one, set unless the controller reports it UNKNOWN, and advanced from its reading to
+ * now_ms (the client's monotonic clock, k_uptime_get_32()). A display value, never a record.
+ */
+void furnace_hmi_operator_clock_from_controller(const furnace_hmi_controller_observation_t *observation,
+                                                uint32_t now_ms, furnace_hmi_operator_controller_clock_t *clock);
+
+/*
  * The controller's program limits and planning reference for the screens
  * (M21-7d): targets rounded inward to whole degrees, nothing known without a
  * configuration or before the controller reported it.

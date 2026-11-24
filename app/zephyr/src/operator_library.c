@@ -72,6 +72,19 @@ void furnace_hmi_operator_limits_from_controller(const furnace_hmi_controller_ob
     reference->storable = o->settings_state != SETTINGS_STATE_NONE;
 }
 
+void furnace_hmi_operator_clock_from_controller(const furnace_hmi_controller_observation_t *o, uint32_t now_ms,
+                                                furnace_hmi_operator_controller_clock_t *clock)
+{
+    (void)memset(clock, 0, sizeof(*clock));
+    if (!o->clock_valid) {
+        return;
+    }
+    clock->reported = true;
+    clock->set = o->wall_state != FURNACE_HMI_WALL_UNKNOWN;
+    /* Unsigned difference: correct across a wrap of the 32-bit uptime. */
+    clock->wall_ms = clock->set ? o->wall_ms + (int64_t)(uint32_t)(now_ms - o->clock_at_ms) : 0;
+}
+
 static furnace_hmi_operator_library_state_t state_of(furnace_hmi_library_state_t state)
 {
     switch (state) {

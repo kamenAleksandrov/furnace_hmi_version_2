@@ -190,6 +190,37 @@ ZTEST(furnace_hmi_operator, test_editors_take_the_controller_limits)
     zassert_equal(result, 0, "check %d: %s", result, failure);
 }
 
+ZTEST(furnace_hmi_operator, test_settings_show_and_set_the_controller_clock)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_clock_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+/* The controller's clock for the screens (M21-7e): advanced to now, unknown not set. */
+ZTEST(furnace_hmi_operator, test_the_clock_from_the_controller)
+{
+    static furnace_hmi_controller_observation_t o;
+    furnace_hmi_operator_controller_clock_t clock;
+
+    (void)memset(&o, 0, sizeof(o));
+    furnace_hmi_operator_clock_from_controller(&o, 1000U, &clock);
+    zassert_false(clock.reported, "no clock before the controller's STATUS");
+    o.clock_valid = true;
+    furnace_hmi_operator_clock_from_controller(&o, 1000U, &clock);
+    zassert_true(clock.reported && !clock.set, "UNKNOWN is reported, not set");
+    o.wall_state = FURNACE_HMI_WALL_ADJUSTED;
+    o.wall_ms = 1795435200000LL;
+    o.clock_at_ms = UINT32_MAX - 499U;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_true(clock.set && clock.wall_ms == 1795435200000LL + 2000,
+                 "advanced from its reading, across the uptime's wrap");
+}
+
 /* A program Start, Confirm and Cancel as controller commands (M21-7b). */
 ZTEST(furnace_hmi_operator, test_program_start_as_commands)
 {

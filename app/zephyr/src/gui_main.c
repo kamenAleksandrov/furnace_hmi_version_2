@@ -141,6 +141,13 @@ int main(void)
             furnace_hmi_operator_library_from_controller(&library, &limits, &reference, &shown_library);
             (void)furnace_hmi_operator_screens_set_library(&screens, &shown_library);
         }
+        {
+            /* M21-7e: the controller's clock, advanced to now; the screens redraw per minute. */
+            furnace_hmi_operator_controller_clock_t clock;
+
+            furnace_hmi_operator_clock_from_controller(&observation, now, &clock);
+            (void)furnace_hmi_operator_screens_set_clock(&screens, &clock);
+        }
         if (furnace_hmi_controller_link_take_diagnostics(&health, &history, &diagnostics_seen)) {
             (void)furnace_hmi_operator_screens_set_diagnostics(&screens, &health, &history);
         }

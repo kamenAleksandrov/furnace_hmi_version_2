@@ -287,6 +287,9 @@ int main(int argc, char **argv)
         if (result == 0) {
             result = furnace_hmi_operator_limits_check(display, &failure);
         }
+        if (result == 0) {
+            result = furnace_hmi_operator_clock_check(display, &failure);
+        }
 
         if (result != 0) {
             (void)fprintf(stderr, "%s\n", failure);

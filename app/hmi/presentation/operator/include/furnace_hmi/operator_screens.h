@@ -201,6 +201,8 @@ typedef enum {
     FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL,
     /* M21-7d, raised only without simulated answers: the planning reference's change. */
     FURNACE_HMI_OPERATOR_REQUEST_PLANNING_REFERENCE,
+    /* M21-7e, raised only without simulated answers: set the controller's clock (CLOCK_SET). */
+    FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET,
 } furnace_hmi_operator_request_kind_t;
 
 typedef struct {
@@ -234,6 +236,8 @@ typedef struct {
     uint32_t accepted_duration_s;
     /* PLANNING_REFERENCE: the value asked for, 0.1 °C. */
     int32_t planning_reference_decicelsius;
+    /* CLOCK_SET: the date and time asked for, Unix ms, UTC. */
+    int64_t clock_wall_ms;
 } furnace_hmi_operator_request_t;
 
 /* A service record the controller confirmed in this session (Maintenance done). */
@@ -273,6 +277,17 @@ typedef struct {
     uint8_t task;
     char name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
 } furnace_hmi_operator_log_event_t;
+
+/**
+ * The controller's clock as the screens show it (M21-7e; controller interface "Clock"): it is
+ * universal time, shown as UTC. `reported`: a controller session reports one; `set`: it is not
+ * UNKNOWN; `wall_ms`: the controller's time now, Unix ms (the host advances it between reports).
+ */
+typedef struct {
+    bool reported;
+    bool set;
+    int64_t wall_ms;
+} furnace_hmi_operator_controller_clock_t;
 
 /** Calendar date and wall-clock time on the controller's clock. */
 typedef struct {
@@ -470,6 +485,14 @@ bool furnace_hmi_operator_screens_set_diagnostics(furnace_hmi_operator_screens_t
 bool furnace_hmi_operator_screens_set_program_limits(
     furnace_hmi_operator_screens_t *explorer, const furnace_hmi_operator_program_limits_t *limits,
     const furnace_hmi_operator_planning_reference_t *reference);
+
+/**
+ * The controller's clock (M21-7e): Settings' Date & time and the Device log show it, to the
+ * minute; a page is redrawn only when the minute or the state changes. Only from the GUI
+ * context; the labs keep their simulated clock and do not call it.
+ */
+bool furnace_hmi_operator_screens_set_clock(furnace_hmi_operator_screens_t *explorer,
+                                            const furnace_hmi_operator_controller_clock_t *clock);
 
 /**
  * True once after the operator asked for the controller's history (the Device
@@ -736,6 +759,8 @@ struct furnace_hmi_operator_screens {
     furnace_hmi_operator_library_state_t library_state;
     bool library_updating;
     bool clock_known;
+    /* M21-7e: the controller reports its clock unknown (not set since its start). */
+    bool clock_unset;
     bool log_known;
     bool device_catalogue_known;
     bool simulated_responses;

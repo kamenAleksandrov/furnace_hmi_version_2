@@ -2381,6 +2381,117 @@ static int limits_checks(const char **failure)
     return unusual_limits_checks(failure);
 }
 
+/* 2026-11-23T12:00:59.999Z, a Monday: the controller's time in the clock check. */
+#define CLOCK_CHECK_MS (1795435200000LL + 59999LL)
+
+/* The Date & time card, found by its time (24-hour or 12-hour; the tab shares its label). */
+static lv_obj_t *clock_card(void)
+{
+    lv_obj_t *card = card_with_text(screens.root, "12:01");
+    return card != NULL ? card : card_with_text(screens.root, "12:01 PM");
+}
+
+/*
+ * The controller's clock in Settings > Date & time (M21-7e): not set, then shown to the minute in
+ * UTC; Set date & time asks the controller (CLOCK_SET with the picked minute) and shows its answer.
+ */
+static int clock_checks(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+    furnace_hmi_operator_controller_clock_t clock = {.reported = true, .set = false, .wall_ms = 0};
+
+    screens.settings_tab = 1U;
+    if (!furnace_hmi_operator_screens_set_clock(&screens, &clock) || !show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
+        !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET) ||
+        !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UTC) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE)) {
+        return failed(failure, "A controller clock not set since its start is not said so.", 1100);
+    }
+    clock.set = true;
+    clock.wall_ms = CLOCK_CHECK_MS;
+    if (!furnace_hmi_operator_screens_set_clock(&screens, &clock)) {
+        return failed(failure, "The clock could not be given.", 1101);
+    }
+    settle();
+    if (!tree_contains(screens.root, "12:00") || !tree_contains(screens.root, "UTC") ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET)) {
+        return failed(failure, "The controller's time is not shown in UTC.", 1102);
+    }
+    clock.wall_ms += 1;
+    if (!furnace_hmi_operator_screens_set_clock(&screens, &clock)) {
+        return failed(failure, "The clock could not be given.", 1103);
+    }
+    settle();
+    if (!tree_contains(screens.root, "12:01")) {
+        return failed(failure, "The next minute is not shown.", 1104);
+    }
+
+    /* Set date & time: the picker says UTC; Set sends the picked minute; a refusal is shown. */
+    click(clock_card());
+    if (screens.modal == NULL || !modal_contains("UTC")) {
+        return failed(failure, "The date and time picker does not say UTC.", 1105);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, 70U, &request) ||
+        request.clock_wall_ms != 1795435260000LL) {
+        return failed(failure, "Set date & time does not ask the controller for the picked minute.", 1106);
+    }
+    answer(&state.command_feedback, 70U, FURNACE_HMI_FEEDBACK_REJECTED, 2U);
+    if (!update() || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_REFUSED_TITLE) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_SESSION_ACTIVE)) {
+        return failed(failure, "A refusal during execution is not shown with its reason.", 1107);
+    }
+    click(first_button(screens.modal));
+    click(clock_card());
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, 71U, &request)) {
+        return failed(failure, "A second setting is not asked.", 1108);
+    }
+    answer(&state.command_feedback, 71U, FURNACE_HMI_FEEDBACK_UNRESOLVED, 0U);
+    if (!update() || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNKNOWN)) {
+        return failed(failure, "A setting without an answer is not said to be unknown.", 1109);
+    }
+    click(first_button(screens.modal));
+    click(clock_card());
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, 72U, &request)) {
+        return failed(failure, "A third setting is not asked.", 1110);
+    }
+    answer(&state.command_feedback, 72U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    if (!update() || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_TIME_SET_TITLE)) {
+        return failed(failure, "An applied setting is not confirmed.", 1111);
+    }
+    click(first_button(screens.modal));
+
+    /* No controller clock at all: unavailable, not "not set". */
+    clock.reported = false;
+    if (!furnace_hmi_operator_screens_set_clock(&screens, &clock)) {
+        return failed(failure, "The clock could not be given.", 1112);
+    }
+    settle();
+    if (!page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET)) {
+        return failed(failure, "Without a controller clock the time is not said to be unavailable.", 1113);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_clock_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content)); /* a controller: no simulated clock */
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 1099);
+    }
+    settle();
+    const int result = clock_checks(failure);
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}
+
 int furnace_hmi_operator_limits_check(lv_display_t *display, const char **failure)
 {
     lv_display_set_resolution(display, 800, 480);
