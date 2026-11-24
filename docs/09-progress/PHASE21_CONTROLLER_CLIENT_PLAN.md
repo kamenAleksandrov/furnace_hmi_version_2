@@ -75,7 +75,81 @@ Each is a draft pull request, test-first, with its completion criteria checked.
 | M21-5 | Run, Manual and fault workflows (WI-H03, WI-H04) | Each workflow runs against the controller; the same behavior in the web demo, simulated |
 | M21-6 | Controller 20d (firmware) | A controller-side plan with its open decisions for the product owner and the controller's reviewers (for example the health rules still proposed); the messages built test-first with the controller's verification; the HMI resynced to the new revision in lockstep, ADR-0007 checked against its reopen triggers, before M21-7. **2026-11-19:** firmware 20d in #56–#60 (merged) and drafts #63–#65; pin moved to `a96d138` with the codec byte-identical; ADR-0007 trigger not met (result values only, no layout change; STATUS) |
 | M21-7 | Library, names, Device log (WI-H02, WI-H10, WI-H12) | Against the controller; parity in the web demo. **2026-11-19:** M21-7a (client) in draft, with firmware fix #66; M21-7b (screens) in draft, stacked on it; **2026-11-20:** M21-7c (Device log and health) in draft, stacked on M21-7b; M21-7d (the controller's limits and the planning reference) added; M21-7e (the controller's clock, firmware and HMI) added |
-| M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria |
+| M21-8 | End-to-end workflow tests (WI-H07) | Scripted operator workflows over the simulated link; M3 closed by the furnace roadmap's criteria. **2026-11-24:** owner decisions and design below; M3's other criteria stay with their reviews |
+
+### M21-8, the end-to-end operator workflows
+
+**Owner decisions (2026-11-24):**
+- The workflows go through the screens: an operator's taps on the shared screens, the command
+  mapping, the link and the real controller, never the client alone.
+- Recurrence summaries (furnace WI-F03) stay out. SD-04 is undecided, so WI-F03 is blocked; it is
+  recorded as open for M3, with no guessed policy.
+- The web demo runs the same scenarios against its simulated controller.
+
+**What exists:**
+- `tests/zephyr/controller_workflows` runs 10 workflows against the controller, but submits
+  commands to the client as a screen would, so no screen is in the path.
+- The screen checks (`tests/presentation/operator`) tap the screens, but against fixed observations,
+  not a controller.
+
+Neither shows that an operator's tap reaches the controller and that its answer reaches the screen.
+
+**Design:**
+- **One GUI host.** The body of `gui_main.c`'s loop moves into `app/zephyr/src/gui_host.c`, with
+  an init function and one pass:
+  - the pass takes the link's observation, library, limits, clock and diagnostics into the screens;
+  - it hands the screens' requests to the link.
+
+  `gui_main.c` keeps the display and the loop. The test calls the same pass, so the tested path is
+  the application's. No behavior change; the GUI build and the lab captures show it.
+- **`tests/zephyr/operator_workflows`** (new, not run by Twister: it needs the controller):
+  - the screens on a memory display, as in `tests/zephyr/operator`;
+  - the real link thread, and the controller's `link_pty` program over a pseudo-terminal pair;
+  - taps sent with `lv_obj_send_event` to widgets found by their label strings;
+  - each step waits for what the controller reports and checks what the screen shows.
+
+  `tools/controller_workflow_check.py` runs it, with a suite argument.
+- **Link loss without a restart.** The runner relays bytes between the two pseudo-terminals, as
+  `controller_link_demo.py` does. A control line holds the relay and later releases it.
+- **Scenarios**, each from Home and ending idle:
+  - **W1 Program edit and save:** Programs, New, a Heating and a Hold stage, a name of 31
+    characters, Save; the controller lists it. Edit it and Save: revision 2. Delete it.
+  - **W2 Start with hot-start confirmation:** the scenario offset raises the reading to about
+    110 °C. Start "Sim cure and post-cure"; the proposal panel shows the skipped stages; Confirm;
+    Running shows the controller's run from the proposed stage.
+  - **W3 Pause and Resume** of that program run.
+  - **W4 Stop and cooling:** Stop; Running shows the run stopped and cooling. Return Home leaves
+    the cooling going, and Home shows it.
+  - **W5 Contained navigation:** while a run executes, the Programs editor cannot be reached. The
+    controller's refusal of a library change (PROG-15) stays covered by the furnace's tests.
+  - **W6 Quality decision and Continue:** an offset below a Manual ramp brings the decision panel;
+    Continue; the session goes on.
+  - **W7 Faults:** a sensor fault; Faults (n); Stop; Acknowledge; Recover once the sensor is back.
+  - **W8 Protective trip:** the refusal of recovery (external reset) is shown.
+  - **W9 Manual:** Start at the controller's maximum, a retarget by stepper, Pause, Resume, Stop.
+  - **W10 Link loss and reconnection during a run:** the relay holds for 5 s. The screens show
+    Unavailable and invent nothing. After the release they show the same run (same run ID), and
+    Stop works.
+  - **W11 Device log** after the others shows the controller's records of these runs.
+- **Web demo:** `tools/hmi_web_demo_workflows.cjs` (headless Chrome) runs the operator steps of
+  W1 to W11 against the demo's simulated controller, with its scenarios for the faults. This checks
+  the parity of the presentation, not controller truth (ADR-0004). W10 is the demo's simulated link
+  loss.
+- **Firmware:** no change expected. The simulated controller already takes offset, sensor,
+  interlock and protection lines. A gap gets its own furnace pull request.
+
+**Not covered, recorded for M3:**
+- Recurrence summaries (WI-F03, SD-04).
+- An operator end of the final cooling: the controller has `RUN_END_COOLING`, the screens have no
+  action for it.
+- Cyrillic names (owner: later).
+- The production link and the boards.
+
+**M3:** M21-8 gives WI-H07's evidence only. M3 also needs:
+- WI-I01 reviewed by both repositories and frozen as 1.0;
+- the open review gates;
+- the merges;
+- the maturity updates in the furnace register, with the evidence its release criteria require.
 
 ### M21-2b design
 
