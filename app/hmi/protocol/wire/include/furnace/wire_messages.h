@@ -33,6 +33,7 @@ enum furnace_wire_msg_type {
 	FURNACE_WIRE_MSG_CAPABILITIES_REQUEST = 0x0005,
 	FURNACE_WIRE_MSG_SETTINGS_REQUEST = 0x0006,
 	FURNACE_WIRE_MSG_SETTING_CHANGE = 0x0007,
+	FURNACE_WIRE_MSG_CLOCK_SET = 0x0008, /* 0.16 amendment (M21-7e) */
 	FURNACE_WIRE_MSG_START_REQUEST = 0x0010,
 	FURNACE_WIRE_MSG_START_CONFIRM = 0x0011,
 	FURNACE_WIRE_MSG_START_CANCEL = 0x0012,
@@ -60,6 +61,7 @@ enum furnace_wire_msg_type {
 	FURNACE_WIRE_MSG_CAPABILITIES = 0x8005,
 	FURNACE_WIRE_MSG_SETTINGS = 0x8006,
 	FURNACE_WIRE_MSG_SETTING_RESULT = 0x8007,
+	FURNACE_WIRE_MSG_CLOCK_RESULT = 0x8008, /* 0.16 amendment (M21-7e) */
 	FURNACE_WIRE_MSG_START_ACCEPTED = 0x8010,
 	FURNACE_WIRE_MSG_START_PROPOSAL = 0x8011,
 	FURNACE_WIRE_MSG_START_PROPOSAL_INVALIDATED = 0x8012,
@@ -356,6 +358,12 @@ struct furnace_wire_setting_change {
 	int32_t value;
 };
 
+/* Set the controller's wall clock (M21-7e): Unix time in ms, UTC. */
+struct furnace_wire_clock_set {
+	struct furnace_wire_envelope envelope;
+	int64_t wall_ms;
+};
+
 struct furnace_wire_start_request {
 	struct furnace_wire_envelope envelope;
 	uint32_t program_id;
@@ -518,6 +526,9 @@ struct furnace_wire_status {
 	struct furnace_wire_controller controller;
 	struct furnace_wire_lifecycle lifecycle;
 	struct furnace_wire_equipment equipment;
+	/* 0.16 amendment (M21-7e): the controller's wall clock at the capture. */
+	uint8_t wall_state;
+	int64_t wall_ms;
 };
 
 struct furnace_wire_snapshot_end {
@@ -570,6 +581,14 @@ struct furnace_wire_setting_result {
 	uint8_t setting;
 	uint8_t result;
 	int32_t value;
+};
+
+/* The answer to CLOCK_SET, with the clock in effect afterwards (M21-7e). */
+struct furnace_wire_clock_result {
+	uint32_t request_id;
+	uint8_t result;
+	uint8_t wall_state;
+	int64_t wall_ms;
 };
 
 struct furnace_wire_start_accepted {
@@ -772,6 +791,7 @@ struct furnace_wire_message {
 		struct furnace_wire_capabilities_request capabilities_request;
 		struct furnace_wire_settings_request settings_request;
 		struct furnace_wire_setting_change setting_change;
+		struct furnace_wire_clock_set clock_set;
 		struct furnace_wire_start_request start_request;
 		struct furnace_wire_start_confirm start_confirm;
 		struct furnace_wire_start_cancel start_cancel;
@@ -799,6 +819,7 @@ struct furnace_wire_message {
 		struct furnace_wire_capabilities capabilities;
 		struct furnace_wire_settings settings;
 		struct furnace_wire_setting_result setting_result;
+		struct furnace_wire_clock_result clock_result;
 		struct furnace_wire_start_accepted start_accepted;
 		struct furnace_wire_start_proposal start_proposal;
 		struct furnace_wire_start_proposal_invalidated start_proposal_invalidated;

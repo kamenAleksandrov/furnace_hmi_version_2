@@ -1,6 +1,6 @@
 {
   "controller_repository": "kamenAleksandrov/furnace-firmware-v2",
-  "controller_revision": "a96d1381f63faa660d1a38a2ba95714198590918",
+  "controller_revision": "fb1fb79f747735b74dc6d4d5faece8fe9ac2231e",
   "wire_format": "docs/interfaces/controller-wire-format.md",
   "note": "Pinned copy (ADR-0009). Do not edit the copied files; change the controller first, then sync.",
   "files": [
@@ -22,7 +22,7 @@
     {
       "path": "app/hmi/protocol/wire/include/furnace/wire_messages.h",
       "source": "core/wire/include/furnace/wire_messages.h",
-      "sha256": "75c53aa104819e211d76679091daccbbed3943c76103c12572130fada2bcc17e"
+      "sha256": "762abd52d3e9e235d2946cef8e133d61285104ebf2139601ec1212941096118b"
     },
     {
       "path": "app/hmi/protocol/wire/src/wire_frame.c",
@@ -32,7 +32,7 @@
     {
       "path": "app/hmi/protocol/wire/src/wire_messages.c",
       "source": "core/wire/src/wire_messages.c",
-      "sha256": "ec6ce94881990d1e5008779597ed0726e3bef99416f27b2a4bb65acf98a7bb59"
+      "sha256": "fe40f631ebedbfdb93f13346b1b18f9a8aef8ac73be22a3870ecfd12e86dc918"
     },
     {
       "path": "tests/conformance/wire/vector_table.h",
@@ -42,7 +42,7 @@
     {
       "path": "tests/conformance/wire/wire_vectors_gen.c",
       "source": "scripts/wire_vectors.py --emit-c",
-      "sha256": "0315588158dee58fbe65f7a65750d369bceac02cc4c83ae230b458deedacbe24"
+      "sha256": "1da944a5f4894acc2c38eead0e585c89bf6071e36f8f5185ae307b12ad36a585"
     }
   ]
 }
