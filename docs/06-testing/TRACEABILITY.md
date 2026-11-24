@@ -167,4 +167,3 @@ Zephyr); the Zephyr converter advances the reading to now across the uptime's wr
 workflow `test_g_controller_clock` sets and reads the clock of firmware 7e-1's `link_pty`. The
 labs show their simulated clock in UTC (the web demo whatever the browser's zone; its smoke test).
 This does not establish a hardware clock (furnace HW-BLOCK-013) or a time zone other than UTC.
-
