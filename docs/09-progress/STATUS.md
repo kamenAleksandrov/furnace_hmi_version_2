@@ -1,5 +1,16 @@
 # Project status
 
+**Fact (2026-11-24, Phase 21 M21-7e-2, draft):** the controller's clock on the HMI (owner
+2026-11-20: the controller keeps the time in UTC; the HMI shows it and sets it when the operator
+asks). Stacked on M21-7d-2; needs furnace 7e-1 (draft PR #68). Details in the Phase 21 plan
+("M21-7e").
+- **Codec** synced to furnace `fb1fb79`; **client** keeps the clock from `STATUS` and
+  `CLOCK_RESULT` and sends `CLOCK_SET`; **screens**: Settings > Date & time in UTC, "Not set",
+  Set date & time with the controller's answer; the labs and the web demo show UTC.
+- **Evidence:** host, desktop, UI lab and web checks, Zephyr Twister, and the operator workflows
+  against 7e-1's `link_pty` (with `test_g_controller_clock`). Counts in the pull request.
+- **Open:** a hardware clock (furnace HW-BLOCK-013); time zones (UTC by the owner's choice).
+
 **Fact (2026-11-20, Phase 21 M21-7d-2, draft):** the labs' Start and save dialogs are the
 controller's. Stacked on M21-7d-1; choices and gaps in the Phase 21 plan ("M21-7d-2 done").
 - **Simulated controller (UI lab and web demo, SIMULATION ONLY):** a Start is answered by the

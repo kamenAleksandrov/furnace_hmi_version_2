@@ -154,3 +154,17 @@ Standalone HTML syntax and targeted style assertions also passed. Browser
 interaction/capture was not rerun for this presentation-only edit. This does
 not establish embedded LVGL integration, physical touch performance, controller
 ownership, protocol behavior, persistence or safety.
+
+## Controller clock evidence - 2026-11-24 (Phase 21 M21-7e-2, draft)
+
+**Fact:** REQ-FUN-011's clock part against the controller (furnace API-13, interface "Clock"):
+the client keeps the controller's clock from `STATUS` and from `CLOCK_RESULT`, and a `STATUS`
+captured before a set does not undo it (`host.controller_client`, "controller clock"); Settings >
+Date & time shows the controller's time to the minute in UTC, "Not set" while the controller
+reports it unknown and "Unavailable" without a controller clock, and Set date & time sends
+`CLOCK_SET` and shows the controller's answer (`furnace_hmi_operator_clock_check`, desktop and
+Zephyr); the Zephyr converter advances the reading to now across the uptime's wrap; the operator
+workflow `test_g_controller_clock` sets and reads the clock of firmware 7e-1's `link_pty`. The
+labs show their simulated clock in UTC (the web demo whatever the browser's zone; its smoke test).
+This does not establish a hardware clock (furnace HW-BLOCK-013) or a time zone other than UTC.
+
