@@ -211,6 +211,7 @@ ZTEST(furnace_hmi_operator, test_the_clock_from_the_controller)
     furnace_hmi_operator_clock_from_controller(&o, 1000U, &clock);
     zassert_false(clock.reported, "no clock before the controller's STATUS");
     o.clock_valid = true;
+    o.availability = FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
     furnace_hmi_operator_clock_from_controller(&o, 1000U, &clock);
     zassert_true(clock.reported && !clock.set, "UNKNOWN is reported, not set");
     o.wall_state = FURNACE_HMI_WALL_ADJUSTED;
@@ -219,6 +220,24 @@ ZTEST(furnace_hmi_operator, test_the_clock_from_the_controller)
     furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
     zassert_true(clock.set && clock.wall_ms == 1795435200000LL + 2000,
                  "advanced from its reading, across the uptime's wrap");
+    o.clock_at_ms = 1600U;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_true(clock.set && clock.wall_ms == 1795435200000LL,
+                 "a reading published after now is not a wrap: nothing added");
+    o.availability = FURNACE_HMI_STATE_AVAILABILITY_STALE;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_false(clock.reported, "no clock shown while the link is not current");
+    o.availability = FURNACE_HMI_STATE_AVAILABILITY_CURRENT;
+    o.wall_ms = FURNACE_HMI_CLOCK_MAX_MS + 1;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_false(clock.reported, "a time outside the controller's range is not shown");
+    o.wall_ms = INT64_MAX;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_false(clock.reported, "no overflow on a garbled time");
+    o.wall_ms = 1795435200000LL;
+    o.wall_state = 7U;
+    furnace_hmi_operator_clock_from_controller(&o, 1500U, &clock);
+    zassert_false(clock.reported, "an unknown state is not shown as set");
 }
 
 /* A program Start, Confirm and Cancel as controller commands (M21-7b). */

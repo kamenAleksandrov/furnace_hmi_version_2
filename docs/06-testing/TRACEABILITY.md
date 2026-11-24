@@ -165,5 +165,10 @@ reports it unknown and "Unavailable" without a controller clock, and Set date & 
 `CLOCK_SET` and shows the controller's answer (`furnace_hmi_operator_clock_check`, desktop and
 Zephyr); the Zephyr converter advances the reading to now across the uptime's wrap; the operator
 workflow `test_g_controller_clock` sets and reads the clock of firmware 7e-1's `link_pty`. The
-labs show their simulated clock in UTC (the web demo whatever the browser's zone; its smoke test).
+labs show their simulated clock in UTC (the web demo through UTC getters, its smoke test with a
+summer-time instant). Review fixes: the time only while the link is current and within the
+controller's range, the redraw scope, an unanswered set not called "not set", Set off on an
+unknown clock's placeholder, the year limits and an out-of-range answer
+(`furnace_hmi_operator_clock_check`), and the range's edges against the controller
+(`test_g_controller_clock`).
 This does not establish a hardware clock (furnace HW-BLOCK-013) or a time zone other than UTC.

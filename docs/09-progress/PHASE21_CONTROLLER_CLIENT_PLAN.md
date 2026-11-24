@@ -517,12 +517,39 @@ The design takes these answers. M21-7e follows M21-7d-2 and starts with the furn
   starts at 1 January 2025 when the clock is unknown. The Device log already shows the controller's
   record times; it now redraws when the minute changes.
 - **Home** shows no clock (it never did): the plan's "Home's clock" is Settings and the Device log.
-- **Labs:** their simulated clock is shown in UTC (the web demo whatever the browser's zone); the
-  picker's year starts at 2025.
+- **Labs:** their simulated clock is shown in UTC (the web demo reads it through UTC getters, so
+  in any browser zone); the picker's year starts at 2025.
+- **Found operating the GUI against the controller:** the controller's clock audits were listed as
+  "Controller event 31" (now named); without a clock the Date format card read "Not set" (now an
+  example date).
+- **Review fixes** (three AI reviews in the HMI roles, not the required human reviews; tests first
+  where a test could show it):
+  - the time is shown only while the link is current, and only a state and time the controller
+    can report (2025 to 2099); a reading published just after the GUI's own time no longer adds
+    49.7 days;
+  - a new minute redraws only Date & time and the Device log;
+  - an unanswered set is "not confirmed", not "not set";
+  - an unknown clock's picker starts at 1 January 2025 with Set off until the operator changes the
+    date (an unchanged placeholder would set the furnace to it); a step at a limit is no change;
+  - the date-format choices and a Device log entry dated after the clock (set back) show no zero
+    or negative date;
+  - the web demo reads its clock through UTC getters (the zone shift was wrong near summer-time
+    changes) and sets whole minutes, as the HMI;
+  - checks for the year limits, an out-of-range answer, the redraw scope and, against the
+    controller, the range's edges.
 
-**Not in M21-7e-2, recorded:** no local time zone (owner: UTC); no hardware clock (HW-BLOCK-013);
-the display advances the controller's time between statuses from the HMI's own uptime; remote
-(PLC) setting during a run is WI-I07's.
+**Not in M21-7e-2, recorded:**
+- No local time zone (owner: UTC); no hardware clock (HW-BLOCK-013); remote (PLC) setting during
+  a run is WI-I07's.
+- The display advances the controller's time between statuses from the HMI's own uptime, to the
+  minute; a set sends the picked minute (seconds 0), so it is up to a minute behind what the
+  operator read.
+- The labs do not answer a set as the controller does: the UI lab's clock is a fixed simulated
+  time and every set is accepted; the web demo's follows the browser's clock. Neither shows Not
+  set, Unavailable or a refusal (the desktop and Zephyr checks do, with the controller's answers).
+- No pending notice between Set and the answer (the answer comes within a second; a second Set
+  meanwhile is busy). The answer's dialog replaces a Faults dialog opened meanwhile.
+- A setting is listed twice in the Device log: the controller's clock change and its audit.
 
 ### M21-5 design
 

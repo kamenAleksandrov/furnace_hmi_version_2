@@ -6666,9 +6666,13 @@ static bool log_add_heading(const furnace_hmi_operator_screens_t *explorer, lv_o
     else if (ago == 1) {
         (void)snprintf(text, sizeof(text), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_YESTERDAY_FORMAT), date_text);
     }
-    else {
+    else if (ago > 1) {
         (void)snprintf(text, sizeof(text), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LOG_DAY_AGO_FORMAT), date_text,
                        (unsigned)ago);
+    }
+    else {
+        /* Dated after the clock (it was set back, M21-7e review): the date alone. */
+        copy_text_bounded(text, sizeof(text), date_text);
     }
     lv_obj_t *heading = create_label(list, text, &furnace_hmi_font_regular_13, OPERATOR_MUTED);
     if (heading == NULL) {
@@ -9199,8 +9203,12 @@ static bool settings_open_choice(furnace_hmi_operator_screens_t *explorer, uint8
             selected = explorer->settings_candidate_language == index;
             break;
         case OPERATOR_SETTINGS_CHOICE_DATE_FORMAT:
-            /* Each format shows today's date written that way. */
-            format_date_as(text, sizeof(text), &explorer->clock, index);
+            /* Each format shows today's date written that way; without a known clock an
+             * example date (M21-7e review: not a zero date). */
+            format_date_as(text, sizeof(text),
+                           explorer->clock_known ? &explorer->clock
+                                                 : &(const furnace_hmi_operator_clock_t){ 2025U, 12U, 31U, 0U, 0U },
+                           index);
             selected = explorer->settings_candidate_date_format == index;
             break;
         default:
@@ -9350,6 +9358,11 @@ static bool settings_open_clock(furnace_hmi_operator_screens_t *explorer)
     }
     lv_obj_set_width(preview_label, lv_pct(100));
     lv_obj_set_style_text_align(preview_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    /* An unknown clock's picker starts at a placeholder: Set waits for the operator's own date
+     * (M21-7e review: an unchanged placeholder would set the furnace to 1 January 2025). */
+    if (!explorer->clock_known && !explorer->clock_draft_touched) {
+        lv_obj_add_state(set, LV_STATE_DISABLED);
+    }
     size_dialog_button(cancel);
     size_dialog_button(set);
     return true;
@@ -10061,8 +10074,12 @@ static void clock_change_done(furnace_hmi_operator_screens_t *explorer, const fu
         return;
     }
     if (feedback->state == FURNACE_HMI_FEEDBACK_UNRESOLVED) {
-        detail = FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNKNOWN;
-    } else if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED &&
+        /* It may have been applied: not "not set" (M21-7e review). STATUS shows the clock. */
+        (void)settings_show_message(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNCONFIRMED_TITLE),
+                                    ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNKNOWN));
+        return;
+    }
+    if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED &&
                feedback->reason == OPERATOR_CLOCK_RESULT_OUT_OF_RANGE) {
         detail = FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_OUT_OF_RANGE;
     } else if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED &&
@@ -11584,12 +11601,17 @@ static void apply_action(
         explorer->clock_draft = explorer->clock_known
             ? explorer->clock
             : (furnace_hmi_operator_clock_t){ OPERATOR_CLOCK_YEAR_MIN, 1U, 1U, 0U, 0U };
+        explorer->clock_draft_touched = false;
         (void)settings_open_clock(explorer);
         break;
     case OPERATOR_ACTION_SETTINGS_CLOCK_STEP:
         if (value >= 0) {
+            const furnace_hmi_operator_clock_t before = explorer->clock_draft;
             clock_step(&explorer->clock_draft, (uint8_t)((unsigned)value >> 1),
                        ((unsigned)value & 1U) != 0U ? 1 : -1);
+            /* A step at a limit changes nothing: still the placeholder. */
+            explorer->clock_draft_touched = explorer->clock_draft_touched ||
+                                            memcmp(&before, &explorer->clock_draft, sizeof(before)) != 0;
             (void)settings_open_clock(explorer);
         }
         break;
@@ -13076,7 +13098,10 @@ bool furnace_hmi_operator_screens_set_clock(furnace_hmi_operator_screens_t *expl
     if (explorer == NULL || explorer->root == NULL || clock == NULL) {
         return false;
     }
-    const bool known = clock->reported && clock->set && clock->wall_ms >= 0;
+    /* Within 1970 to about 6000 the minute fits 32 bits (the host passes only the controller's
+     * range; this guards the cast). */
+    const bool known = clock->reported && clock->set && clock->wall_ms >= 0 &&
+                       clock->wall_ms / 60000 <= (int64_t)INT32_MAX / 2;
     const bool unset = clock->reported && !clock->set;
     furnace_hmi_operator_clock_t shown = explorer->clock;
     if (known) {
@@ -13091,7 +13116,9 @@ bool furnace_hmi_operator_screens_set_clock(furnace_hmi_operator_screens_t *expl
     explorer->clock = shown;
     explorer->clock_known = known;
     explorer->clock_unset = unset;
-    if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_SETTINGS || explorer->page == FURNACE_HMI_OPERATOR_PAGE_DEVICE) {
+    /* Only what shows the clock is drawn again (M21-7e review): Date & time and the Device log. */
+    if ((explorer->page == FURNACE_HMI_OPERATOR_PAGE_SETTINGS && explorer->settings_tab == OPERATOR_SETTINGS_TAB_TIME) ||
+        (explorer->page == FURNACE_HMI_OPERATOR_PAGE_DEVICE && explorer->device_tab == OPERATOR_DEVICE_TAB_COMPONENTS)) {
         return rebuild_page_keeping_modal(explorer);
     }
     return true;

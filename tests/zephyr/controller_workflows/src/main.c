@@ -814,6 +814,14 @@ ZTEST(controller_workflows, test_g_controller_clock)
     zassert_equal(o.reason, FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE, "OUT_OF_RANGE expected: %u", o.reason);
     zassert_equal(o.clock_state, before, "a refusal changes nothing");
 
+    /* The range's edges, both inclusive (review): just outside is refused, the edges are set. */
+    o = set_clock(FURNACE_HMI_CLOCK_MIN_MS - 1);
+    zassert_equal(o.reason, FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE, "before 2025: %u", o.reason);
+    o = set_clock(FURNACE_HMI_CLOCK_MAX_MS + 1);
+    zassert_equal(o.reason, FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE, "after 2099: %u", o.reason);
+    zassert_equal(set_clock(FURNACE_HMI_CLOCK_MAX_MS).state, FURNACE_HMI_COMMAND_ACCEPTED, "the last time");
+    zassert_equal(set_clock(FURNACE_HMI_CLOCK_MIN_MS).state, FURNACE_HMI_COMMAND_ACCEPTED, "the first time");
+
     o = set_clock(WORKFLOW_CLOCK_MS);
     zassert_equal(o.state, FURNACE_HMI_COMMAND_ACCEPTED, "APPLIED expected: reason %u", o.reason);
     zassert_true(o.clock_state == FURNACE_HMI_WALL_VALID || o.clock_state == FURNACE_HMI_WALL_ADJUSTED,

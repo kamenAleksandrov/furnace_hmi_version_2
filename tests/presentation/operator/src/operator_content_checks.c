@@ -2394,6 +2394,16 @@ static int limits_checks(const char **failure)
 /* 2026-11-23T12:00:59.999Z, a Monday: the controller's time in the clock check. */
 #define CLOCK_CHECK_MS (1795435200000LL + 59999LL)
 
+/* The picker's + (up) or - button of a field: modal > dialog > picker (title, hidden detail,
+ * picker) > column (name, +, value, -). Every step rebuilds the dialog: look it up each time. */
+static lv_obj_t *clock_step_button(uint32_t field, bool up)
+{
+    lv_obj_t *dialog = screens.modal == NULL ? NULL : lv_obj_get_child(screens.modal, 0);
+    lv_obj_t *picker = dialog == NULL ? NULL : lv_obj_get_child(dialog, 2);
+    lv_obj_t *column = picker == NULL ? NULL : lv_obj_get_child(picker, (int32_t)field);
+    return column == NULL ? NULL : lv_obj_get_child(column, up ? 1 : 3);
+}
+
 /* The Date & time card, found by its time (24-hour or 12-hour; the tab shares its label). */
 static lv_obj_t *clock_card(void)
 {
@@ -2420,6 +2430,41 @@ static int clock_checks(const char **failure)
     /* The date format card shows its format with an example date, not "Not set" (found by hand). */
     if (!tree_contains(screens.root, "31 Dec 2025")) {
         return failed(failure, "The date format is not shown with an example date.", 1114);
+    }
+    /* Its choices too, never a zero date (review). */
+    click(card_with_text(screens.root, "31 Dec 2025"));
+    if (screens.modal == NULL || !modal_contains("2025") || modal_contains("Dec 0")) {
+        return failed(failure, "The date format choices show a zero date without a clock.", 1120);
+    }
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
+        return failed(failure, "Settings could not be shown again.", 1121);
+    }
+    /* An unknown clock's picker starts at 1 Jan 2025 and Set waits for the operator's own date;
+     * a step at the limit is no change; the year stays within 2025 to 2099 (review). */
+    click(card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_NOT_SET)));
+    if (screens.modal == NULL || !modal_contains("1 Jan 2025") ||
+        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME))) {
+        return failed(failure, "An unknown clock's placeholder can be set unchanged.", 1115);
+    }
+    click(clock_step_button(2U, false));
+    if (!modal_contains("1 Jan 2025") || enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME))) {
+        return failed(failure, "The year goes below 2025, or a step that changed nothing enables Set.", 1116);
+    }
+    click(clock_step_button(2U, true));
+    if (!modal_contains("1 Jan 2026") || !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME))) {
+        return failed(failure, "A changed date cannot be set.", 1117);
+    }
+    for (unsigned int step = 0U; step < 80U; ++step) {
+        click(clock_step_button(2U, true));
+    }
+    if (!modal_contains("2099") || modal_contains("2100")) {
+        return failed(failure, "The year goes beyond 2099.", 1118);
+    }
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
+        return failed(failure, "Settings could not be shown again.", 1122);
+    }
+    if (furnace_hmi_operator_screens_take_request(&screens, &request)) {
+        return failed(failure, "The picker sent a request without Set.", 1123);
     }
     clock.set = true;
     clock.wall_ms = CLOCK_CHECK_MS;
@@ -2462,8 +2507,10 @@ static int clock_checks(const char **failure)
         return failed(failure, "A second setting is not asked.", 1108);
     }
     answer(&state.command_feedback, 71U, FURNACE_HMI_FEEDBACK_UNRESOLVED, 0U);
-    if (!update() || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNKNOWN)) {
-        return failed(failure, "A setting without an answer is not said to be unknown.", 1109);
+    if (!update() || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNCONFIRMED_TITLE) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNKNOWN) ||
+        modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_REFUSED_TITLE)) {
+        return failed(failure, "A setting without an answer is said to be not set.", 1109);
     }
     click(first_button(screens.modal));
     click(clock_card());
@@ -2476,6 +2523,49 @@ static int clock_checks(const char **failure)
         return failed(failure, "An applied setting is not confirmed.", 1111);
     }
     click(first_button(screens.modal));
+    click(clock_card());
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_SET_DATE_TIME));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_CLOCK_SET, 73U, &request)) {
+        return failed(failure, "A fourth setting is not asked.", 1124);
+    }
+    answer(&state.command_feedback, 73U, FURNACE_HMI_FEEDBACK_REJECTED, 1U);
+    if (!update() || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_REFUSED_TITLE) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_OUT_OF_RANGE)) {
+        return failed(failure, "A time outside the controller's range is not refused with its reason.", 1125);
+    }
+    click(first_button(screens.modal));
+
+    /* A minute later only what shows the clock is drawn again: not Display (review). */
+    screens.settings_tab = 0U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
+        return failed(failure, "Settings could not be shown again.", 1126);
+    }
+    lv_obj_t *kept = lv_obj_get_child(screens.content, 0);
+    clock.wall_ms += 60000;
+    if (!furnace_hmi_operator_screens_set_clock(&screens, &clock) || kept == NULL || !lv_obj_is_valid(kept)) {
+        return failed(failure, "A new minute redraws a page that does not show the clock.", 1119);
+    }
+    screens.settings_tab = 1U;
+
+    /* The Device log: an entry dated after the clock (it was set back) shows its date only. */
+    (void)memset(&history_fixture, 0, sizeof(history_fixture));
+    history_fixture.state = FURNACE_HMI_HISTORY_READ;
+    history_fixture.count = 1U;
+    history_entry(0U, 1U, 1U, 1000U, 10U, 0U, 1U, 1U, 1U, 0U, 0U, 0U);
+    history_fixture.entries[0].wall_state = 1U;
+    history_fixture.entries[0].wall_ms = INT64_C(1796032800000); /* 2026-11-30 10:00 */
+    history_fixture.logs[0].state = FURNACE_HMI_HISTORY_LOG_READ;
+    history_fixture.logs[1].state = FURNACE_HMI_HISTORY_LOG_READ;
+    history_fixture.logs[2].state = FURNACE_HMI_HISTORY_LOG_READ;
+    if (!open_device_tab(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LOG) || !give_diagnostics() ||
+        !log_shows("30 Nov 2026") || tree_contains(screens.root, "days ago") ||
+        tree_contains(screens.root, "4294967")) {
+        return failed(failure, "An entry dated after the clock is not shown with its date only.", 1127);
+    }
+    screens.settings_tab = 1U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
+        return failed(failure, "Settings could not be shown again.", 1128);
+    }
 
     /* No controller clock at all: unavailable, not "not set". */
     clock.reported = false;

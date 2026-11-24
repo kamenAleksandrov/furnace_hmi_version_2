@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 1075 of 1075 strings; missing entries are NULL and fall back to English. */
+/* en: 1076 of 1076 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -647,7 +647,8 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_REFUSED_TITLE] = "Date and time not set",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_OUT_OF_RANGE] = "The furnace controller accepts dates from 2025 to 2099 (UTC). Nothing changed.",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_SESSION_ACTIVE] = "The date and time cannot change while a program or Manual session runs. Nothing changed.",
-    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNKNOWN] = "The furnace controller did not answer. The date and time shown are the controller's.",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNCONFIRMED_TITLE] = "Date and time not confirmed",
+    [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UNKNOWN] = "The furnace controller did not answer. The change may or may not have been made; check the date and time shown.",
     [FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CONTROL_LINK_CAPTION] = "Control link, separate from server and Bluetooth",
     [FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LAST_SERVICE] = "Last service",
     [FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_NO_SERVICE_ATTENTION] = "No current service attention",

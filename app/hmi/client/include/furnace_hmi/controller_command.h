@@ -103,6 +103,13 @@ typedef struct {
 #define FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE 1U
 #define FURNACE_HMI_CLOCK_RESULT_SESSION_ACTIVE 2U
 
+/**
+ * The times the controller accepts (interface, Clock; owner O3, a PROVISIONAL firmware fixture):
+ * 2025-01-01T00:00:00Z to 2099-12-31T23:59:59.999Z, Unix ms. A clock outside it is not shown.
+ */
+#define FURNACE_HMI_CLOCK_MIN_MS 1735689600000LL
+#define FURNACE_HMI_CLOCK_MAX_MS 4102444799999LL
+
 /** The controller clock's state (interface, Clock): unknown, set once, set again. */
 #define FURNACE_HMI_WALL_UNKNOWN 0U
 #define FURNACE_HMI_WALL_VALID 1U

@@ -583,7 +583,9 @@ const PRESENTATION_CHOICE = `(()=>{
     await sleep(50);
     assert.strictEqual(await evaluate('document.getElementById(\'message-body\').children.length+\'|\'+dirty()'), '0|false');
     // The controller's clock is universal time, shown as UTC whatever the browser's zone (M21-7e).
-    assert.strictEqual(await evaluate('(()=>{clockOffsetMs=0;tab="time";render();const card=document.querySelector(".clock-card").textContent;const now=new Date();return card.includes("· UTC")&&clockNow().getHours()===now.getUTCHours()&&clockNow().getDate()===now.getUTCDate()})()'), true);
+    assert.strictEqual(await evaluate('(()=>{clockOffsetMs=0;tab="time";render();return document.querySelector(".clock-card").textContent.includes("· UTC")})()'), true);
+    // Read through UTC getters whatever the host's zone, also across a European summer-time change (2027-03-28 01:30Z).
+    assert.strictEqual(await evaluate('(()=>{const c=utcClock(Date.UTC(2027,2,28,1,30));return [c.getFullYear(),c.getMonth(),c.getDate(),c.getHours(),c.getMinutes(),c.getDay()].join(",")})()'), '2027,2,28,1,30,0');
     await evaluate('mainPage=\'device\';deviceTab=\'log\';render()');
 
     for (const [width, height] of [[800, 480], [800, 640], [1024, 600]]) {

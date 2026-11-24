@@ -9,7 +9,11 @@ asks). Stacked on M21-7d-2; needs furnace 7e-1 (draft PR #68). Details in the Ph
   Set date & time with the controller's answer; the labs and the web demo show UTC.
 - **Evidence:** host, desktop, UI lab and web checks, Zephyr Twister, and the operator workflows
   against 7e-1's `link_pty` (with `test_g_controller_clock`). Counts in the pull request.
-- **Open:** a hardware clock (furnace HW-BLOCK-013); time zones (UTC by the owner's choice).
+- **Reviews:** three AI reviews in the HMI roles, not the required human reviews; fixed test-first
+  (the time on a lost link, a 49.7-day jump race, the redraw scope, an unanswered set, the
+  placeholder date, zero and negative dates, the web demo's UTC).
+- **Open:** a hardware clock (furnace HW-BLOCK-013); time zones (UTC by the owner's choice); the
+  labs' clock is simulated and accepts every set.
 
 **Fact (2026-11-20, Phase 21 M21-7d-2, draft):** the labs' Start and save dialogs are the
 controller's. Stacked on M21-7d-1; choices and gaps in the Phase 21 plan ("M21-7d-2 done").

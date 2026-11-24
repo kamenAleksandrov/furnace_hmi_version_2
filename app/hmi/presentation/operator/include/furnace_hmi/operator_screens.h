@@ -761,6 +761,9 @@ struct furnace_hmi_operator_screens {
     bool clock_known;
     /* M21-7e: the controller reports its clock unknown (not set since its start). */
     bool clock_unset;
+    /* M21-7e review: the picker's draft was changed since it opened (an unknown clock's
+     * placeholder date is never sent unchanged). */
+    bool clock_draft_touched;
     bool log_known;
     bool device_catalogue_known;
     bool simulated_responses;
