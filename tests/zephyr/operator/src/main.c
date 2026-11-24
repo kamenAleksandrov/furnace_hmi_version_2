@@ -12,7 +12,10 @@
 #include <furnace_hmi/operator_content_checks.h>
 #include <lvgl.h>
 
+#include <string.h>
+
 #include "operator_commands.h"
+#include "operator_library.h"
 
 /* The application's requests as controller commands (M21-5b). */
 ZTEST(furnace_hmi_operator, test_operator_requests_as_commands)
@@ -72,7 +75,7 @@ ZTEST(furnace_hmi_operator, test_operator_requests_as_commands)
                  "acknowledgement of entry 3/1");
 
     request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM;
-    zassert_false(furnace_hmi_operator_command_for(&request, &command), "program Start is M21-7");
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a program Start names a program (M21-7b)");
     request.kind = FURNACE_HMI_OPERATOR_REQUEST_CLOSE_RUN;
     zassert_false(furnace_hmi_operator_command_for(&request, &command), "nothing to close on a controller");
 }
@@ -119,6 +122,208 @@ ZTEST(furnace_hmi_operator, test_operator_screens_faults_and_decision)
     const int result = furnace_hmi_operator_fault_check(display, &failure);
 
     zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+ZTEST(furnace_hmi_operator, test_operator_screens_show_the_controller_library)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_library_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+ZTEST(furnace_hmi_operator, test_operator_screens_save_and_delete_on_the_controller)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_library_command_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+ZTEST(furnace_hmi_operator, test_operator_screens_start_on_the_controller)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_start_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+ZTEST(furnace_hmi_operator, test_operator_screens_follow_library_changes)
+{
+    const char *failure = "";
+    lv_display_t *display = lv_display_get_default();
+
+    zassert_not_null(display, "LVGL has no display");
+    const int result = furnace_hmi_operator_library_review_check(display, &failure);
+
+    zassert_equal(result, 0, "check %d: %s", result, failure);
+}
+
+/* A program Start, Confirm and Cancel as controller commands (M21-7b). */
+ZTEST(furnace_hmi_operator, test_program_start_as_commands)
+{
+    static furnace_hmi_operator_request_t request;
+    static furnace_hmi_command_t command;
+
+    (void)memset(&request, 0, sizeof(request));
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM;
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a Start names a program");
+    request.program_id = 7U;
+    request.program_revision = 3U;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_PROGRAM_START && command.program_id == 7U &&
+                 command.program_revision == 3U);
+
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM;
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a Confirm names a transaction");
+    request.transaction_id = 12U;
+    request.proposal_revision = 4U;
+    request.proposed_stage = 2U;
+    request.accepted_duration_s = 11400U;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_START_CONFIRM && command.transaction_id == 12U &&
+                     command.proposal_revision == 4U && command.proposed_stage == 2U && command.program_id == 7U &&
+                     command.program_revision == 3U && command.accepted_duration_s == 11400U,
+                 "exactly the proposal shown");
+
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_START_CANCEL && command.transaction_id == 12U);
+    request.transaction_id = 0U;
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a Cancel names a transaction");
+}
+
+/* Library changes as controller commands (M21-7b). */
+ZTEST(furnace_hmi_operator, test_library_changes_as_commands)
+{
+    static furnace_hmi_operator_request_t request;
+    static furnace_hmi_command_t command;
+
+    (void)memset(&request, 0, sizeof(request));
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE;
+    request.program_id = 7U;
+    request.program_revision = 3U;
+    request.acknowledged_duration_s = 36000U;
+    (void)strcpy(request.program_name, "Kür 120");
+    request.program.stage_count = 2U;
+    request.program.stages[0] = (furnace_hmi_operator_program_stage_t){FURNACE_HMI_OPERATOR_STAGE_HEATING, 85, 15, 40};
+    request.program.stages[1] = (furnace_hmi_operator_program_stage_t){FURNACE_HMI_OPERATOR_STAGE_HOLD, 85, 0, 30};
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_PROGRAM_SAVE && command.program_id == 7U &&
+                     command.program_revision == 3U && command.acknowledged_duration_s == 36000U &&
+                     strcmp(command.name, "Kür 120") == 0 && command.stage_count == 2U,
+                 "the save's identity, acknowledgement and name");
+    zassert_true(command.stages[0].kind == FURNACE_HMI_CONTROLLER_STAGE_HEATING &&
+                     command.stages[0].target_decicelsius == 850 && command.stages[0].rate_decicelsius_per_min == 15,
+                 "Heating: target in 0.1 C and rate");
+    zassert_true(command.stages[1].kind == FURNACE_HMI_CONTROLLER_STAGE_HOLD &&
+                     command.stages[1].duration_minutes == 30U,
+                 "Hold: its duration");
+
+    request.program_id = 0U;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.program_id == 0U && command.program_revision == 0U, "a new program has no revision");
+    request.program.stages[1].minutes = 0;
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a Hold of 0 min");
+    request.program.stages[1].minutes = 30;
+    request.program.stage_count = 0U;
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "no stages");
+    request.program.stage_count = 2U;
+    request.program_name[0] = '\0';
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "no name");
+
+    request.kind = FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE;
+    request.program_id = 9U;
+    request.program_revision = 4U;
+    zassert_true(furnace_hmi_operator_command_for(&request, &command));
+    zassert_true(command.kind == FURNACE_HMI_COMMAND_PROGRAM_DELETE && command.program_id == 9U &&
+                     command.program_revision == 4U);
+    request.program_id = 0U;
+    zassert_false(furnace_hmi_operator_command_for(&request, &command), "a delete names a program");
+}
+
+/* The controller's library in the screens' units (M21-7b). */
+ZTEST(furnace_hmi_operator, test_the_controller_library_for_the_screens)
+{
+    static furnace_hmi_controller_library_t in;
+    static furnace_hmi_operator_library_t out;
+
+    (void)memset(&in, 0, sizeof(in));
+    furnace_hmi_operator_library_from_controller(&in, &out);
+    zassert_equal(out.state, FURNACE_HMI_OPERATOR_LIBRARY_LOADING, "no listing yet: being read");
+    in.state = FURNACE_HMI_LIBRARY_UNAVAILABLE;
+    in.count = 1U;
+    furnace_hmi_operator_library_from_controller(&in, &out);
+    zassert_true(out.state == FURNACE_HMI_OPERATOR_LIBRARY_UNAVAILABLE && out.count == 0U);
+    in.state = FURNACE_HMI_LIBRARY_TOO_LARGE;
+    furnace_hmi_operator_library_from_controller(&in, &out);
+    zassert_true(out.state == FURNACE_HMI_OPERATOR_LIBRARY_TOO_LARGE && out.count == 0U);
+
+    in.state = FURNACE_HMI_LIBRARY_CURRENT;
+    in.updating = true;
+    in.count = 3U;
+    /* 0: Heating to 85.0 C at 1.5 C/min from 25 C (40 min), Hold 30 min. */
+    in.programs[0].program_id = 4U;
+    in.programs[0].program_revision = 6U;
+    (void)strcpy(in.programs[0].name, "Kür 120");
+    in.programs[0].stage_count = 2U;
+    in.programs[0].stages[0] = (furnace_hmi_controller_stage_t){
+        .kind = FURNACE_HMI_CONTROLLER_STAGE_HEATING, .target_decicelsius = 850,
+        .rate_decicelsius_per_min = 15};
+    in.programs[0].stages[1] = (furnace_hmi_controller_stage_t){
+        .kind = FURNACE_HMI_CONTROLLER_STAGE_HOLD, .duration_minutes = 30U};
+    /* 1: a target in tenths of a degree. */
+    in.programs[1] = in.programs[0];
+    in.programs[1].program_id = 5U;
+    in.programs[1].stages[0].target_decicelsius = 855;
+    /* 2: damaged. */
+    in.programs[2].program_id = 8U;
+    in.programs[2].damaged = true;
+    furnace_hmi_operator_library_from_controller(&in, &out);
+    zassert_true(out.state == FURNACE_HMI_OPERATOR_LIBRARY_CURRENT && out.updating && out.count == 3U);
+
+    const furnace_hmi_operator_program_t *p = &out.programs[0];
+    zassert_true(p->present && p->id == 4U && p->revision == 6U && strcmp(p->name, "Kür 120") == 0,
+                 "identity and the UTF-8 name");
+    zassert_true(!p->damaged && !p->inexact && p->stage_count == 2U);
+    zassert_true(p->stages[0].kind == FURNACE_HMI_OPERATOR_STAGE_HEATING && p->stages[0].target_c == 85 &&
+                     p->stages[0].rate_tenths_c_per_minute == 15 && p->stages[0].minutes == 40,
+                 "Heating in whole degrees, its minutes from 25 C");
+    zassert_true(p->stages[1].kind == FURNACE_HMI_OPERATOR_STAGE_HOLD && p->stages[1].target_c == 85 &&
+                     p->stages[1].minutes == 30 && p->stages[1].rate_tenths_c_per_minute == 0,
+                 "Hold at the previous target");
+    zassert_true(out.programs[1].inexact && out.programs[1].stages[0].target_c == 86,
+                 "85.5 C is shown rounded and marked inexact");
+    zassert_true(out.programs[2].damaged && !out.programs[2].inexact && out.programs[2].stage_count == 0U);
+
+    /* Outside the editors' range: a rate of 0, over 3.0 C/min, over 180 C, a Hold of 0 min. */
+    static const struct {
+        int32_t target;
+        int32_t rate;
+        uint32_t hold;
+    } outside[] = {{850, 0, 30U}, {850, 31, 30U}, {1810, 15, 30U}, {850, 15, 0U}};
+    for (size_t i = 0U; i < ARRAY_SIZE(outside); i++) {
+        in.programs[0].stages[0].target_decicelsius = outside[i].target;
+        in.programs[0].stages[0].rate_decicelsius_per_min = outside[i].rate;
+        in.programs[0].stages[1].duration_minutes = outside[i].hold;
+        furnace_hmi_operator_library_from_controller(&in, &out);
+        zassert_true(out.programs[0].inexact, "case %u is not inexact", (unsigned int)i);
+    }
+    in.programs[0].stages[0].target_decicelsius = 850;
+    in.programs[0].stages[0].rate_decicelsius_per_min = 15;
+    in.programs[0].stages[1].duration_minutes = 30U;
+    in.programs[0].stages[1].kind = 3U;
+    furnace_hmi_operator_library_from_controller(&in, &out);
+    zassert_true(out.programs[0].inexact, "an unknown stage kind is inexact");
 }
 
 ZTEST_SUITE(furnace_hmi_operator, NULL, NULL, NULL, NULL, NULL);

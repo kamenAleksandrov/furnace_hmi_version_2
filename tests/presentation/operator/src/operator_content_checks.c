@@ -1046,3 +1046,797 @@ int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure
     }
     return result;
 }
+
+/* M21-7b: the controller's library on the screens. */
+static furnace_hmi_operator_library_t library;
+
+/* A controller program: Heating and Hold in turn, from 40 C up in 5 C steps. */
+static void library_program(uint8_t slot, uint32_t id, const char *name, uint8_t stages)
+{
+    furnace_hmi_operator_program_t *program = &library.programs[slot];
+
+    (void)memset(program, 0, sizeof(*program));
+    program->present = true;
+    program->id = id;
+    program->revision = 1U;
+    (void)snprintf(program->name, sizeof(program->name), "%s", name);
+    program->stage_count = stages;
+    for (uint8_t index = 0U; index < stages; ++index) {
+        const int32_t target = 40 + (int32_t)(index / 2U) * 5;
+        program->stages[index] = (index % 2U == 0U)
+            ? (furnace_hmi_operator_program_stage_t){FURNACE_HMI_OPERATOR_STAGE_HEATING, target, 10, 5}
+            : (furnace_hmi_operator_program_stage_t){FURNACE_HMI_OPERATOR_STAGE_HOLD, target, 0, 10};
+    }
+}
+
+static bool give_library(furnace_hmi_operator_library_state_t library_state, uint8_t count,
+                         bool updating)
+{
+    library.state = library_state;
+    library.count = count;
+    library.updating = updating;
+    if (!furnace_hmi_operator_screens_set_library(&screens, &library)) {
+        return false;
+    }
+    settle();
+    lv_refr_now(NULL);
+    return true;
+}
+
+static bool page_says(furnace_hmi_ui_string_id_t id)
+{
+    return tree_contains(screens.root, furnace_hmi_ui_string(id));
+}
+
+static int library_checks(const char **failure)
+{
+    (void)memset(&library, 0, sizeof(library));
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_LOADING, 0U, false) ||
+        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) || !page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_LOADING) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_EMPTY_LIBRARY)) {
+        return failed(failure, "A library being read is not shown as being read.", 401);
+    }
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_UNAVAILABLE, 0U, false) ||
+        !page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_STORAGE_UNAVAILABLE)) {
+        return failed(failure, "An unavailable library is not shown as unavailable.", 402);
+    }
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_TOO_LARGE, 0U, false) ||
+        !page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_TOO_LARGE) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_EMPTY_LIBRARY)) {
+        return failed(failure, "A library too large to list is not said to be.", 403);
+    }
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 0U, false) ||
+        !page_says(FURNACE_HMI_UI_STRING_UI_LAB_EMPTY_LIBRARY)) {
+        return failed(failure, "An empty library is not shown as empty.", 404);
+    }
+
+    library_program(0U, 7U, "Controller cure 7", 4U);
+    library_program(1U, 9U, "Eighteen stages", 18U);
+    library_program(2U, 11U, "Unreadable", 0U);
+    library.programs[2].damaged = true;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, true) ||
+        !tree_contains(screens.root, "Controller cure 7") || !tree_contains(screens.root, "Eighteen stages")) {
+        return failed(failure, "The controller's programs are not listed by their names.", 405);
+    }
+    if (!page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UPDATING)) {
+        return failed(failure, "A library being read again is not marked as updating.", 406);
+    }
+    if (!page_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DAMAGED) ||
+        enabled(button_with_text(screens.root, "Unreadable"))) {
+        return failed(failure, "A damaged program is not shown as damaged, or can be opened.", 407);
+    }
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) ||
+        page_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UPDATING)) {
+        return failed(failure, "A current library is still marked as updating.", 408);
+    }
+
+    /* Eighteen stages: nine to a page, on two pages. */
+    click(button_with_text(screens.root, "Eighteen stages"));
+    if (screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || screens.selected_program != 1U ||
+        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES) || !tree_contains(screens.root, "1 / 2")) {
+        return failed(failure, "A program of 18 stages is not shown on two stage pages.", 409);
+    }
+    /* Values the editors cannot show exactly: not offered for editing. */
+    library.programs[1].inexact = true;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) ||
+        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL) ||
+        enabled(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM))) ||
+        !enabled(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)))) {
+        return failed(failure, "A program the editors would round can be edited, or not started.", 410);
+    }
+
+    /* The open program and the favourites follow the controller's IDs, not the places. */
+    screens.quick_launch_favourites[0] = 1U;
+    screens.favourite_count = 1U;
+    const furnace_hmi_operator_program_t first = library.programs[0];
+    library.programs[0] = library.programs[1];
+    library.programs[1] = first;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) || screens.selected_program != 0U ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || screens.favourite_count != 1U ||
+        screens.quick_launch_favourites[0] != 0U || !tree_contains(screens.root, "Eighteen stages")) {
+        return failed(failure, "The open program or a favourite does not follow its controller ID.", 411);
+    }
+    /* Deleted on the controller: its page closes, and it is no favourite. */
+    library.programs[0] = library.programs[1];
+    library.programs[1] = library.programs[2];
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 2U, false) ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS || screens.favourite_count != 0U ||
+        tree_contains(screens.root, "Eighteen stages")) {
+        return failed(failure, "A program deleted on the controller stays open or a favourite.", 412);
+    }
+    /* No longer listed: nothing of the previous listing is shown. */
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_UNAVAILABLE, 0U, false) ||
+        tree_contains(screens.root, "Controller cure 7")) {
+        return failed(failure, "An unavailable library still shows the previous listing.", 413);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_library_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 400);
+    }
+    settle();
+    const int result = library_checks(failure);
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}
+
+/* The label that reads text. */
+static lv_obj_t *label_with_text(lv_obj_t *object, const char *text)
+{
+    if (lv_obj_check_type(object, &lv_label_class) && strcmp(lv_label_get_text(object), text) == 0) {
+        return object;
+    }
+    const uint32_t count = lv_obj_get_child_count(object);
+    for (uint32_t index = 0U; index < count; ++index) {
+        lv_obj_t *found = label_with_text(lv_obj_get_child(object, (int32_t)index), text);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+/* The clickable card holding the label that reads text (Settings cards are not buttons). */
+static lv_obj_t *card_with_text(lv_obj_t *root, const char *text)
+{
+    lv_obj_t *object = label_with_text(root, text);
+    while (object != NULL && object != root && !lv_obj_has_flag(object, LV_OBJ_FLAG_CLICKABLE)) {
+        object = lv_obj_get_parent(object);
+    }
+    return object == root ? NULL : object;
+}
+
+/* M21-7b: saves and deletes go to the controller, and only its answer changes anything. */
+static bool modal_says(furnace_hmi_ui_string_id_t id)
+{
+    lv_refr_now(NULL);
+    return screens.modal != NULL && tree_contains(screens.modal, furnace_hmi_ui_string(id));
+}
+
+/* The ordinary slot's answer to submission, as the next observation carries it, with the
+ * error fields and estimate the test set before. */
+static bool library_answer(uint32_t submission, furnace_hmi_feedback_state_t outcome, uint8_t reason)
+{
+    const furnace_hmi_command_feedback_t details = state.command_feedback;
+
+    answer(&state.command_feedback, submission, outcome, reason);
+    state.command_feedback.error_field = details.error_field;
+    state.command_feedback.error_reason = details.error_reason;
+    state.command_feedback.error_stage = details.error_stage;
+    state.command_feedback.curing_estimate_s = details.curing_estimate_s;
+    return update();
+}
+
+static int library_command_checks(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+
+    (void)memset(&library, 0, sizeof(library));
+    library_program(0U, 7U, "Controller cure 7", 4U);
+    library_program(1U, 9U, "Second cure", 2U);
+    library.programs[0].revision = 3U;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 2U, false) ||
+        !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
+        return failed(failure, "The library could not be shown.", 501);
+    }
+    click(button_with_text(screens.root, "Controller cure 7"));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!screens.program_editor_active || !next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 21U, &request) ||
+        request.program_id != 7U || request.program_revision != 3U || request.acknowledged_duration_s != 0U ||
+        strcmp(request.program_name, "Controller cure 7") != 0 || request.program.stage_count != 4U ||
+        request.program.stages[1].kind != FURNACE_HMI_OPERATOR_STAGE_HOLD || request.program.stages[1].minutes != 10) {
+        return failed(failure, "Save does not send the edited program with its ID and revision.", 502);
+    }
+    if (!modal_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_SENDING_TITLE) || !no_request()) {
+        return failed(failure, "A save being answered is not shown as sent, or sends more.", 503);
+    }
+
+    /* Refused as invalid: the first error is named, and the draft stays open. */
+    state.command_feedback.error_field = 6U;  /* target */
+    state.command_feedback.error_reason = 11U; /* not increasing */
+    state.command_feedback.error_stage = 2U;
+    if (!library_answer(21U, FURNACE_HMI_FEEDBACK_REJECTED, 1U) || !screens.program_editor_active ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_NOT_ACCEPTED) ||
+        !tree_contains(screens.modal, "Stage 3, Target: must be higher than the previous target.")) {
+        return failed(failure, "An invalid program is not explained, or the draft is closed.", 504);
+    }
+    click(first_button(screens.modal));
+
+    /* Longer than advised: saved only after the operator acknowledges the controller's estimate. */
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 22U, &request)) {
+        return failed(failure, "Save cannot be sent again after a refusal.", 505);
+    }
+    state.command_feedback.curing_estimate_s = 36000U;
+    if (!library_answer(22U, FURNACE_HMI_FEEDBACK_REJECTED, 9U) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_TITLE) || !tree_contains(screens.modal, "600 min") ||
+        !no_request()) {
+        return failed(failure, "A save needing acknowledgement does not ask for it, or sends by itself.", 506);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 23U, &request) ||
+        request.acknowledged_duration_s != 36000U || request.program_id != 7U) {
+        return failed(failure, "The acknowledged save does not carry the controller's estimate.", 507);
+    }
+    state.command_feedback.curing_estimate_s = 0U;
+    if (!library_answer(23U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.program_editor_active ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_SAVED)) {
+        return failed(failure, "A saved program does not close the editor on its details.", 508);
+    }
+    click(first_button(screens.modal));
+
+    /* Not known whether it was saved: said so, and the draft stays. */
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 24U, &request) ||
+        !library_answer(24U, FURNACE_HMI_FEEDBACK_UNRESOLVED, 0U) || !screens.program_editor_active ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNRESOLVED_DETAIL)) {
+        return failed(failure, "An unresolved save is not said to be unresolved, or the draft is closed.", 509);
+    }
+    click(first_button(screens.modal));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
+    if (screens.program_editor_active) {
+        return failed(failure, "The editor does not close.", 510);
+    }
+
+    /* A new program is sent without an ID. */
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
+        return failed(failure, "Programs could not be shown.", 511);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_ADD_STAGE_ACTION)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 25U, &request) || request.program_id != 0U ||
+        request.program_revision != 0U || request.program.stage_count != 1U) {
+        return failed(failure, "A new program is not sent as new.", 512);
+    }
+    if (!library_answer(25U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.program_editor_active ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) {
+        return failed(failure, "A saved new program does not return to Programs.", 513);
+    }
+    click(first_button(screens.modal));
+
+    /* Delete: by ID and revision; refused, it stays; deleted, Programs is shown. */
+    click(button_with_text(screens.root, "Controller cure 7"));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 26U, &request) || request.program_id != 7U ||
+        request.program_revision != 3U) {
+        return failed(failure, "Delete does not name the program and revision shown.", 514);
+    }
+    if (!library_answer(26U, FURNACE_HMI_FEEDBACK_REJECTED, 3U) ||
+        screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_3)) {
+        return failed(failure, "A refused delete is not explained, or leaves the program.", 515);
+    }
+    click(first_button(screens.modal));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DELETE_DRAFT));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 27U, &request) ||
+        !library_answer(27U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.page != FURNACE_HMI_OPERATOR_PAGE_PROGRAMS ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED)) {
+        return failed(failure, "A deleted program does not return to Programs.", 516);
+    }
+    click(first_button(screens.modal));
+
+    /* Settings > Delete programs: one at a time, by ID, while the library changes. */
+    screens.settings_tab = 3U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
+        return failed(failure, "Settings could not be shown.", 517);
+    }
+    click(card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_PROGRAMS)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_ALL));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 28U, &request) || request.program_id != 7U) {
+        return failed(failure, "Delete programs does not start with the first program.", 518);
+    }
+    /* The library is listed again before the answer: the second program moves to the first place. */
+    library.programs[0] = library.programs[1];
+    library.programs[0].revision = 4U;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 1U, false) ||
+        !library_answer(28U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) ||
+        !next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 29U, &request) || request.program_id != 9U ||
+        request.program_revision != 4U) {
+        return failed(failure, "Delete programs does not follow the next program by its ID.", 519);
+    }
+    char deleted[96];
+    (void)snprintf(deleted, sizeof(deleted),
+                   furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED_DETAIL_FORMAT), 2U);
+    if (!library_answer(29U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || !no_request() || screens.settings_deleting ||
+        !tree_contains(screens.root, deleted)) {
+        return failed(failure, "Delete programs does not report what the controller deleted.", 520);
+    }
+    return 0;
+}
+
+
+/* M21-7b: names of 31 characters (PROG-09, REQ-FUN-020): whole in the editor and the save,
+ * however many bytes they take, and never longer from the keyboard. */
+static int name_checks(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+    char name[80];
+    size_t used = 0U;
+
+    for (int character = 0; character < 31; ++character) {
+        name[used++] = '\xD0'; /* U+0416, two bytes */
+        name[used++] = '\x96';
+    }
+    name[used] = '\0';
+    if (screens.modal != NULL) {
+        click(first_button(screens.modal)); /* the previous checks' last message */
+    }
+    (void)memset(&library, 0, sizeof(library));
+    library_program(0U, 20U, name, 2U);
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 1U, false)) {
+        return failed(failure, "The library could not be shown.", 701);
+    }
+    screens.selected_program = 0U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL)) {
+        return failed(failure, "The program could not be shown.", 702);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    if (!screens.program_editor_active || strcmp(screens.program_editor_name, name) != 0) {
+        return failed(failure, "A name of 31 two-byte characters is cut in the editor.", 703);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 41U, &request) ||
+        strcmp(request.program_name, name) != 0 || !library_answer(41U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U)) {
+        return failed(failure, "A name of 31 two-byte characters is cut in the save.", 704);
+    }
+    click(first_button(screens.modal));
+
+    /* The keyboard stops at 31 characters. */
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
+        return failed(failure, "Programs could not be shown.", 705);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT)));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_PROGRAM_NAME)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_CLEAR));
+    lv_obj_t *key = NULL;
+    for (int press = 0; press < 32 && screens.modal != NULL; ++press) {
+        key = button_with_text(screens.modal, "1");
+        click(key);
+    }
+    if (key == NULL || screens.keyboard_length != 31U ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_KEYBOARD_MAXIMUM_LENGTH)) {
+        return failed(failure, "The keyboard takes more than 31 characters.", 706);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_APPLY));
+    if (screens.modal != NULL || strlen(screens.program_editor_name) != 31U) {
+        return failed(failure, "A name of 31 characters is not applied.", 707);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_library_command_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 500);
+    }
+    settle();
+    int result = library_command_checks(failure);
+
+    if (result == 0) {
+        result = name_checks(failure);
+    }
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}
+
+/* M21-7b: program Start against a controller: the proposal panel, Confirm, Cancel, and a
+ * transaction this display has no proposal for. */
+static void proposal(uint32_t transaction, uint32_t revision, bool measured_valid)
+{
+    furnace_hmi_start_proposal_view_t *p = &state.start_proposal;
+
+    (void)memset(p, 0, sizeof(*p));
+    p->state = FURNACE_HMI_START_PROPOSAL_OPEN;
+    p->transaction_id = transaction;
+    p->proposal_revision = revision;
+    p->program_id = 7U;
+    p->program_revision = 3U;
+    p->measured_valid = measured_valid;
+    p->measured_decicelsius = 824;
+    p->proposed_stage = 2U;
+    p->skipped_count = 2U;
+    p->skipped[0] = (furnace_hmi_skipped_stage_t){0U, false, 850, 0U};
+    p->skipped[1] = (furnace_hmi_skipped_stage_t){1U, true, 0, 30U};
+    p->remaining_curing_s = 11400U;
+    p->duration_ack_required = true;
+    p->recommended_s = 10800U;
+    p->maximum_s = 36000U;
+    p->warnings_count = 2U;
+    p->warnings[0] = 1U;
+    p->warnings[1] = 2U;
+    state.start_pending_transaction_id = transaction;
+    state.start_pending_revision = revision;
+}
+
+static bool modal_contains(const char *text)
+{
+    lv_refr_now(NULL);
+    return screens.modal != NULL && tree_contains(screens.modal, text);
+}
+
+/* Start on the program's details, through the screens' own confirmation. */
+static bool start_from_details(void)
+{
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
+        return false;
+    }
+    click(button_with_text(screens.root, "Controller cure 7"));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM));
+    return true;
+}
+
+static int start_checks(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+
+    (void)memset(&library, 0, sizeof(library));
+    library_program(0U, 7U, "Controller cure 7", 6U);
+    library.programs[0].revision = 3U;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 1U, false) || !start_from_details() ||
+        !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 31U, &request) || request.program_id != 7U ||
+        request.program_revision != 3U || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_SENDING_TITLE)) {
+        return failed(failure, "Start does not ask the controller for the program and revision shown.", 601);
+    }
+
+    /* Proposed: every skipped stage, the estimate, the duration to accept and the warnings. */
+    proposal(12U, 2U, true);
+    if (!library_answer(31U, FURNACE_HMI_FEEDBACK_PROPOSED, 0U) || !screens.proposal_open ||
+        !modal_contains("Start Controller cure 7?") || !modal_contains("82.4") || !modal_contains("stage 3") ||
+        !modal_contains("stage 1, Heating to 85.0") || !modal_contains("stage 2, Hold 30 min") ||
+        !modal_contains("190 min") || !modal_contains("180 min") || !modal_contains("600 min") ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_WARNING_1) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_WARNING_2) || !no_request()) {
+        return failed(failure, "The proposal panel does not show the controller's proposal.", 602);
+    }
+    if (screens.page == FURNACE_HMI_OPERATOR_PAGE_RUNNING) {
+        return failed(failure, "A proposal is shown as a run.", 603);
+    }
+    /* A new revision with an invalid temperature: shown as it now is, and Confirm is off. */
+    proposal(12U, 3U, false);
+    if (!update() || !screens.proposal_open ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_MEASURED_INVALID) ||
+        enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM)) ||
+        !enabled(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL))) {
+        return failed(failure, "A proposal without a valid temperature can be confirmed.", 604);
+    }
+    proposal(12U, 3U, true);
+    if (!update()) {
+        return failed(failure, "The proposal could not follow the controller.", 605);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM, 32U, &request) || request.transaction_id != 12U ||
+        request.proposal_revision != 3U || request.proposed_stage != 2U || request.program_id != 7U ||
+        request.program_revision != 3U || request.accepted_duration_s != 11400U) {
+        return failed(failure, "Confirm does not name exactly the proposal shown and the duration accepted.", 606);
+    }
+    /* Refused because the proposal changed: the newest one is shown again, with why. */
+    proposal(12U, 4U, true);
+    if (!library_answer(32U, FURNACE_HMI_FEEDBACK_REJECTED, 10U) || !screens.proposal_open ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_10) || !no_request()) {
+        return failed(failure, "A refused Confirm does not show the proposal again with the reason.", 607);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL, 33U, &request) || request.transaction_id != 12U) {
+        return failed(failure, "Cancel does not name the transaction.", 608);
+    }
+    state.start_proposal.state = FURNACE_HMI_START_PROPOSAL_CANCELLED;
+    state.start_pending_transaction_id = 0U;
+    if (!library_answer(33U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.modal != NULL || !no_request()) {
+        return failed(failure, "A cancelled proposal stays on screen or sends more.", 609);
+    }
+
+    /* Withdrawn by the controller: the panel closes and says why. */
+    if (!start_from_details() || !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 34U, &request)) {
+        return failed(failure, "Start cannot be asked for again.", 610);
+    }
+    proposal(14U, 1U, true);
+    if (!library_answer(34U, FURNACE_HMI_FEEDBACK_PROPOSED, 0U) || !screens.proposal_open) {
+        return failed(failure, "The second proposal is not shown.", 611);
+    }
+    state.start_proposal.state = FURNACE_HMI_START_PROPOSAL_INVALIDATED;
+    state.start_proposal.invalidation_reason = 20U;
+    state.start_pending_transaction_id = 0U;
+    if (!update() || screens.proposal_open || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_INVALIDATED_TITLE) ||
+        !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_20)) {
+        return failed(failure, "A withdrawn proposal is not said to be withdrawn, with its reason.", 612);
+    }
+    click(first_button(screens.modal));
+
+    /* A transaction this display has no proposal for: pointed out once, and cancelled on request. */
+    (void)memset(&state.start_proposal, 0, sizeof(state.start_proposal));
+    state.start_pending_transaction_id = 15U;
+    if (!update() || !screens.start_waiting_open || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_TITLE) ||
+        !no_request()) {
+        return failed(failure, "A waiting transaction is not pointed out, or is cancelled by itself.", 613);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_CANCEL));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL, 35U, &request) || request.transaction_id != 15U) {
+        return failed(failure, "Cancel of a waiting transaction does not name it.", 614);
+    }
+    state.start_pending_transaction_id = 0U;
+    if (!library_answer(35U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.modal != NULL) {
+        return failed(failure, "The waiting transaction's notice stays after its Cancel.", 615);
+    }
+    state.start_pending_transaction_id = 16U;
+    if (!update() || !screens.start_waiting_open) {
+        return failed(failure, "A second waiting transaction is not pointed out.", 616);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_KEEP));
+    if (!update() || screens.modal != NULL || !no_request()) {
+        return failed(failure, "A kept waiting transaction is pointed out again, or cancelled.", 617);
+    }
+    /* A Start refused because of it: pointed out again. */
+    if (!start_from_details() || !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 36U, &request) ||
+        !library_answer(36U, FURNACE_HMI_FEEDBACK_REJECTED, 6U) || !screens.start_waiting_open) {
+        return failed(failure, "A Start refused because of a waiting transaction does not point it out.", 618);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_KEEP));
+
+    /* Accepted at once (nothing to confirm): the program is the most recent. */
+    state.start_pending_transaction_id = 0U;
+    if (!start_from_details() || !next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 37U, &request) ||
+        !library_answer(37U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || screens.modal != NULL ||
+        screens.recent_count == 0U || screens.quick_launch_recent[0] != 0U) {
+        return failed(failure, "An accepted Start does not close, or is not the most recent program.", 619);
+    }
+    return 0;
+}
+
+int furnace_hmi_operator_start_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 600);
+    }
+    settle();
+    const int result = start_checks(failure);
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}
+
+/* M21-7b review: the controller's library changing under an open editor, dialog or panel. */
+static bool open_editor_on(const char *name)
+{
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS)) {
+        return false;
+    }
+    click(button_with_text(screens.root, name));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM)));
+    return screens.program_editor_active;
+}
+
+static void three_programs(void)
+{
+    (void)memset(&library, 0, sizeof(library));
+    library_program(0U, 7U, "Controller cure 7", 4U);
+    library_program(1U, 9U, "Second cure", 2U);
+    library_program(2U, 11U, "Third cure", 2U);
+    library.programs[0].revision = 3U;
+}
+
+static int review_checks(const char **failure)
+{
+    furnace_hmi_operator_request_t request;
+
+    /* The editor holds the program it opened: another revision listed meanwhile changes nothing,
+     * and the save names the revision it was edited from (review H2). */
+    three_programs();
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) || !open_editor_on("Controller cure 7")) {
+        return failed(failure, "The editor could not be opened.", 801);
+    }
+    library.programs[0].revision = 4U;
+    library.programs[0].stages[0].target_c = 99;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false)) {
+        return failed(failure, "The library could not change.", 802);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 51U, &request) || request.program_id != 7U ||
+        request.program_revision != 3U || request.program.stages[0].target_c != 40) {
+        return failed(failure, "A save names a revision or stages the draft was not made from.", 803);
+    }
+    if (!library_answer(51U, FURNACE_HMI_FEEDBACK_REJECTED, 3U) || !screens.program_editor_active) {
+        return failed(failure, "A save refused for a newer revision closes the draft.", 804);
+    }
+    click(first_button(screens.modal));
+    /* The library being read again (a new controller session) turns no draft into a new program (H3). */
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_LOADING, 0U, false) ||
+        !give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false)) {
+        return failed(failure, "The library could not be read again.", 805);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_PROGRAM)));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE, 52U, &request) || request.program_id != 7U ||
+        request.program_revision != 3U) {
+        return failed(failure, "A draft becomes a new program after the library is read again.", 806);
+    }
+    /* The answer belongs to that draft: one opened after it stays open (M7). */
+    click(first_button(screens.modal));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
+    if (screens.modal != NULL) {
+        click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_DISCARD_CHANGES));
+    }
+    if (screens.program_editor_active || !open_editor_on("Second cure") ||
+        !library_answer(52U, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U) || !screens.program_editor_active) {
+        return failed(failure, "A save's answer closes another draft.", 807);
+    }
+    click(first_button(screens.modal));
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_CANCEL)));
+
+    /* An inexact program is edited from no page (review H4). */
+    library.programs[1].inexact = true;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false)) {
+        return failed(failure, "The library could not change.", 808);
+    }
+    screens.selected_program = 1U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES)) {
+        return failed(failure, "The stages could not be shown.", 809);
+    }
+    lv_obj_t *edit = button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM));
+    const bool offered = enabled(edit);
+    click(edit);
+    if (offered || screens.program_editor_active) {
+        return failed(failure, "An inexact program can be edited from its stages.", 810);
+    }
+    library.programs[1].inexact = false;
+
+    /* Delete programs deletes exactly the programs it named (review H1). */
+    three_programs();
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false)) {
+        return failed(failure, "The library could not change.", 811);
+    }
+    screens.settings_tab = 3U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_SETTINGS)) {
+        return failed(failure, "Settings could not be shown.", 812);
+    }
+    click(card_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_PROGRAMS)));
+    /* Before Confirm, another display deletes the first and saves a fourth. */
+    library.programs[0] = library.programs[1];
+    library.programs[1] = library.programs[2];
+    library_program(2U, 13U, "Fourth cure", 2U);
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false)) {
+        return failed(failure, "The library could not change.", 813);
+    }
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_ALL));
+    uint32_t deleted[4] = {0U, 0U, 0U, 0U};
+    for (uint32_t step = 0U; step < 4U; ++step) {
+        if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE, 53U + step, &request)) {
+            break;
+        }
+        deleted[step] = request.program_id;
+        (void)library_answer(53U + step, FURNACE_HMI_FEEDBACK_ACCEPTED, 0U);
+    }
+    if (deleted[0] != 9U || deleted[1] != 11U || deleted[2] != 0U) {
+        return failed(failure, "Delete programs deletes a program it did not name.", 814);
+    }
+    if (screens.modal != NULL) {
+        click(first_button(screens.modal));
+    }
+
+    /* Favourites last through a library briefly unavailable (M5). */
+    three_programs();
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false)) {
+        return failed(failure, "The library could not change.", 815);
+    }
+    screens.quick_launch_favourites[0] = 1U;
+    screens.favourite_count = 1U;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_UNAVAILABLE, 0U, false) ||
+        !give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) || screens.favourite_count != 1U ||
+        screens.quick_launch_favourites[0] != 1U) {
+        return failed(failure, "A favourite is lost while the library is unavailable.", 816);
+    }
+
+    /* The controller's estimate is the duration shown, not one from an assumed start (PROG-14). */
+    library.programs[2].curing_estimate_s = 6000U;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) || !show(FURNACE_HMI_OPERATOR_PAGE_PROGRAMS) ||
+        !tree_contains(screens.root, "100 min")) {
+        return failed(failure, "A program's duration is not the controller's estimate.", 817);
+    }
+
+    /* A Start dialog for a revision no longer listed closes (M2). */
+    screens.selected_program = 0U;
+    if (!show(FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL)) {
+        return failed(failure, "The program could not be shown.", 818);
+    }
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
+    library.programs[0].revision = 5U;
+    if (screens.modal == NULL || !give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) ||
+        screens.modal != NULL || !no_request()) {
+        return failed(failure, "A Start dialog stays open for a revision no longer listed.", 819);
+    }
+
+    /* Confirm acts only on the proposal on screen (M1). */
+    click(button_with_text(screens.root, furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM)));
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_PROGRAM));
+    if (!next_request(FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM, 60U, &request) || request.program_revision != 5U) {
+        return failed(failure, "Start does not name the revision shown.", 820);
+    }
+    proposal(21U, 2U, true);
+    if (!library_answer(60U, FURNACE_HMI_FEEDBACK_PROPOSED, 0U) || !screens.proposal_open) {
+        return failed(failure, "The proposal is not shown.", 821);
+    }
+    screens.observation.start_proposal.proposal_revision = 3U; /* newer, not drawn yet */
+    click(modal_button(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM));
+    if (!no_request()) {
+        return failed(failure, "Confirm names a proposal revision that was not on screen.", 822);
+    }
+    /* Every skipped stage is listed, also eighteen (M3). */
+    state.start_proposal.proposal_revision = 4U;
+    state.start_proposal.skipped_count = 18U;
+    for (uint8_t index = 0U; index < 18U; ++index) {
+        state.start_proposal.skipped[index] = (furnace_hmi_skipped_stage_t){index, index % 2U == 1U, 1855, 600U};
+    }
+    if (!update() || !screens.proposal_open || !modal_contains("stage 18, Hold 600 min")) {
+        return failed(failure, "Skipped stages are dropped from the proposal.", 823);
+    }
+    /* A library change does not close the proposal panel (audit 15). */
+    library.programs[0].revision = 6U;
+    if (!give_library(FURNACE_HMI_OPERATOR_LIBRARY_CURRENT, 3U, false) || !screens.proposal_open) {
+        return failed(failure, "A library change closes the proposal panel.", 824);
+    }
+    /* Ended by a session change: said so (M4). */
+    state.start_proposal.state = FURNACE_HMI_START_PROPOSAL_ENDED;
+    state.start_pending_transaction_id = 0U;
+    if (!update() || screens.proposal_open || !modal_says(FURNACE_HMI_UI_STRING_UI_LAB_START_ENDED_DETAIL)) {
+        return failed(failure, "A proposal ended by a session change disappears without a word.", 825);
+    }
+    click(first_button(screens.modal));
+    return 0;
+}
+
+int furnace_hmi_operator_library_review_check(lv_display_t *display, const char **failure)
+{
+    lv_display_set_resolution(display, 800, 480);
+    (void)memset(&content, 0, sizeof(content));
+    furnace_hmi_dashboard_state_initialize(&state);
+    ready_status();
+    if (!furnace_hmi_operator_screens_create(&screens, lv_screen_active(), &state, &content)) {
+        return failed(failure, "The operator screens could not be created.", 800);
+    }
+    settle();
+    const int result = review_checks(failure);
+
+    furnace_hmi_operator_screens_destroy(&screens);
+    return result;
+}

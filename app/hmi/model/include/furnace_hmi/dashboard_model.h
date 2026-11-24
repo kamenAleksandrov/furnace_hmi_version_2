@@ -13,7 +13,8 @@
 extern "C" {
 #endif
 
-#define FURNACE_HMI_PROGRAM_NAME_CAPACITY 40U
+/* A program name: 31 characters in at most 124 bytes of UTF-8 (the controller's), and a terminator. */
+#define FURNACE_HMI_PROGRAM_NAME_CAPACITY 125U
 #define FURNACE_HMI_STAGE_NAME_CAPACITY 32U
 #define FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS 32U
 
@@ -132,6 +133,8 @@ typedef enum {
     FURNACE_HMI_FEEDBACK_UNRESOLVED,
     /** The HMI did not send it (link not current, busy, superseded by Stop); reason: why. */
     FURNACE_HMI_FEEDBACK_NOT_SENT,
+    /** A program Start: the controller proposes it for confirmation (M21-7b); never "started". */
+    FURNACE_HMI_FEEDBACK_PROPOSED,
     FURNACE_HMI_FEEDBACK_COUNT,
 } furnace_hmi_feedback_state_t;
 
@@ -148,6 +151,15 @@ typedef struct {
     uint32_t submission;
     furnace_hmi_feedback_state_t state;
     uint8_t reason;
+    /**
+     * A program save or delete the controller refused (M21-7b): its first
+     * validation error (the controller's field, reason and stage index; 0xFF no
+     * stage) and, for a save, the curing estimate to show (ACKNOWLEDGMENT_REQUIRED).
+     */
+    uint8_t error_field;
+    uint8_t error_reason;
+    uint8_t error_stage;
+    uint32_t curing_estimate_s;
 } furnace_hmi_command_feedback_t;
 
 /** How a fault entry may end, as the controller reports it (ADR-0018). */
@@ -167,6 +179,55 @@ typedef enum {
 } furnace_hmi_fault_recovery_t;
 
 #define FURNACE_HMI_DASHBOARD_MAX_FAULTS 12U
+#define FURNACE_HMI_DASHBOARD_MAX_SKIPPED_STAGES 18U
+#define FURNACE_HMI_DASHBOARD_MAX_START_WARNINGS 8U
+
+/** Where the controller's proposal for this display's program Start stands (M21-7b). */
+typedef enum {
+    FURNACE_HMI_START_PROPOSAL_NONE = 0,
+    /** Awaits Confirm or Cancel; the fields are its newest revision. */
+    FURNACE_HMI_START_PROPOSAL_OPEN,
+    /** The controller withdrew it: invalidation_reason says why. */
+    FURNACE_HMI_START_PROPOSAL_INVALIDATED,
+    FURNACE_HMI_START_PROPOSAL_CANCELLED,
+    /** Confirmed: the run started. */
+    FURNACE_HMI_START_PROPOSAL_ACCEPTED,
+    /** Another transaction or controller session: it can no longer be confirmed. */
+    FURNACE_HMI_START_PROPOSAL_ENDED,
+    FURNACE_HMI_START_PROPOSAL_COUNT,
+} furnace_hmi_start_proposal_state_t;
+
+/** A stage the proposed Start skips: its index, Heating with its target, or Hold with its minutes. */
+typedef struct {
+    uint8_t index;
+    bool hold;
+    int32_t target_decicelsius;
+    uint32_t hold_minutes;
+} furnace_hmi_skipped_stage_t;
+
+/** The controller's proposal, as the operator must see it before confirming (ADR-0013). */
+typedef struct {
+    furnace_hmi_start_proposal_state_t state;
+    uint32_t transaction_id;
+    uint32_t proposal_revision;
+    uint32_t program_id;
+    uint32_t program_revision;
+    bool measured_valid;
+    int32_t measured_decicelsius;
+    /** The stage the run would start at (0-based). */
+    uint8_t proposed_stage;
+    uint8_t skipped_count;
+    furnace_hmi_skipped_stage_t skipped[FURNACE_HMI_DASHBOARD_MAX_SKIPPED_STAGES];
+    uint32_t remaining_curing_s;
+    /** Confirm names the accepted duration: at least remaining_curing_s, at most maximum_s. */
+    bool duration_ack_required;
+    uint32_t recommended_s;
+    uint32_t maximum_s;
+    uint8_t warnings_count;
+    /** The controller's codes: 1 TREATMENT_INCOMPLETE, 2 HOLD_SKIPPED. */
+    uint8_t warnings[FURNACE_HMI_DASHBOARD_MAX_START_WARNINGS];
+    uint8_t invalidation_reason;
+} furnace_hmi_start_proposal_view_t;
 
 /** One controller fault entry; fault_id and source name it in commands. */
 typedef struct {
@@ -275,6 +336,15 @@ typedef struct {
     /** Awaiting a decision: the time left, and the fault it is about (0 unknown). */
     furnace_hmi_i32_value_t decision_remaining_seconds;
     uint8_t decision_fault_id;
+
+    /** The controller's proposal for this display's latest program Start (M21-7b). */
+    furnace_hmi_start_proposal_view_t start_proposal;
+    /**
+     * STATUS's open start transaction, whoever opened it (0 when none): a
+     * transaction this display has no proposal for can still be cancelled.
+     */
+    uint32_t start_pending_transaction_id;
+    uint32_t start_pending_revision;
 
     size_t graph_sample_count;
     furnace_hmi_graph_sample_t graph_samples[FURNACE_HMI_DASHBOARD_MAX_GRAPH_POINTS];

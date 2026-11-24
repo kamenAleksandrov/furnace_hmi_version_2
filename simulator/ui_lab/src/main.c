@@ -586,7 +586,7 @@ static bool reading_is(const ui_lab_context_t *context, size_t index, const char
 }
 
 /* Review fixture: every free library slot holds an operator program (copies of
- * the delivered ones) and the last one has eight stages and a long name. */
+ * the delivered ones) and the last one has the most stages (18, two pages) and a long name. */
 static void fill_program_library(ui_lab_context_t *context)
 {
     furnace_hmi_operator_screens_t *explorer = &context->explorer;
@@ -601,7 +601,12 @@ static void fill_program_library(ui_lab_context_t *context)
         { FURNACE_HMI_OPERATOR_STAGE_HEATING, 50, 10, 25 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 50, 0, 30 },
         { FURNACE_HMI_OPERATOR_STAGE_HEATING, 80, 10, 30 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 80, 0, 30 },
         { FURNACE_HMI_OPERATOR_STAGE_HEATING, 120, 10, 40 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 120, 0, 60 },
-        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 160, 10, 40 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 160, 0, 90 },
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 130, 10, 10 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 130, 0, 20 },
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 140, 10, 10 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 140, 0, 20 },
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 150, 10, 10 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 150, 0, 20 },
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 160, 10, 10 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 160, 0, 30 },
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 170, 10, 10 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 170, 0, 30 },
+        { FURNACE_HMI_OPERATOR_STAGE_HEATING, 180, 10, 10 }, { FURNACE_HMI_OPERATOR_STAGE_HOLD, 180, 0, 90 },
     };
     longest->stage_count = FURNACE_HMI_OPERATOR_MAX_STAGES;
     memcpy(longest->stages, stages, sizeof(stages));
@@ -893,7 +898,7 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
     if (!furnace_hmi_operator_screens_navigate(&context->explorer, FURNACE_HMI_OPERATOR_PAGE_SETTINGS) ||
         !tap_row_text(context, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_FORMAT)) ||
         capture_frame(display, context, directory, "settings-date-format")) { return 6; }
-    for (unsigned variant = 0; variant < 10; ++variant) {
+    for (unsigned variant = 0; variant < 12; ++variant) {
         furnace_hmi_simulator_set_scenario(&context->simulator, FURNACE_HMI_SIM_SCENARIO_IDLE);
         if (!render_scenario(context)) { return 3; }
         furnace_hmi_operator_page_t page = FURNACE_HMI_OPERATOR_PAGE_PROGRAMS;
@@ -912,6 +917,9 @@ static int run_capture(lv_display_t *display, ui_lab_context_t *context, const c
             name = variant == 6 ? "home-empty" : variant == 7 ? "home-few" : "home-full";
         }
         if (variant == 9) { page = FURNACE_HMI_OPERATOR_PAGE_PROGRAM_LOADING; fill_program_library(context); context->explorer.selected_program = 11; name = "loading-long"; }
+        /* The controller's most stages (18, M21-7b): the second stage page and the detail graph. */
+        if (variant == 10) { page = FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES; fill_program_library(context); context->explorer.selected_program = 11; context->explorer.program_stage_page = 1; name = "stages-maximum-2"; }
+        if (variant == 11) { page = FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL; fill_program_library(context); context->explorer.selected_program = 11; name = "detail-maximum"; }
         if (!furnace_hmi_operator_screens_navigate(&context->explorer, page) || capture_frame(display, context, directory, name)) { return 6; }
     }
     const furnace_hmi_ui_string_id_t dialog_actions[] = {

@@ -47,13 +47,14 @@
 #define OPERATOR_GRAPH_TOP (OPERATOR_GRAPH_INSET + 36)
 #define OPERATOR_GRAPH_BOTTOM (OPERATOR_GRAPH_INSET + 20)
 #define OPERATOR_GRAPH_GRID operator_color(FURNACE_HMI_COLOR_GRAPH_GRID)
-#define OPERATOR_MAX_PROGRAM_TEMPERATURE_C 180
-#define OPERATOR_MAX_PROGRAM_RATE_TENTHS 30
+#define OPERATOR_MAX_PROGRAM_TEMPERATURE_C FURNACE_HMI_OPERATOR_PROGRAM_MAX_TEMPERATURE_C
+#define OPERATOR_MAX_PROGRAM_RATE_TENTHS FURNACE_HMI_OPERATOR_PROGRAM_MAX_RATE_TENTHS
 /* Touch keyboards: keys fill their row height but never drop below the touch minimum. */
 #define OPERATOR_KEY_MIN_HEIGHT 48
 /* Numeric keypad panel width: narrower, taller keys instead of wide slabs. */
 #define OPERATOR_NUMERIC_KEYPAD_WIDTH 460
-#define OPERATOR_KEYBOARD_TEXT_LIMIT 32U
+/* Names: the controller's 31 code points (PROG-09; REQ-FUN-020), counted by character. */
+#define OPERATOR_KEYBOARD_TEXT_LIMIT 31U
 #define OPERATOR_DIALOG_WIDTH 430
 #define OPERATOR_DIALOG_PADDING 25
 #define OPERATOR_DIALOG_GAP 14
@@ -196,6 +197,12 @@ typedef enum {
     OPERATOR_ACTION_FAULT_RECOVER,
     OPERATOR_ACTION_DECISION_CONTINUE,
     OPERATOR_ACTION_DECISION_STOP,
+    /* M21-7b: save again with the acknowledged curing estimate. */
+    OPERATOR_ACTION_SAVE_ACKNOWLEDGED,
+    /* M21-7b: the proposal panel's Confirm and Cancel, and Cancel of a waiting transaction. */
+    OPERATOR_ACTION_PROPOSAL_CONFIRM,
+    OPERATOR_ACTION_PROPOSAL_CANCEL,
+    OPERATOR_ACTION_START_WAITING_CANCEL,
 } operator_action_t;
 
 typedef struct {
@@ -288,8 +295,13 @@ static size_t listed_program_at(const furnace_hmi_operator_screens_t *explorer, 
     return FURNACE_HMI_OPERATOR_MAX_PROGRAMS;
 }
 
+/* The selected program; while the editor is open, the program it was made from, as it was then
+ * (M21-7b review: a listing that changes meanwhile changes nothing in the draft). */
 static const furnace_hmi_operator_program_t *selected_program_entry(const furnace_hmi_operator_screens_t *explorer)
 {
+    if (explorer->program_editor_active && explorer->editor_base_valid) {
+        return &explorer->editor_base;
+    }
     return &explorer->programs[explorer->selected_program % FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
 }
 
@@ -328,6 +340,10 @@ static void copy_text_bounded(char *destination, size_t capacity, const char *so
     size_t length = strlen(value);
     if (length >= capacity) {
         length = capacity - 1U;
+        /* Never cut a UTF-8 character: back up over its continuation bytes. */
+        while (length > 0U && ((unsigned char)value[length] & 0xC0U) == 0x80U) {
+            length--;
+        }
     }
     memcpy(destination, value, length);
     destination[length] = 0;
@@ -343,6 +359,9 @@ static const char *program_name_text(
     }
     if (explorer->program_name_overrides[index][0] != 0) {
         return explorer->program_name_overrides[index];
+    }
+    if (explorer->programs[index].name[0] != 0) {
+        return explorer->programs[index].name;
     }
     return explorer->programs[index].library
         ? ui_string((furnace_hmi_ui_string_id_t)explorer->programs[index].name_string) : "";
@@ -421,6 +440,7 @@ static void clear_staged_session(furnace_hmi_operator_screens_t *explorer)
     explorer->program_editor_new = false;
     explorer->program_editor_dirty = false;
     explorer->program_editor_name[0] = '\0';
+    explorer->editor_base_valid = false;
 }
 
 static void store_selected_stage_draft(furnace_hmi_operator_screens_t *explorer)
@@ -544,6 +564,10 @@ static const char *stage_name_text(
 }
 static int32_t program_curing_minutes(const furnace_hmi_operator_program_t *program)
 {
+    /* The controller's planning estimate, never one from an assumed start temperature (PROG-14). */
+    if (program != NULL && program->curing_estimate_s > 0U) {
+        return (int32_t)((program->curing_estimate_s + 59U) / 60U);
+    }
     int64_t minutes = 0;
     for (size_t index = 0U; program != NULL && index < program->stage_count; ++index) {
         minutes += program->stages[index].minutes > 0 ? program->stages[index].minutes : 0;
@@ -2272,6 +2296,8 @@ static void clear_modal(furnace_hmi_operator_screens_t *explorer)
         explorer->alert_open = 0U;
         explorer->faults_open = false;
         explorer->decision_open = false;
+        explorer->proposal_open = false;
+        explorer->start_waiting_open = false;
         explorer->decision_time_label = NULL;
         explorer->decision_continue_button = NULL;
         explorer->decision_stop_button = NULL;
@@ -2439,7 +2465,7 @@ static void keyboard_insert(
             : explorer->keyboard_anchor - explorer->keyboard_cursor) : 0U;
     const size_t selected_length = keyboard_utf8_character_count(
         explorer->keyboard_value + selection_start, selected_bytes);
-    const size_t max_length = explorer->keyboard_mode == OPERATOR_KEYBOARD_MODE_TEXT ? 32U : 24U;
+    const size_t max_length = explorer->keyboard_mode == OPERATOR_KEYBOARD_MODE_TEXT ? OPERATOR_KEYBOARD_TEXT_LIMIT : 24U;
     const size_t character_count = keyboard_utf8_character_count(text, length);
     const size_t existing_count = keyboard_utf8_character_count(
         explorer->keyboard_value, old_length);
@@ -3146,7 +3172,7 @@ static void keyboard_apply_value(furnace_hmi_operator_screens_t *explorer)
                               sizeof(explorer->program_editor_name), explorer->keyboard_value);
         } else {
             copy_text_bounded(explorer->program_name_overrides[explorer->selected_program],
-                              FURNACE_HMI_OPERATOR_NAME_CAPACITY, explorer->keyboard_value);
+                              FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY, explorer->keyboard_value);
         }
     }
     else if (target == OPERATOR_KEYBOARD_TARGET_STAGE_NAME &&
@@ -4439,6 +4465,12 @@ static bool make_program_card(
     lv_obj_set_style_border_width(summary, 1, LV_PART_MAIN);
     lv_obj_set_style_border_side(summary, LV_BORDER_SIDE_TOP, LV_PART_MAIN);
     lv_obj_set_style_border_color(summary, OPERATOR_DIVIDER, LV_PART_MAIN);
+    /* A damaged program has no stages to summarize, and nothing to open (M21-7b). */
+    if (program->damaged) {
+        lv_obj_add_state(card, LV_STATE_DISABLED);
+        return create_label(summary, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DAMAGED),
+                            &furnace_hmi_font_regular_14, OPERATOR_MUTED) != NULL;
+    }
     char stage_count[32];
     char duration[32];
     char maximum[32];
@@ -4481,14 +4513,25 @@ static bool build_programs(furnace_hmi_operator_screens_t *explorer)
 {
     if (!explorer->library_known) {
         /* The library is the controller's: not shown as empty, and nothing to edit. */
+        furnace_hmi_ui_string_id_t text = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNAVAILABLE;
+        if (explorer->library_from_controller) {
+            text = explorer->library_state == FURNACE_HMI_OPERATOR_LIBRARY_LOADING
+                       ? FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_LOADING
+                   : explorer->library_state == FURNACE_HMI_OPERATOR_LIBRARY_TOO_LARGE
+                       ? FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_TOO_LARGE
+                       : FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_STORAGE_UNAVAILABLE;
+        }
         lv_obj_set_flex_flow(explorer->content, LV_FLEX_FLOW_COLUMN);
-        return create_label(explorer->content,
-                            ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNAVAILABLE),
-                            &furnace_hmi_font_regular_16, OPERATOR_MUTED) != NULL;
+        return create_label(explorer->content, ui_string(text), &furnace_hmi_font_regular_16,
+                            OPERATOR_MUTED) != NULL;
     }
     const size_t program_count = listed_program_count(explorer);
     const size_t per_page = 6U;
     const size_t page_count = program_count == 0 ? 1 : (program_count + per_page - 1U) / per_page;
+    /* The controller's library can shrink under the open page. */
+    if ((size_t)explorer->program_page >= page_count) {
+        explorer->program_page = (uint8_t)(page_count - 1U);
+    }
     const size_t start = (size_t)explorer->program_page * per_page;
     const size_t end = start + per_page < program_count ? start + per_page : program_count;
     lv_obj_t *toolbar = create_transparent_container(explorer->content);
@@ -4508,6 +4551,12 @@ static bool build_programs(furnace_hmi_operator_screens_t *explorer)
     lv_obj_t *new_draft = create_page_button(explorer, toolbar,
                                              ui_string(FURNACE_HMI_UI_STRING_UI_LAB_NEW_DRAFT),
                                              OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_NEW_DRAFT, 0);
+    /* A newer listing is being read: what is shown is the previous complete one. */
+    if (explorer->library_updating &&
+        create_label(toolbar, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UPDATING),
+                     &furnace_hmi_font_regular_16, OPERATOR_MUTED) == NULL) {
+        return false;
+    }
     lv_obj_t *spacer = create_transparent_container(toolbar);
     lv_obj_t *pager = create_pager(explorer, toolbar, explorer->program_page, page_count,
                                    OPERATOR_ACTION_PREVIOUS_PROGRAM_PAGE,
@@ -5319,6 +5368,9 @@ static bool build_program_stages(furnace_hmi_operator_screens_t *explorer)
                                                 ui_string(FURNACE_HMI_UI_STRING_UI_LAB_EDIT_PROGRAM),
                                                 OPERATOR_TONE_EDIT, OPERATOR_ACTION_PROGRAM_EDITOR,
                                                 (int)explorer->selected_program);
+    if (edit_program != NULL && selected_program_entry(explorer)->inexact) {
+        lv_obj_add_state(edit_program, LV_STATE_DISABLED);
+    }
     lv_obj_t *spacer = create_transparent_container(toolbar);
     lv_obj_t *pager = create_pager(explorer, toolbar, explorer->program_stage_page, page_count,
                                    OPERATOR_ACTION_PREVIOUS_STAGE_PAGE, OPERATOR_ACTION_NEXT_STAGE_PAGE,
@@ -5389,6 +5441,10 @@ static bool build_program_detail(furnace_hmi_operator_screens_t *explorer)
         }
         lv_obj_set_grid_cell(button, LV_GRID_ALIGN_STRETCH, (int32_t)index, 1,
                              LV_GRID_ALIGN_STRETCH, 0, 1);
+        /* The editors would round what they cannot show: such a program is not edited here. */
+        if (entries[index].action == OPERATOR_ACTION_PROGRAM_EDITOR && program->inexact) {
+            lv_obj_add_state(button, LV_STATE_DISABLED);
+        }
     }
 
     lv_obj_set_width(columns, lv_pct(100));
@@ -7961,7 +8017,8 @@ static bool settings_open_delete_dialog(furnace_hmi_operator_screens_t *explorer
         return settings_show_message(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_TITLE),
                                      ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_NO_PROGRAMS));
     }
-    char names[FURNACE_HMI_OPERATOR_MAX_PROGRAMS * (FURNACE_HMI_OPERATOR_NAME_CAPACITY + 2U)];
+    /* Static (GUI context only): about 3 KB of names would crowd its stack. */
+    static char names[FURNACE_HMI_OPERATOR_MAX_PROGRAMS * (FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY + 2U)];
     size_t used = 0U;
     unsigned count = 0U;
     names[0] = '\0';
@@ -7976,10 +8033,18 @@ static bool settings_open_delete_dialog(furnace_hmi_operator_screens_t *explorer
         ++count;
     }
     char title[64];
-    char detail[sizeof(names) + 96U];
+    static char detail[sizeof(names) + 96U];
     (void)snprintf(title, sizeof(title), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_COUNT_TITLE_FORMAT), count);
     (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_NAMES_FORMAT), names);
     explorer->settings_delete_pending = pending;
+    /* The controller's programs named here, by ID: Confirm deletes exactly these, also when the
+     * library changes before it (M21-7b review). Sent in listing order. */
+    explorer->settings_delete_count = 0U;
+    for (size_t slot = FURNACE_HMI_OPERATOR_MAX_PROGRAMS; slot-- > 0U;) {
+        if ((pending & (1U << slot)) != 0U) {
+            explorer->settings_delete_ids[explorer->settings_delete_count++] = explorer->programs[slot].id;
+        }
+    }
     return open_dialog(explorer, title, detail, OPERATOR_ACTION_SETTINGS_DELETE_CONFIRM,
                        ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DELETE_ALL), OPERATOR_TONE_DANGER);
 }
@@ -8954,6 +9019,228 @@ static void show_command_problem(furnace_hmi_operator_screens_t *explorer, bool 
     (void)open_dialog(explorer, ui_string(title), detail, OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
 }
 
+/* --- The controller's library: saves and deletes (no simulated answers, M21-7b) --- */
+
+static size_t library_slot_of(const furnace_hmi_operator_program_t *programs, uint32_t id);
+
+/* PROGRAM_SAVE_RESULT and PROGRAM_DELETE_RESULT results. */
+#define LIBRARY_RESULT_INVALID 1U
+#define LIBRARY_RESULT_ACKNOWLEDGMENT_REQUIRED 9U
+
+/* A text from a table by code, or the code in `format`. */
+static const char *coded_text(const furnace_hmi_ui_string_id_t *table, size_t count, uint8_t code,
+                              furnace_hmi_ui_string_id_t format, char *buffer, size_t capacity)
+{
+    if (code < count && table[code] != 0) {
+        return ui_string(table[code]);
+    }
+    (void)snprintf(buffer, capacity, ui_string(format), (unsigned int)code);
+    return buffer;
+}
+
+/* Why the controller refused a library change; for an invalid program, its first error. */
+static const char *library_reason_text(const furnace_hmi_command_feedback_t *feedback, char *buffer,
+                                       size_t capacity)
+{
+    static const furnace_hmi_ui_string_id_t results[] = {
+        [2] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_2, [3] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_3,
+        [4] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_4, [5] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_5,
+        [6] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_6, [7] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_7,
+        [8] = FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_8,
+    };
+    /* core/program's validation codes (field and reason). */
+    static const furnace_hmi_ui_string_id_t fields[] = {
+        [3] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_3, [4] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_4,
+        [5] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_5, [6] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_6,
+        [7] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_7, [8] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_8,
+        [9] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_9,
+    };
+    static const furnace_hmi_ui_string_id_t reasons[] = {
+        [3] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_3, [4] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_4,
+        [6] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_6, [7] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_7,
+        [8] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_8, [9] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_9,
+        [10] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_10, [11] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_11,
+        [12] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_12, [13] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_13,
+        [14] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_14, [15] = FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_15,
+    };
+    if (feedback->reason != LIBRARY_RESULT_INVALID) {
+        return coded_text(results, sizeof(results) / sizeof(results[0]), feedback->reason,
+                          FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_CODE_FORMAT, buffer, capacity);
+    }
+    char field_buffer[32];
+    char reason_buffer[40];
+    const char *field = coded_text(fields, sizeof(fields) / sizeof(fields[0]), feedback->error_field,
+                                   FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_FIELD_CODE_FORMAT, field_buffer,
+                                   sizeof(field_buffer));
+    const char *reason = coded_text(reasons, sizeof(reasons) / sizeof(reasons[0]), feedback->error_reason,
+                                    FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_REASON_CODE_FORMAT, reason_buffer,
+                                    sizeof(reason_buffer));
+    if (feedback->error_stage < FURNACE_HMI_OPERATOR_MAX_STAGES) {
+        (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_INVALID_STAGE_FORMAT),
+                       (unsigned int)feedback->error_stage + 1U, field, reason);
+    } else {
+        (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_INVALID_FORMAT), field,
+                       reason);
+    }
+    return buffer;
+}
+
+/* A program Start, Confirm or Cancel (M21-7b). */
+static bool is_start_request(furnace_hmi_operator_request_kind_t kind)
+{
+    return kind == FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM || kind == FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM ||
+           kind == FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL;
+}
+
+/* Send a library change or a program Start step; its answer arrives as the ordinary command's
+ * feedback. */
+static void send_controller_change(furnace_hmi_operator_screens_t *explorer,
+                                   const furnace_hmi_operator_request_t *change)
+{
+    const furnace_hmi_operator_request_t sent = *change;
+
+    if (explorer->command_awaiting) {
+        const furnace_hmi_command_feedback_t busy = {.state = FURNACE_HMI_FEEDBACK_NOT_SENT,
+                                                     .reason = FURNACE_HMI_NOT_SENT_BUSY};
+        explorer->settings_deleting = false;
+        show_command_problem(explorer, false, sent.kind, &busy);
+        return;
+    }
+    post_request(explorer, sent.kind);
+    if (explorer->request.kind != sent.kind) {
+        /* A Stop is being sent: nothing else goes out until it is answered, and that is said. */
+        explorer->settings_deleting = false;
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_NOT_SENT_TITLE),
+                          ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_STOPPED_DETAIL), OPERATOR_ACTION_CLOSE_MODAL,
+                          NULL, OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    explorer->library_request = sent;
+    explorer->library_request.run_id = explorer->request.run_id;
+    explorer->request = explorer->library_request;
+    const bool start = is_start_request(sent.kind);
+    (void)open_dialog(explorer,
+                      ui_string(start ? FURNACE_HMI_UI_STRING_UI_LAB_START_SENDING_TITLE
+                                      : FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_SENDING_TITLE),
+                      ui_string(start ? FURNACE_HMI_UI_STRING_UI_LAB_START_SENDING_DETAIL
+                                      : FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_SENDING_DETAIL),
+                      OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+}
+
+/* A delete of the program in `slot`, as the controller listed it. */
+static void library_delete_request(const furnace_hmi_operator_screens_t *explorer, size_t slot,
+                                   furnace_hmi_operator_request_t *change)
+{
+    (void)memset(change, 0, sizeof(*change));
+    change->kind = FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE;
+    change->program_id = explorer->programs[slot].id;
+    change->program_revision = explorer->programs[slot].revision;
+    copy_text_bounded(change->program_name, sizeof(change->program_name), program_name_text(explorer, slot));
+}
+
+/* Settings > Delete programs: the next one, or the result once none is left. */
+static void settings_delete_next(furnace_hmi_operator_screens_t *explorer)
+{
+    while (explorer->settings_delete_count > 0U) {
+        const uint32_t id = explorer->settings_delete_ids[--explorer->settings_delete_count];
+        const size_t slot = library_slot_of(explorer->programs, id);
+        furnace_hmi_operator_request_t change;
+
+        if (slot >= FURNACE_HMI_OPERATOR_MAX_PROGRAMS) {
+            continue; /* no longer in the library */
+        }
+        library_delete_request(explorer, slot, &change);
+        send_controller_change(explorer, &change);
+        return;
+    }
+    explorer->settings_deleting = false;
+    char detail[96];
+    (void)snprintf(detail, sizeof(detail),
+                   ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED_DETAIL_FORMAT),
+                   (unsigned int)explorer->settings_deleted);
+    clear_modal(explorer);
+    (void)rebuild_page(explorer);
+    (void)settings_show_message(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_PROGRAMS_DELETED), detail);
+}
+
+/* The controller answered a save or a delete. Only SAVED and DELETED change what is shown, and
+ * only through the library it lists again; every other answer keeps the editor's draft. */
+static void library_change_done(furnace_hmi_operator_screens_t *explorer,
+                                furnace_hmi_operator_request_kind_t kind,
+                                const furnace_hmi_command_feedback_t *feedback)
+{
+    const char *name = explorer->library_request.program_name;
+    char detail[192];
+
+    if (feedback->state == FURNACE_HMI_FEEDBACK_ACCEPTED) {
+        if (kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE && explorer->settings_deleting) {
+            explorer->settings_deleted++;
+            settings_delete_next(explorer);
+            return;
+        }
+        clear_modal(explorer);
+        if (kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE) {
+            if (explorer->program_editor_active && explorer->editor_session == explorer->save_editor_session) {
+                /* A new program is in the library once it is listed again: Programs shows it. */
+                explorer->page = explorer->program_editor_new ? FURNACE_HMI_OPERATOR_PAGE_PROGRAMS
+                                                              : explorer->program_editor_return_page;
+                clear_staged_session(explorer);
+                explorer->program_stage_page = 0U;
+            }
+            log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_SAVED, name);
+            (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_SAVED_DETAIL_FORMAT),
+                           name);
+            (void)rebuild_page(explorer);
+            (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_SAVED), detail,
+                              OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+            return;
+        }
+        log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_DELETED, name);
+        (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED_DETAIL_FORMAT),
+                       name);
+        if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL ||
+            explorer->page == FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES ||
+            explorer->page == FURNACE_HMI_OPERATOR_PAGE_PROGRAM_LOADING) {
+            explorer->page = FURNACE_HMI_OPERATOR_PAGE_PROGRAMS;
+        }
+        (void)rebuild_page(explorer);
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED), detail,
+                          OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    explorer->settings_deleting = false;
+    if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED && kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE &&
+        feedback->reason == LIBRARY_RESULT_ACKNOWLEDGMENT_REQUIRED && feedback->curing_estimate_s > 0U) {
+        /* Saved only with the operator's acknowledgement of exactly this estimate (PROG-11). */
+        char duration[32];
+        explorer->library_request.acknowledged_duration_s = feedback->curing_estimate_s;
+        (void)snprintf(duration, sizeof(duration), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_VALUE_FORMAT_MINUTES),
+                       (long)((feedback->curing_estimate_s + 59U) / 60U));
+        (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_FORMAT),
+                       duration);
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_TITLE), detail,
+                          OPERATOR_ACTION_SAVE_ACKNOWLEDGED,
+                          ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SAVE_ACKNOWLEDGE_CONFIRM), OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    if (feedback->state == FURNACE_HMI_FEEDBACK_REJECTED) {
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_NOT_ACCEPTED),
+                          library_reason_text(feedback, detail, sizeof(detail)), OPERATOR_ACTION_CLOSE_MODAL, NULL,
+                          OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    if (feedback->state == FURNACE_HMI_FEEDBACK_UNRESOLVED) {
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_COMMAND_UNRESOLVED_TITLE),
+                          ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_UNRESOLVED_DETAIL),
+                          OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    show_command_problem(explorer, false, kind, feedback);
+}
+
+static void start_change_done(furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_request_kind_t kind,
+                              const furnace_hmi_command_feedback_t *feedback);
+
 /* The ordinary command's outcome arrived (or it could not be handed over). */
 static void ordinary_command_done(furnace_hmi_operator_screens_t *explorer,
                                   const furnace_hmi_command_feedback_t *feedback)
@@ -8961,6 +9248,15 @@ static void ordinary_command_done(furnace_hmi_operator_screens_t *explorer,
     const furnace_hmi_operator_request_kind_t kind = explorer->command_kind;
     explorer->command_awaiting = false;
     explorer->command_kind = FURNACE_HMI_OPERATOR_REQUEST_NONE;
+    if (kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE || kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_DELETE) {
+        library_change_done(explorer, kind, feedback);
+        flush_manual_retarget(explorer);
+        return;
+    }
+    if (!explorer->simulated_responses && is_start_request(kind)) {
+        start_change_done(explorer, kind, feedback);
+        return;
+    }
     if (feedback->state != FURNACE_HMI_FEEDBACK_ACCEPTED) {
         if (kind == FURNACE_HMI_OPERATOR_REQUEST_MANUAL_RETARGET) {
             /* Not applied: the controller's target and rate are shown again; nothing is resent. */
@@ -9052,6 +9348,23 @@ static bool program_editor_error(const furnace_hmi_operator_screens_t *explorer,
     return false;
 }
 
+/* The program editor's draft as a program (stages only; no name or identity). */
+static void editor_program(const furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_program_t *program)
+{
+    (void)memset(program, 0, sizeof(*program));
+    program->present = true;
+    const size_t count = editor_stage_count(explorer);
+    program->stage_count = (uint8_t)(count > FURNACE_HMI_OPERATOR_MAX_STAGES ? FURNACE_HMI_OPERATOR_MAX_STAGES : count);
+    for (size_t index = 0U; index < program->stage_count; ++index) {
+        const operator_stage_fixture_t stage = program_stage(explorer, index);
+        const bool hold = fixture_stage_kind(&stage) == OPERATOR_DRAFT_STAGE_HOLD;
+        program->stages[index] = (furnace_hmi_operator_program_stage_t) {
+            hold ? FURNACE_HMI_OPERATOR_STAGE_HOLD : FURNACE_HMI_OPERATOR_STAGE_HEATING,
+            stage.target_c, hold ? 0 : stage.delta_c_per_minute, stage.duration_minutes
+        };
+    }
+}
+
 /* Save the program editor's draft into the library (web saveProgramEditor):
  * a new program takes a free slot, an edited one keeps its place. Opens the
  * saved program's details. */
@@ -9061,6 +9374,22 @@ static void commit_program_editor(furnace_hmi_operator_screens_t *explorer)
     if (program_editor_error(explorer, error, sizeof(error))) {
         (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_NOT_ACCEPTED), error,
                           OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    if (!explorer->simulated_responses) {
+        /* The controller's library: it validates and stores the program; the editor stays open
+         * with its draft until the controller has answered (M21-7b). */
+        furnace_hmi_operator_request_t change;
+        (void)memset(&change, 0, sizeof(change));
+        change.kind = FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE;
+        editor_program(explorer, &change.program);
+        copy_text_bounded(change.program_name, sizeof(change.program_name), explorer->program_editor_name);
+        if (!explorer->program_editor_new) {
+            change.program_id = selected_program_entry(explorer)->id;
+            change.program_revision = selected_program_entry(explorer)->revision;
+        }
+        explorer->save_editor_session = explorer->editor_session;
+        send_controller_change(explorer, &change);
         return;
     }
     size_t slot = explorer->selected_program;
@@ -9080,21 +9409,10 @@ static void commit_program_editor(furnace_hmi_operator_screens_t *explorer)
         }
     }
     furnace_hmi_operator_program_t saved;
-    memset(&saved, 0, sizeof(saved));
-    saved.present = true;
+    editor_program(explorer, &saved);
     saved.library = !explorer->program_editor_new && explorer->programs[slot].library;
     saved.name_string = saved.library ? explorer->programs[slot].name_string : 0U;
-    const size_t count = editor_stage_count(explorer);
-    saved.stage_count = (uint8_t)(count > FURNACE_HMI_OPERATOR_MAX_STAGES ? FURNACE_HMI_OPERATOR_MAX_STAGES : count);
-    for (size_t index = 0U; index < saved.stage_count; ++index) {
-        const operator_stage_fixture_t stage = program_stage(explorer, index);
-        const bool hold = fixture_stage_kind(&stage) == OPERATOR_DRAFT_STAGE_HOLD;
-        saved.stages[index] = (furnace_hmi_operator_program_stage_t) {
-            hold ? FURNACE_HMI_OPERATOR_STAGE_HOLD : FURNACE_HMI_OPERATOR_STAGE_HEATING,
-            stage.target_c, hold ? 0 : stage.delta_c_per_minute, stage.duration_minutes
-        };
-    }
-    char name[FURNACE_HMI_OPERATOR_NAME_CAPACITY];
+    char name[FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY];
     copy_text_bounded(name, sizeof(name), explorer->program_editor_name);
     explorer->programs[slot] = saved;
     /* A library program keeps its catalogue name unless the operator renamed it. */
@@ -9102,7 +9420,7 @@ static void commit_program_editor(furnace_hmi_operator_screens_t *explorer)
         explorer->program_name_overrides[slot][0] = '\0';
     }
     else {
-        copy_text_bounded(explorer->program_name_overrides[slot], FURNACE_HMI_OPERATOR_NAME_CAPACITY, name);
+        copy_text_bounded(explorer->program_name_overrides[slot], FURNACE_HMI_OPERATOR_PROGRAM_NAME_CAPACITY, name);
     }
     log_add_named(explorer, FURNACE_HMI_OPERATOR_LOG_PROGRAM_SAVED, program_name_text(explorer, slot));
     clear_staged_session(explorer);
@@ -9147,6 +9465,13 @@ static void delete_selected_program(furnace_hmi_operator_screens_t *explorer)
     if (!program_listed(explorer, program)) {
         return;
     }
+    if (!explorer->simulated_responses) {
+        /* The controller deletes it; the library it lists again no longer has it (M21-7b). */
+        furnace_hmi_operator_request_t change;
+        library_delete_request(explorer, program, &change);
+        send_controller_change(explorer, &change);
+        return;
+    }
     char detail[96];
     (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_PROGRAM_DELETED_DETAIL_FORMAT),
                    program_name_text(explorer, program));
@@ -9163,6 +9488,17 @@ static void begin_program_editor(
 )
 {
     clear_staged_session(explorer);
+    /* The draft is made from the program as it is now, frozen (M21-7b review). Its estimate is
+     * the controller's for that revision, not for the draft: the editor shows the stages' sum. */
+    if (new_program) {
+        (void)memset(&explorer->editor_base, 0, sizeof(explorer->editor_base));
+        explorer->editor_base.present = true;
+    } else {
+        explorer->editor_base = explorer->programs[explorer->selected_program % FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
+    }
+    explorer->editor_base.curing_estimate_s = 0U;
+    explorer->editor_base_valid = true;
+    explorer->editor_session++;
     explorer->program_editor_active = true;
     explorer->program_editor_new = new_program;
     explorer->program_editor_return_page = new_program
@@ -9510,6 +9846,375 @@ static bool open_decision(furnace_hmi_operator_screens_t *explorer)
     return true;
 }
 
+/* --- Program Start on a controller (no simulated answers, M21-7b) --- */
+
+#define START_REASON_BUSY 6U
+
+/* The controller's start rejection or invalidation reason (furnace_start_reason). */
+static const char *start_reason_text(uint8_t reason, char *buffer, size_t capacity)
+{
+    static const furnace_hmi_ui_string_id_t reasons[] = {
+        [6] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_6,   [7] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_7,
+        [8] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_8,   [10] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_10,
+        [12] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_12, [17] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_17,
+        [18] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_18, [19] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_19,
+        [20] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_20, [22] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_22,
+        [23] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_23, [24] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_24,
+        [26] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_26, [27] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_27,
+        [28] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_28, [30] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_30,
+        [33] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_33, [34] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_34,
+        [35] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_35, [36] = FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_36,
+    };
+    return coded_text(reasons, sizeof(reasons) / sizeof(reasons[0]), reason,
+                      FURNACE_HMI_UI_STRING_UI_LAB_START_REASON_CODE_FORMAT, buffer, capacity);
+}
+
+/* 0.1 degrees as "82.4". */
+static void format_decicelsius(int32_t decicelsius, char *buffer, size_t capacity)
+{
+    const int32_t magnitude = decicelsius < 0 ? -decicelsius : decicelsius;
+    char number[24];
+    (void)snprintf(number, sizeof(number), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DECIMAL_FORMAT),
+                   (long)(magnitude / 10), (long)(magnitude % 10));
+    (void)snprintf(buffer, capacity, "%s%s", decicelsius < 0 ? "-" : "", number);
+}
+
+/* Seconds as whole minutes, rounded up. */
+static void format_seconds_as_minutes(uint32_t seconds, char *buffer, size_t capacity)
+{
+    (void)snprintf(buffer, capacity, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_VALUE_FORMAT_MINUTES),
+                   (long)((seconds / 60U) + (seconds % 60U != 0U ? 1U : 0U)));
+}
+
+/* The listed program the controller names, or the name the Start was sent with. */
+static const char *start_program_name(const furnace_hmi_operator_screens_t *explorer, uint32_t program_id)
+{
+    const size_t slot = library_slot_of(explorer->programs, program_id);
+    return slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS ? program_name_text(explorer, slot) : explorer->start_name;
+}
+
+/* The transaction is one this display has a proposal for (open or ended): not "waiting". */
+static bool start_is_this_displays(const furnace_hmi_dashboard_state_t *state, uint32_t transaction_id)
+{
+    return state->start_proposal.state != FURNACE_HMI_START_PROPOSAL_NONE &&
+           state->start_proposal.transaction_id == transaction_id;
+}
+
+/*
+ * The proposal panel (ADR-0013, PROGRAM_AND_STARTUP_MODEL): the measured temperature, the
+ * stage the run starts at, every skipped stage, the controller's estimate, a duration to
+ * acknowledge and its warnings; Confirm and Cancel only, no closing. Confirm is off while
+ * the temperature is not valid. Shown also for a proposal that came after its Start became
+ * unresolved; the HMI never cancels one by itself.
+ */
+static bool open_proposal(furnace_hmi_operator_screens_t *explorer)
+{
+    /* Eighteen skipped stages, in any language, fit (M21-7b review). */
+    static char items[FURNACE_HMI_DASHBOARD_MAX_SKIPPED_STAGES * 96U];
+    static char line[sizeof(items) + 128U];
+    const furnace_hmi_start_proposal_view_t *p = &explorer->state->start_proposal;
+    char title[192];
+    char value[32];
+    char recommended[32];
+    char maximum[32];
+    lv_obj_t *dialog = open_panel(explorer, false);
+
+    if (dialog == NULL) {
+        return false;
+    }
+    explorer->proposal_open = true;
+    explorer->proposal_shown_transaction = p->transaction_id;
+    explorer->proposal_shown_revision = p->proposal_revision;
+    (void)snprintf(title, sizeof(title), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_TITLE_FORMAT),
+                   start_program_name(explorer, p->program_id));
+    bool built = panel_text(dialog, title, &furnace_hmi_font_semibold_20, OPERATOR_TEXT) != NULL;
+    if (p->measured_valid) {
+        format_decicelsius(p->measured_decicelsius, value, sizeof(value));
+        (void)snprintf(line, sizeof(line), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_MEASURED_FORMAT),
+                       value, (unsigned int)p->proposed_stage + 1U);
+    } else {
+        copy_text_bounded(line, sizeof(line), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_MEASURED_INVALID));
+    }
+    built = built && panel_text(dialog, line, &furnace_hmi_font_regular_14,
+                                p->measured_valid ? OPERATOR_TEXT : OPERATOR_THEME_AMBER_TEXT) != NULL;
+    if (p->skipped_count > 0U) {
+        size_t used = 0U;
+        items[0] = '\0';
+        for (uint8_t i = 0U; i < p->skipped_count && i < FURNACE_HMI_DASHBOARD_MAX_SKIPPED_STAGES; ++i) {
+            char item[96];
+            if (p->skipped[i].hold) {
+                (void)snprintf(item, sizeof(item), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_SKIPPED_HOLD_FORMAT),
+                               (unsigned int)p->skipped[i].index + 1U, (unsigned long)p->skipped[i].hold_minutes);
+            } else {
+                format_decicelsius(p->skipped[i].target_decicelsius, value, sizeof(value));
+                (void)snprintf(item, sizeof(item),
+                               ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_SKIPPED_HEATING_FORMAT),
+                               (unsigned int)p->skipped[i].index + 1U, value);
+            }
+            const int written = snprintf(items + used, sizeof(items) - used, "%s%s",
+                                         i > 0U ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIST_SEPARATOR) : "", item);
+            used += (written > 0 && (size_t)written < sizeof(items) - used) ? (size_t)written : 0U;
+        }
+        (void)snprintf(line, sizeof(line), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_SKIPPED_FORMAT),
+                       items);
+        built = built && panel_text(dialog, line, &furnace_hmi_font_regular_14, OPERATOR_THEME_AMBER_TEXT) != NULL;
+    }
+    format_seconds_as_minutes(p->remaining_curing_s, value, sizeof(value));
+    (void)snprintf(line, sizeof(line), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_CURING_FORMAT), value);
+    built = built && panel_text(dialog, line, &furnace_hmi_font_regular_14, OPERATOR_TEXT) != NULL;
+    if (p->duration_ack_required) {
+        format_seconds_as_minutes(p->recommended_s, recommended, sizeof(recommended));
+        format_seconds_as_minutes(p->maximum_s, maximum, sizeof(maximum));
+        (void)snprintf(line, sizeof(line), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_PROPOSAL_DURATION_FORMAT),
+                       recommended, maximum, value);
+        built = built && panel_text(dialog, line, &furnace_hmi_font_regular_14, OPERATOR_THEME_AMBER_TEXT) != NULL;
+    }
+    static const furnace_hmi_ui_string_id_t warnings[] = {
+        [1] = FURNACE_HMI_UI_STRING_UI_LAB_START_WARNING_1,
+        [2] = FURNACE_HMI_UI_STRING_UI_LAB_START_WARNING_2,
+    };
+    for (uint8_t i = 0U; built && i < p->warnings_count && i < FURNACE_HMI_DASHBOARD_MAX_START_WARNINGS; ++i) {
+        built = panel_text(dialog,
+                           coded_text(warnings, sizeof(warnings) / sizeof(warnings[0]), p->warnings[i],
+                                      FURNACE_HMI_UI_STRING_UI_LAB_START_WARNING_CODE_FORMAT, value, sizeof(value)),
+                           &furnace_hmi_font_regular_14, OPERATOR_THEME_AMBER_TEXT) != NULL;
+    }
+    if (built && explorer->modal_note[0] != '\0') {
+        built = panel_text(dialog, explorer->modal_note, &furnace_hmi_font_regular_14, OPERATOR_THEME_AMBER_TEXT) != NULL;
+    }
+    lv_obj_t *actions = built ? panel_actions(dialog) : NULL;
+    lv_obj_t *cancel = actions == NULL ? NULL :
+        create_modal_button(explorer, actions, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_CANCEL),
+                            OPERATOR_TONE_DANGER, OPERATOR_ACTION_PROPOSAL_CANCEL, 0);
+    lv_obj_t *confirm = actions == NULL ? NULL :
+        create_modal_button(explorer, actions, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_CONFIRM),
+                            OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_PROPOSAL_CONFIRM, 0);
+    if (cancel == NULL || confirm == NULL) {
+        clear_modal(explorer);
+        return false;
+    }
+    size_dialog_button(cancel);
+    size_dialog_button(confirm);
+    if (!p->measured_valid) {
+        lv_obj_add_state(confirm, LV_STATE_DISABLED);
+    }
+    return true;
+}
+
+/*
+ * The controller holds a start transaction this display has no proposal for (its
+ * proposal never arrived): it blocks every other Start. Cancel ends it; Keep leaves it.
+ * Shown once per transaction, and again when a Start is refused because of it.
+ */
+static bool open_start_waiting(furnace_hmi_operator_screens_t *explorer)
+{
+    lv_obj_t *dialog = open_panel(explorer, true);
+
+    if (dialog == NULL) {
+        return false;
+    }
+    explorer->start_waiting_open = true;
+    explorer->start_waiting_shown = explorer->state->start_pending_transaction_id;
+    lv_obj_t *actions = NULL;
+    if (panel_text(dialog, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_TITLE), &furnace_hmi_font_semibold_20,
+                   OPERATOR_TEXT) == NULL ||
+        panel_text(dialog, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_DETAIL), &furnace_hmi_font_regular_14,
+                   OPERATOR_TEXT) == NULL ||
+        (actions = panel_actions(dialog)) == NULL) {
+        clear_modal(explorer);
+        return false;
+    }
+    lv_obj_t *keep = create_modal_button(explorer, actions, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_KEEP),
+                                         OPERATOR_TONE_PRIMARY, OPERATOR_ACTION_CLOSE_MODAL, 0);
+    lv_obj_t *cancel = create_modal_button(explorer, actions,
+                                           ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_WAITING_CANCEL),
+                                           OPERATOR_TONE_DANGER, OPERATOR_ACTION_START_WAITING_CANCEL, 0);
+    if (keep == NULL || cancel == NULL) {
+        clear_modal(explorer);
+        return false;
+    }
+    size_dialog_button(keep);
+    size_dialog_button(cancel);
+    return true;
+}
+
+/* After each observation: the proposal panel follows the controller's proposal, and a
+ * transaction this display has no proposal for is pointed out. */
+static void follow_start(furnace_hmi_operator_screens_t *explorer)
+{
+    if (explorer->simulated_responses) {
+        return;
+    }
+    const furnace_hmi_dashboard_state_t *state = explorer->state;
+    const furnace_hmi_start_proposal_view_t *p = &state->start_proposal;
+    const bool open = p->state == FURNACE_HMI_START_PROPOSAL_OPEN;
+    /* A Confirm or Cancel is on its way: its answer decides what is shown. */
+    const bool answering = explorer->command_awaiting && is_start_request(explorer->command_kind);
+    char reason[96];
+    char detail[192];
+
+    if (explorer->proposal_open) {
+        if (!open) {
+            clear_modal(explorer);
+            if (p->state == FURNACE_HMI_START_PROPOSAL_INVALIDATED) {
+                (void)snprintf(detail, sizeof(detail), ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_INVALIDATED_FORMAT),
+                               start_reason_text(p->invalidation_reason, reason, sizeof(reason)));
+                (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_INVALIDATED_TITLE), detail,
+                                  OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+            } else if (p->state == FURNACE_HMI_START_PROPOSAL_ENDED) {
+                (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_INVALIDATED_TITLE),
+                                  ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_ENDED_DETAIL),
+                                  OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+            }
+        } else if (p->transaction_id != explorer->proposal_shown_transaction ||
+                   p->proposal_revision != explorer->proposal_shown_revision) {
+            /* A changed proposal is shown as it now is (a new revision must be confirmed). */
+            explorer->modal_note[0] = '\0';
+            (void)open_proposal(explorer);
+        }
+        return;
+    }
+    if (open && !answering && !explorer->faults_open && !explorer->decision_open && explorer->keyboard_mode == 0U) {
+        (void)open_proposal(explorer);
+        return;
+    }
+    const uint32_t pending = state->start_pending_transaction_id;
+    if (pending == 0U) {
+        /* IDs may repeat after a controller restart: a later one is pointed out again. */
+        explorer->start_waiting_shown = 0U;
+    }
+    if (explorer->start_waiting_open) {
+        if (pending == 0U || pending != explorer->start_waiting_shown || start_is_this_displays(state, pending)) {
+            clear_modal(explorer);
+        }
+        return;
+    }
+    if (pending != 0U && !answering && !start_is_this_displays(state, pending) &&
+        pending != explorer->start_waiting_shown && explorer->modal == NULL &&
+        !(explorer->command_awaiting && explorer->command_kind == FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM)) {
+        (void)open_start_waiting(explorer);
+    }
+}
+
+/* The controller answered a Start, a Confirm or a Cancel. Only the controller's run makes a
+ * program run; a proposal is never "started". */
+static void start_change_done(furnace_hmi_operator_screens_t *explorer, furnace_hmi_operator_request_kind_t kind,
+                              const furnace_hmi_command_feedback_t *feedback)
+{
+    const furnace_hmi_dashboard_state_t *state = explorer->state;
+    char reason[128];
+
+    explorer->modal_note[0] = '\0';
+    switch (feedback->state) {
+    case FURNACE_HMI_FEEDBACK_ACCEPTED: {
+        clear_modal(explorer);
+        if (kind != FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL) {
+            /* The run started: it is the most recent program. */
+            const size_t slot = library_slot_of(explorer->programs, explorer->library_request.program_id);
+            if (slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS) {
+                explorer->running_program = (uint8_t)slot;
+                record_recent_program(explorer, (uint8_t)slot);
+            }
+        }
+        return;
+    }
+    case FURNACE_HMI_FEEDBACK_PROPOSED:
+        /* The proposal panel opens from the controller's proposal (follow_start, this same pass). */
+        clear_modal(explorer);
+        return;
+    case FURNACE_HMI_FEEDBACK_REJECTED: {
+        const char *text = start_reason_text(feedback->reason, reason, sizeof(reason));
+        if (kind == FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM &&
+            state->start_proposal.state == FURNACE_HMI_START_PROPOSAL_OPEN) {
+            /* The proposal still stands (for example in a newer revision): shown again, with why. */
+            copy_text_bounded(explorer->modal_note, sizeof(explorer->modal_note), text);
+            (void)open_proposal(explorer);
+            return;
+        }
+        if (kind == FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM && feedback->reason == START_REASON_BUSY &&
+            state->start_pending_transaction_id != 0U &&
+            !start_is_this_displays(state, state->start_pending_transaction_id)) {
+            (void)open_start_waiting(explorer);
+            return;
+        }
+        (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_REJECTED_TITLE), text,
+                          OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+        return;
+    }
+    default:
+        clear_modal(explorer);
+        show_command_problem(explorer, false, kind, feedback);
+        return;
+    }
+}
+
+/* A Start of the program in `slot` (the controller's ID and revision). */
+static void request_program_start(furnace_hmi_operator_screens_t *explorer, size_t slot)
+{
+    furnace_hmi_operator_request_t change;
+
+    if (!program_listed(explorer, slot) || explorer->programs[slot].damaged) {
+        return;
+    }
+    (void)memset(&change, 0, sizeof(change));
+    change.kind = FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM;
+    change.program_id = explorer->programs[slot].id;
+    change.program_revision = explorer->programs[slot].revision;
+    copy_text_bounded(change.program_name, sizeof(change.program_name), program_name_text(explorer, slot));
+    copy_text_bounded(explorer->start_name, sizeof(explorer->start_name), change.program_name);
+    explorer->selected_program = (uint8_t)slot;
+    send_controller_change(explorer, &change);
+}
+
+/* Confirm exactly the proposal on screen; Cancel it; or cancel a waiting transaction. */
+static void answer_proposal(furnace_hmi_operator_screens_t *explorer, operator_action_t action)
+{
+    const furnace_hmi_dashboard_state_t *state = explorer->state;
+    const furnace_hmi_start_proposal_view_t *p = &state->start_proposal;
+    furnace_hmi_operator_request_t change;
+
+    (void)memset(&change, 0, sizeof(change));
+    if (action == OPERATOR_ACTION_START_WAITING_CANCEL) {
+        /* Only the transaction the notice names. */
+        if (!explorer->start_waiting_open || state->start_pending_transaction_id == 0U ||
+            state->start_pending_transaction_id != explorer->start_waiting_shown) {
+            clear_modal(explorer);
+            return;
+        }
+        change.kind = FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL;
+        change.transaction_id = state->start_pending_transaction_id;
+        send_controller_change(explorer, &change);
+        return;
+    }
+    if (p->state != FURNACE_HMI_START_PROPOSAL_OPEN) {
+        clear_modal(explorer);
+        return;
+    }
+    if (!explorer->proposal_open || p->transaction_id != explorer->proposal_shown_transaction ||
+        p->proposal_revision != explorer->proposal_shown_revision) {
+        /* Not the proposal drawn: nothing is sent, and the panel shows the current one. */
+        (void)open_proposal(explorer);
+        return;
+    }
+    change.transaction_id = p->transaction_id;
+    change.program_id = p->program_id;
+    change.program_revision = p->program_revision;
+    copy_text_bounded(change.program_name, sizeof(change.program_name), start_program_name(explorer, p->program_id));
+    if (action == OPERATOR_ACTION_PROPOSAL_CANCEL) {
+        change.kind = FURNACE_HMI_OPERATOR_REQUEST_START_CANCEL;
+    } else {
+        if (!p->measured_valid) {
+            return;
+        }
+        change.kind = FURNACE_HMI_OPERATOR_REQUEST_START_CONFIRM;
+        change.proposal_revision = p->proposal_revision;
+        change.proposed_stage = p->proposed_stage;
+        /* The operator accepts the controller's estimate shown (START-16: within it and the maximum). */
+        change.accepted_duration_s = p->duration_ack_required ? p->remaining_curing_s : 0U;
+    }
+    send_controller_change(explorer, &change);
+}
+
 /*
  * After each observation (no simulated answers): the decision panel opens while
  * the controller awaits a decision and closes when it no longer does; its
@@ -9549,6 +10254,7 @@ static void follow_modals(furnace_hmi_operator_screens_t *explorer)
     if (explorer->faults_open && faults_signature(explorer) != explorer->faults_signature) {
         (void)open_faults(explorer);
     }
+    follow_start(explorer);
 }
 
 /* Controller actions that are commands now (M21-5b): Manual, Pause, Resume and Stop. */
@@ -9562,6 +10268,14 @@ static bool action_connected(operator_action_t action)
     case OPERATOR_ACTION_PAUSE_PREVIEW:
     case OPERATOR_ACTION_RESUME_PREVIEW:
     case OPERATOR_ACTION_STOP_PREVIEW:
+    /* M21-7b: the controller's library. The stage editor's Save changes only the draft. */
+    case OPERATOR_ACTION_SHOW_SAVE:
+    case OPERATOR_ACTION_CONFIRM_SAVE_ALL:
+    case OPERATOR_ACTION_DELETE_REQUESTED:
+    case OPERATOR_ACTION_SETTINGS_DELETE_CONFIRM:
+    /* M21-7b: a program Start, answered by the controller's proposal or its run. */
+    case OPERATOR_ACTION_RUNNING:
+    case OPERATOR_ACTION_START_AGAIN:
         return true;
     default:
         return false;
@@ -9596,6 +10310,11 @@ static void apply_action(
         (void)furnace_hmi_operator_screens_navigate(explorer, FURNACE_HMI_OPERATOR_PAGE_MANUAL);
         break;
     case OPERATOR_ACTION_PROGRAM_EDITOR:
+        /* From any page: a program the editors would round, or cannot read, is not edited. */
+        if (!explorer->simulated_responses &&
+            (selected_program_entry(explorer)->inexact || selected_program_entry(explorer)->damaged)) {
+            break;
+        }
         begin_program_editor(explorer, false);
         (void)furnace_hmi_operator_screens_navigate(explorer, FURNACE_HMI_OPERATOR_PAGE_PROGRAM_EDITOR);
         break;
@@ -9629,6 +10348,11 @@ static void apply_action(
     case OPERATOR_ACTION_RUNNING:
         /* Start request; Running opens when the controller reports the run. */
         clear_modal(explorer);
+        if (!explorer->simulated_responses) {
+            /* The controller's program by ID and revision; it answers with a proposal or its run. */
+            request_program_start(explorer, explorer->selected_program);
+            break;
+        }
         if (program_listed(explorer, explorer->selected_program)) {
             record_recent_program(explorer, explorer->selected_program);
             post_request(explorer, FURNACE_HMI_OPERATOR_REQUEST_START_PROGRAM);
@@ -10048,6 +10772,14 @@ static void apply_action(
         (void)settings_open_delete_dialog(explorer);
         break;
     case OPERATOR_ACTION_SETTINGS_DELETE_CONFIRM: {
+        if (!explorer->simulated_responses) {
+            /* The controller deletes the programs the dialog named, one at a time by ID (M21-7b). */
+            explorer->settings_delete_pending = 0U;
+            explorer->settings_deleted = 0U;
+            explorer->settings_deleting = true;
+            settings_delete_next(explorer);
+            break;
+        }
         /* The simulated controller accepts the deletion. */
         unsigned removed = 0U;
         for (size_t slot = 0U; slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS; ++slot) {
@@ -10190,7 +10922,7 @@ static void apply_action(
             (void)keyboard_open_number(
                 explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_DURATION),
                 explorer->draft_duration_minutes, OPERATOR_KEYBOARD_TARGET_DRAFT_DURATION,
-                explorer->selected_stage, 1, 59999, 1, false);
+                explorer->selected_stage, 1, FURNACE_HMI_OPERATOR_PROGRAM_MAX_STAGE_MINUTES, 1, false);
         }
         break;
     case OPERATOR_ACTION_SHOW_SAVE:
@@ -10408,6 +11140,18 @@ static void apply_action(
         break;
     case OPERATOR_ACTION_START_AGAIN:
         /* The same program from the start (web startProgramAgain). */
+        if (!explorer->simulated_responses) {
+            /* The controller's program of the run shown, if it is still in the library. */
+            const size_t slot = library_slot_of(explorer->programs, explorer->state->program_id);
+            if (slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS) {
+                request_program_start(explorer, slot);
+            } else {
+                (void)open_dialog(explorer, ui_string(FURNACE_HMI_UI_STRING_UI_LAB_START_REJECTED_TITLE),
+                                  ui_string(FURNACE_HMI_UI_STRING_UI_LAB_LIBRARY_RESULT_2),
+                                  OPERATOR_ACTION_CLOSE_MODAL, NULL, OPERATOR_TONE_PRIMARY);
+            }
+            break;
+        }
         if (run_was_stopped(explorer) && program_listed(explorer, explorer->running_program)) {
             explorer->selected_program = explorer->running_program;
             explorer->run_stopped = false;
@@ -10587,6 +11331,21 @@ static void apply_action(
         break;
     case OPERATOR_ACTION_DELETE_REQUESTED:
         delete_selected_program(explorer);
+        break;
+    case OPERATOR_ACTION_SAVE_ACKNOWLEDGED:
+        /* The same save, with the estimate the controller asked the operator to acknowledge. */
+        if (!explorer->simulated_responses &&
+            explorer->library_request.kind == FURNACE_HMI_OPERATOR_REQUEST_PROGRAM_SAVE &&
+            explorer->library_request.acknowledged_duration_s > 0U) {
+            send_controller_change(explorer, &explorer->library_request);
+        }
+        break;
+    case OPERATOR_ACTION_PROPOSAL_CONFIRM:
+    case OPERATOR_ACTION_PROPOSAL_CANCEL:
+    case OPERATOR_ACTION_START_WAITING_CANCEL:
+        if (!explorer->simulated_responses) {
+            answer_proposal(explorer, action);
+        }
         break;
     }
 }
@@ -10956,6 +11715,8 @@ static bool rebuild_page_keeping_modal(furnace_hmi_operator_screens_t *explorer)
     const uint8_t alert_open = explorer->alert_open;
     const bool faults_open = explorer->faults_open;
     const bool decision_open = explorer->decision_open;
+    const bool proposal_open = explorer->proposal_open;
+    const bool start_waiting_open = explorer->start_waiting_open;
     lv_obj_t *decision_time_label = explorer->decision_time_label;
     lv_obj_t *decision_continue = explorer->decision_continue_button;
     lv_obj_t *decision_stop = explorer->decision_stop_button;
@@ -10966,6 +11727,8 @@ static bool rebuild_page_keeping_modal(furnace_hmi_operator_screens_t *explorer)
     explorer->alert_open = alert_open;
     explorer->faults_open = faults_open;
     explorer->decision_open = decision_open;
+    explorer->proposal_open = proposal_open;
+    explorer->start_waiting_open = start_waiting_open;
     explorer->decision_time_label = decision_time_label;
     explorer->decision_continue_button = decision_continue;
     explorer->decision_stop_button = decision_stop;
@@ -11171,6 +11934,124 @@ void furnace_hmi_operator_screens_request_submitted(
     }
     if (explorer->page == FURNACE_HMI_OPERATOR_PAGE_MANUAL) {
         (void)update_manual_run_state(explorer);
+    }
+}
+
+/* The slot of the controller program `id` in `programs`, or FURNACE_HMI_OPERATOR_MAX_PROGRAMS. */
+static size_t library_slot_of(const furnace_hmi_operator_program_t *programs, uint32_t id)
+{
+    for (size_t slot = 0U; id != 0U && slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS; ++slot) {
+        if (programs[slot].present && programs[slot].id == id) {
+            return slot;
+        }
+    }
+    return FURNACE_HMI_OPERATOR_MAX_PROGRAMS;
+}
+
+/* Slot indices that name programs by their place: kept by controller ID, dropped when gone. */
+static uint8_t library_follow(const furnace_hmi_operator_program_t *before,
+                              const furnace_hmi_operator_program_t *after, uint8_t *slots,
+                              uint8_t count)
+{
+    uint8_t kept = 0U;
+
+    for (uint8_t index = 0U; index < count; ++index) {
+        const uint8_t slot = slots[index];
+        const size_t moved = slot < FURNACE_HMI_OPERATOR_MAX_PROGRAMS
+                                 ? library_slot_of(after, before[slot].id)
+                                 : FURNACE_HMI_OPERATOR_MAX_PROGRAMS;
+        if (moved < FURNACE_HMI_OPERATOR_MAX_PROGRAMS && !after[moved].damaged) {
+            slots[kept++] = (uint8_t)moved;
+        }
+    }
+    return kept;
+}
+
+bool furnace_hmi_operator_screens_set_library(furnace_hmi_operator_screens_t *explorer,
+                                              const furnace_hmi_operator_library_t *library)
+{
+    if (explorer == NULL || explorer->root == NULL || library == NULL ||
+        library->count > FURNACE_HMI_OPERATOR_MAX_PROGRAMS ||
+        library->state > FURNACE_HMI_OPERATOR_LIBRARY_TOO_LARGE) {
+        return false;
+    }
+    const bool current = library->state == FURNACE_HMI_OPERATOR_LIBRARY_CURRENT;
+    const bool editing = explorer->program_editor_active || explorer->stage_session_open;
+    /* The selection, favourites and recent programs name slots of the last complete listing;
+     * they follow their IDs from it, also across a listing that is not complete (review M5). */
+    const furnace_hmi_operator_program_t *before = explorer->library_last;
+    const furnace_hmi_operator_program_t *was = &before[explorer->selected_program % FURNACE_HMI_OPERATOR_MAX_PROGRAMS];
+    const uint32_t selected_id = was->id;
+    const uint32_t selected_revision = was->revision;
+    const uint32_t running_id =
+        before[explorer->running_program % FURNACE_HMI_OPERATOR_MAX_PROGRAMS].id;
+
+    memset(explorer->programs, 0, sizeof(explorer->programs));
+    memset(explorer->program_name_overrides, 0, sizeof(explorer->program_name_overrides));
+    for (size_t slot = 0U; current && slot < library->count; ++slot) {
+        explorer->programs[slot] = library->programs[slot];
+        explorer->programs[slot].present = true;
+        /* Named by the controller, never by the string catalogue. */
+        explorer->programs[slot].library = false;
+        explorer->programs[slot].name[sizeof(explorer->programs[slot].name) - 1U] = '\0';
+    }
+    explorer->library_count = 0U;
+    explorer->library_known = current;
+    explorer->library_from_controller = true;
+    explorer->library_state = library->state;
+    explorer->library_updating = current && library->updating;
+    if (current) {
+        explorer->favourite_count = library_follow(before, explorer->programs,
+                                                   explorer->quick_launch_favourites,
+                                                   explorer->favourite_count);
+        explorer->recent_count = library_follow(before, explorer->programs,
+                                                explorer->quick_launch_recent, explorer->recent_count);
+        const size_t running = library_slot_of(explorer->programs, running_id);
+        if (running < FURNACE_HMI_OPERATOR_MAX_PROGRAMS) {
+            explorer->running_program = (uint8_t)running;
+        }
+    }
+
+    const size_t selected = library_slot_of(explorer->programs, selected_id);
+    const bool gone = selected >= FURNACE_HMI_OPERATOR_MAX_PROGRAMS ||
+                      explorer->programs[selected].damaged;
+    const bool changed = !gone && explorer->programs[selected].revision != selected_revision;
+    if (!gone) {
+        /* An open draft keeps its own copy; only its place in the listing follows. */
+        if (explorer->staged_program == explorer->selected_program) {
+            explorer->staged_program = (uint8_t)selected;
+        }
+        explorer->selected_program = (uint8_t)selected;
+    }
+    if (current) {
+        memcpy(explorer->library_last, explorer->programs, sizeof(explorer->library_last));
+    }
+    if (editing) {
+        /* The draft stays as it was made; a save names its base revision (the controller
+         * refuses it when that is no longer current) or, for a program gone, NOT_FOUND. */
+        return true;
+    }
+    /* A plain dialog about the program (Start, Delete) was for what is no longer listed. The
+     * proposal and waiting panels, Faults, the decision and alerts are not about the library. */
+    const bool plain_modal = explorer->modal != NULL && !explorer->proposal_open && !explorer->start_waiting_open &&
+                             !explorer->faults_open && !explorer->decision_open && explorer->alert_open == 0U;
+    switch (explorer->page) {
+    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_DETAIL:
+    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_STAGES:
+    case FURNACE_HMI_OPERATOR_PAGE_PROGRAM_LOADING:
+        if ((gone || changed) && plain_modal) {
+            clear_modal(explorer);
+        }
+        if (gone) {
+            /* What was open is no longer in the library. */
+            explorer->page = FURNACE_HMI_OPERATOR_PAGE_PROGRAMS;
+        }
+        return rebuild_page_keeping_modal(explorer);
+    case FURNACE_HMI_OPERATOR_PAGE_HOME:
+    case FURNACE_HMI_OPERATOR_PAGE_PROGRAMS:
+        return rebuild_page_keeping_modal(explorer);
+    default:
+        return true;
     }
 }
 

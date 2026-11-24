@@ -31,7 +31,7 @@ typedef enum {
     FURNACE_HMI_SIM_SCENARIO_COUNT,
 } furnace_hmi_sim_scenario_t;
 
-#define FURNACE_HMI_SIM_MAX_STAGES 8U
+#define FURNACE_HMI_SIM_MAX_STAGES 18U
 
 /* One authored stage of a program the simulator runs: Heating ramps from the
  * previous target to `target_c` over `minutes`; Hold keeps the previous

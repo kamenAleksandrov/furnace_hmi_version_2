@@ -51,6 +51,55 @@ int furnace_hmi_operator_manual_command_check(lv_display_t *display, const char 
  */
 int furnace_hmi_operator_fault_check(lv_display_t *display, const char **failure);
 
+/**
+ * The controller's program library (Phase 21 M21-7b): being read, unavailable,
+ * too large and empty each said as such; programs by the controller's names; a
+ * damaged one not opened; 18 stages on two pages; a program the editors would
+ * round not edited; the open program and favourites following the controller's
+ * IDs; a deleted program's page closed. Same contract as
+ * furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_library_check(lv_display_t *display, const char **failure);
+
+/**
+ * Saves and deletes against a controller (Phase 21 M21-7b): Save sends the
+ * edited program with its ID and revision (a new one without), the draft stays
+ * open until the controller has answered and after any answer but SAVED; an
+ * invalid program's first error is named; a save needing acknowledgement asks
+ * and is sent again with the controller's estimate; an unresolved change is
+ * said to be unresolved; Delete names the revision shown; Settings > Delete
+ * programs deletes one at a time by ID. Same contract as
+ * furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_library_command_check(lv_display_t *display, const char **failure);
+
+/**
+ * Program Start against a controller (Phase 21 M21-7b): Start names the program
+ * and revision shown; a proposal opens a panel with the measured temperature,
+ * every skipped stage, the estimate, the duration to accept and the warnings,
+ * never Running; a new revision is shown as it is, Confirm off without a valid
+ * temperature; Confirm names exactly the proposal and the accepted duration; a
+ * refused Confirm shows the newest proposal with the reason; Cancel names the
+ * transaction; a withdrawn proposal says why; a transaction this display has no
+ * proposal for is pointed out once (again after a Start refused because of it)
+ * and cancelled only on request. Same contract as
+ * furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_start_check(lv_display_t *display, const char **failure);
+
+/**
+ * The library changing under an open editor, dialog or panel (M21-7b review):
+ * the draft keeps its program and base revision, also through a re-read
+ * library; a save's answer belongs to its own draft; no inexact program is
+ * edited from any page; Delete programs deletes only what it named;
+ * favourites last through an unavailable library; the controller's estimate is
+ * the duration shown; a Start dialog for a revision no longer listed closes;
+ * Confirm acts only on the proposal drawn; every skipped stage is listed; a
+ * library change keeps the proposal panel; an ended proposal is explained.
+ * Same contract as furnace_hmi_operator_content_check.
+ */
+int furnace_hmi_operator_library_review_check(lv_display_t *display, const char **failure);
+
 #ifdef __cplusplus
 }
 #endif

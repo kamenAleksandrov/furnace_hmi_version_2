@@ -1,5 +1,42 @@
 # Project status
 
+**Fact (2026-11-20, Phase 21 M21-7b, draft):** the operator screens use the controller's program
+library on Zephyr: listing, saves, deletes and the program Start with the controller's proposal.
+Stacked on M21-7a; design and owner answers in the Phase 21 plan ("M21-7b, the screens").
+- **Library:** replaced whenever the controller's changes; loading, unavailable, too large and
+  updating said as such; damaged programs listed, never opened; a program the editors cannot show
+  exactly is startable, never edited; the controller's planning estimate is the duration shown.
+  18 stages (nine to a stage page) in the screens, the simulator and the web demo.
+- **Saves and deletes:** the editor holds the program it was made from and saves with its base
+  revision; the controller's answer decides (invalid with its first error, acknowledgement of a
+  long program, unresolved). Settings > Delete programs deletes the programs it named, by ID.
+- **Start:** by ID and revision; a proposal panel with every skipped stage, the estimate, a
+  duration to accept and the warnings, only confirmed or cancelled; a transaction without a
+  proposal on this display is pointed out with Cancel and Keep (owner question 2026-11-19, as
+  recommended); the HMI never cancels by itself.
+- **Names:** 31 characters in up to 124 bytes throughout.
+- **Link:** the receive interrupt fills a 4 KB ring; lost bytes are traced (`rx_lost`).
+- **Evidence:**
+  - host GCC 18 of 18, MSVC core 15 of 15, MSVC desktop 18 of 18, UI lab 17 of 17 with all
+    capture geometry checks;
+  - Zephyr Twister on native_sim, 28 of 28 test cases;
+  - the operator workflows against firmware #66's `link_pty`, 7 of 7;
+  - the web demo smoke test;
+  - the Zephyr GUI against the simulated controller, by hand (WSLg): the three programs listed,
+    Start, Stop, Start again, a new program saved and deleted, 0 bytes lost;
+  - 41 mutation probes in a detached worktree: 38 killed; two showed redundant code (removed),
+    and one (the skipped-stage buffer's size) cannot fail with the English strings.
+- **Reviews:** three AI reviews in the HMI roles (embedded-reviewer, software-critic,
+  error-auditor), not the required human reviews. Fixed test-first: the editor followed the live
+  library (a save could overwrite another display's revision), Delete programs chose by place,
+  an inexact program was editable from its stages, Confirm and Cancel did not check what was
+  drawn, favourites were lost while the library was unavailable, durations came from an assumed
+  25 C start, and smaller points.
+- **Open:** the labs answer every Start and change at once (no proposal view); no Cyrillic glyphs
+  (ADR-0012); the editors' bounds are not the controller's limits; on native_sim a write to a
+  closed serial peer ends the HMI (driver behaviour; the demo's relay holds the HMI's end).
+- **Next:** M21-7c, the Device log and health.
+
 **Fact (2026-11-19, Phase 21 M21-7a, draft):** the controller client mirrors the controller's
 program library and sends saves, deletes and the program Start transaction. No screen changes
 (M21-7b); health and history are M21-7c.
