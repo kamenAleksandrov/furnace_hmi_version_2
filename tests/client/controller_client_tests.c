@@ -62,6 +62,9 @@ typedef struct {
     uint8_t damaged_entry;
     /* What the scripted STATUS reports besides its defaults (M21-7a). */
     uint32_t status_library_revision;
+    /* M21-7e: the controller clock the fixture's STATUS reports. */
+    uint8_t status_wall_state;
+    int64_t status_wall_ms;
     struct furnace_wire_start_status status_start;
     /* SETTINGS_REQUEST (M21-7d), which the client sends by itself. */
     size_t settings_sent;
@@ -331,6 +334,8 @@ static void send_status(uint32_t sequence, int32_t temperature, uint8_t validity
     (void)memset(s->session_id, session, FURNACE_WIRE_SESSION_ID_SIZE);
     s->status_sequence = sequence;
     s->library_revision = fx.status_library_revision;
+    s->wall_state = fx.status_wall_state;
+    s->wall_ms = fx.status_wall_ms;
     s->start = fx.status_start;
     s->measured_temperature.value = temperature;
     s->measured_temperature.validity = validity;
@@ -1211,6 +1216,8 @@ static const struct furnace_wire_envelope *last_envelope(void)
         return &m->u.start_cancel.envelope;
     case FURNACE_WIRE_MSG_SETTING_CHANGE:
         return &m->u.setting_change.envelope;
+    case FURNACE_WIRE_MSG_CLOCK_SET:
+        return &m->u.clock_set.envelope;
     default:
         return NULL;
     }
@@ -2496,6 +2503,73 @@ static void planning_reference_changed(void)
     end();
 }
 
+#define CLOCK_TIME_MS 1795435200000LL /* 2026-11-23T12:00:00Z */
+
+static void send_clock_result(uint8_t result, uint8_t state, int64_t wall_ms)
+{
+    start_out(FURNACE_WIRE_MSG_CLOCK_RESULT);
+    fx.out.u.clock_result.request_id = last_request_id();
+    fx.out.u.clock_result.result = result;
+    fx.out.u.clock_result.wall_state = state;
+    fx.out.u.clock_result.wall_ms = wall_ms;
+    send_out();
+    advance(10U);
+}
+
+static void send_status_clock(uint8_t state, int64_t wall_ms)
+{
+    fx.status_wall_state = state;
+    fx.status_wall_ms = wall_ms;
+    status_sequence++;
+    send_status(status_sequence, 1234, FURNACE_HMI_CONTROLLER_MEASURED_VALID, SESSION_A);
+    advance(10U);
+}
+
+/*
+ * The controller's wall clock (M21-7e): read from STATUS (unknown after its start), set with
+ * CLOCK_SET, the result's clock in effect whatever the result; a STATUS captured before the set
+ * does not undo it; a newer one gives the clock; another controller session discards it.
+ */
+static void controller_clock(void)
+{
+    const furnace_hmi_controller_observation_t *o = obs();
+    const furnace_hmi_command_outcome_t *c = &o->command;
+    const struct furnace_wire_clock_set *m = &fx.last_command.u.clock_set;
+    furnace_hmi_command_t command = {.kind = FURNACE_HMI_COMMAND_CLOCK_SET, .clock_wall_ms = CLOCK_TIME_MS};
+
+    begin_commands("controller clock");
+    EXPECT(o->clock_valid && o->wall_state == FURNACE_HMI_WALL_UNKNOWN && o->wall_ms == 0,
+           "STATUS: the clock is unknown after the controller's start");
+    (void)submit_command(&command, 1U);
+    EXPECT(fx.last_command_type == FURNACE_WIRE_MSG_CLOCK_SET && m->wall_ms == CLOCK_TIME_MS,
+           "CLOCK_SET names the time");
+    send_clock_result(FURNACE_HMI_CLOCK_RESULT_APPLIED, FURNACE_HMI_WALL_VALID, CLOCK_TIME_MS);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_ACCEPTED && c->clock_state == FURNACE_HMI_WALL_VALID &&
+               c->clock_wall_ms == CLOCK_TIME_MS,
+           "APPLIED is accepted with the clock in effect");
+    EXPECT(o->wall_state == FURNACE_HMI_WALL_VALID && o->wall_ms == CLOCK_TIME_MS,
+           "the result's clock is the clock");
+    send_status_clock(FURNACE_HMI_WALL_UNKNOWN, 0);
+    EXPECT(o->wall_state == FURNACE_HMI_WALL_VALID && o->wall_ms == CLOCK_TIME_MS,
+           "a STATUS captured before the set does not undo it");
+    send_status_clock(FURNACE_HMI_WALL_VALID, CLOCK_TIME_MS + 400);
+    EXPECT(o->wall_state == FURNACE_HMI_WALL_VALID && o->wall_ms == CLOCK_TIME_MS + 400,
+           "a newer STATUS gives the clock");
+    command.clock_wall_ms = 0;
+    (void)submit_command(&command, 2U);
+    send_clock_result(FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE, FURNACE_HMI_WALL_VALID, CLOCK_TIME_MS + 500);
+    EXPECT(c->state == FURNACE_HMI_COMMAND_REJECTED && c->reason == FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE &&
+               o->wall_ms == CLOCK_TIME_MS + 500,
+           "OUT_OF_RANGE is rejected; the clock in effect stays");
+    send_hello_ack(HELLO_OK, SESSION_B);
+    send_capabilities(0U, SESSION_B);
+    advance(10U);
+    EXPECT(!o->clock_valid, "another controller session discards the clock");
+    fx.status_wall_state = FURNACE_HMI_WALL_UNKNOWN;
+    fx.status_wall_ms = 0;
+    end();
+}
+
 static furnace_hmi_command_t start_command(void)
 {
     const furnace_hmi_command_t c = {
@@ -3288,6 +3362,7 @@ int controller_client_tests_run(void)
     program_limits_reported();
     planning_reference_from_the_snapshot();
     planning_reference_changed();
+    controller_clock();
     settings_read_when_missing();
     unresolved_change_reads_settings();
     program_start_accepted();

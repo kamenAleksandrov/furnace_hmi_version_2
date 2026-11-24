@@ -32,6 +32,8 @@ typedef enum {
     FURNACE_HMI_COMMAND_START_CANCEL,
     /* M21-7d: an operator setting (SETTING_CHANGE). */
     FURNACE_HMI_COMMAND_SETTING_CHANGE,
+    /* M21-7e: set the controller's wall clock (CLOCK_SET). */
+    FURNACE_HMI_COMMAND_CLOCK_SET,
     FURNACE_HMI_COMMAND_COUNT,
 } furnace_hmi_command_kind_t;
 
@@ -86,6 +88,8 @@ typedef struct {
     /** Setting change: the setting (PLANNING_REFERENCE 1) and its value (0.1 °C). */
     uint8_t setting;
     int32_t setting_value;
+    /** Clock set: Unix time in ms, UTC (M21-7e). */
+    int64_t clock_wall_ms;
 } furnace_hmi_command_t;
 
 /** SETTING_RESULT results (controller interface, Settings). */
@@ -93,6 +97,16 @@ typedef struct {
 #define FURNACE_HMI_SETTING_RESULT_OUT_OF_RANGE 1U
 #define FURNACE_HMI_SETTING_RESULT_SESSION_ACTIVE 2U
 #define FURNACE_HMI_SETTING_RESULT_BUSY 3U
+
+/** CLOCK_RESULT results (controller interface, Clock; M21-7e). */
+#define FURNACE_HMI_CLOCK_RESULT_APPLIED 0U
+#define FURNACE_HMI_CLOCK_RESULT_OUT_OF_RANGE 1U
+#define FURNACE_HMI_CLOCK_RESULT_SESSION_ACTIVE 2U
+
+/** The controller clock's state (interface, Clock): unknown, set once, set again. */
+#define FURNACE_HMI_WALL_UNKNOWN 0U
+#define FURNACE_HMI_WALL_VALID 1U
+#define FURNACE_HMI_WALL_ADJUSTED 2U
 
 /** Where a command stands. Only the controller's result makes it accepted or rejected (API-03). */
 typedef enum {
@@ -165,7 +179,8 @@ typedef struct {
      * The controller's reason: RUN_COMMAND_* reason, COMMAND_REJECTED reason,
      * FAULT_ACKNOWLEDGE_RESULT result, FAULT_RECOVERY_RESULT reply,
      * PROGRAM_SAVE_RESULT or PROGRAM_DELETE_RESULT result, START_REJECTED reason, or
-     * SETTING_RESULT result (APPLIED 0, OUT_OF_RANGE 1, SESSION_ACTIVE 2, BUSY 3).
+     * SETTING_RESULT result (APPLIED 0, OUT_OF_RANGE 1, SESSION_ACTIVE 2, BUSY 3), or
+     * CLOCK_RESULT result (APPLIED 0, OUT_OF_RANGE 1, SESSION_ACTIVE 2).
      */
     uint8_t reason;
     /** RUN_COMMAND_*: pause-reason codes that block a Resume or Continue. */
@@ -190,6 +205,9 @@ typedef struct {
     uint32_t transaction_id;
     /** SETTING_RESULT: the value in effect afterwards, whatever the result. */
     int32_t setting_value;
+    /** CLOCK_RESULT: the clock in effect afterwards, whatever the result. */
+    uint8_t clock_state;
+    int64_t clock_wall_ms;
 } furnace_hmi_command_outcome_t;
 
 /** The latest command the HMI refused before sending; it never replaces a slot's outcome. */

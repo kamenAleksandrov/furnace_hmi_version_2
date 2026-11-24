@@ -106,6 +106,13 @@ typedef struct {
     bool settings_wanted;
     uint32_t settings_request_id;
     uint32_t settings_requested_ms;
+    /*
+     * M21-7e: after a CLOCK_RESULT the STATUS clock is taken again only from a STATUS with a
+     * sequence above clock_hold_sequence: one captured before the set can still arrive after
+     * the result (7e-1 review).
+     */
+    bool clock_hold;
+    uint32_t clock_hold_sequence;
     /** The controller answered a request of this client session: its ID is not a reused one. */
     bool client_session_confirmed;
 

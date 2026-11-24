@@ -241,6 +241,17 @@ typedef struct {
     bool navigation_permitted;
     /** Operator settings may change (false while execution is active; M21-7d). */
     bool settings_changes_permitted;
+    /**
+     * The controller's wall clock (M21-7e, interface "Clock"), UTC: from STATUS, or from a
+     * CLOCK_RESULT until a STATUS newer than that result arrives. clock_valid: this session
+     * has reported it (its state may still be UNKNOWN). wall_ms was the controller's time at
+     * clock_at_ms, the client's monotonic time when the reading arrived: a display advances
+     * it from there, a record never does.
+     */
+    bool clock_valid;
+    uint8_t wall_state;
+    int64_t wall_ms;
+    uint32_t clock_at_ms;
     uint8_t fan_feedback;
     uint8_t door_state;
     bool emergency_active;
