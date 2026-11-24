@@ -777,6 +777,8 @@
     "CTRL_LOG_CONFIG_10": "Setting change refused",
     "CTRL_LOG_CONFIG_11": "Settings could not be saved",
     "CTRL_LOG_CONFIG_12": "Program library rebuilt",
+    "CTRL_LOG_CONFIG_13": "Controller date and time set",
+    "CTRL_LOG_CONFIG_14": "Controller date and time not set",
     "CTRL_LOG_MEASUREMENT_FORMAT": "Temperature measurement: %s",
     "CTRL_LOG_MEASUREMENT_1": "qualified",
     "CTRL_LOG_MEASUREMENT_2": "reading returned, not yet qualified",

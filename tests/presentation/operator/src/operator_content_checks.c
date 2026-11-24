@@ -2101,6 +2101,16 @@ static int diagnostics_checks(const char **failure)
     if (!give_diagnostics() || !page_says(FURNACE_HMI_UI_STRING_HEALTH_SERVICE_UNKNOWN)) {
         return failed(failure, "Unknown service hours are shown as a number.", 921);
     }
+
+    /* M21-7e: the controller's audit of a clock setting and of a refusal, by name. */
+    history_fixture.count = 2U;
+    history_entry(0U, 3U, 4U, 2000U, 31U, 1U, 4U, 3U, 14U, (uint32_t)-34, 1U, 0U);
+    history_entry(1U, 3U, 4U, 1000U, 31U, 0U, 4U, 3U, 13U, 0U, 0U, 0U);
+    if (!open_device_tab(FURNACE_HMI_UI_STRING_UI_LAB_DEVICE_LOG) || !give_diagnostics() ||
+        !log_shows(furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_13)) ||
+        !log_shows(furnace_hmi_ui_string(FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_14))) {
+        return failed(failure, "A clock setting or its refusal is not listed by name.", 925);
+    }
     return 0;
 }
 
@@ -2406,6 +2416,10 @@ static int clock_checks(const char **failure)
         !page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UTC) ||
         page_says(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_UNAVAILABLE)) {
         return failed(failure, "A controller clock not set since its start is not said so.", 1100);
+    }
+    /* The date format card shows its format with an example date, not "Not set" (found by hand). */
+    if (!tree_contains(screens.root, "31 Dec 2025")) {
+        return failed(failure, "The date format is not shown with an example date.", 1114);
     }
     clock.set = true;
     clock.wall_ms = CLOCK_CHECK_MS;

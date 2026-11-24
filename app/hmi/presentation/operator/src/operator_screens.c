@@ -8910,7 +8910,10 @@ static bool settings_build_time(furnace_hmi_operator_screens_t *explorer, lv_obj
         copy_text_bounded(time, sizeof(time), ui_string(none));
         copy_text_bounded(date, sizeof(date),
                           explorer->clock_unset ? ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_CLOCK_UTC) : "");
-        copy_text_bounded(short_date, sizeof(short_date), ui_string(none));
+        /* The date format is shown with an example date, not "Not set" (found operating the
+         * GUI, M21-7e): how dates are written does not depend on the controller's clock. */
+        const furnace_hmi_operator_clock_t example = { 2025U, 12U, 31U, 0U, 0U };
+        format_short_date(explorer, short_date, sizeof(short_date), &example);
     }
     const operator_card_t cards[] = {
         { .label = ui_string(FURNACE_HMI_UI_STRING_UI_LAB_SETTINGS_DATE_AND_TIME), .value = time,

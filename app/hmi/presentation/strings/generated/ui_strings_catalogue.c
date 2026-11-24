@@ -6,7 +6,7 @@
 
 #include "ui_strings_internal.h"
 
-/* en: 1073 of 1073 strings; missing entries are NULL and fall back to English. */
+/* en: 1075 of 1075 strings; missing entries are NULL and fall back to English. */
 static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_APPLICATION_TITLE] = "Furnace HMI V2",
     [FURNACE_HMI_UI_STRING_FOUNDATION_VIEW_TITLE] = "Furnace HMI V2 - desktop foundation",
@@ -766,6 +766,8 @@ static const char *const strings_en[FURNACE_HMI_UI_STRING_COUNT] = {
     [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_10] = "Setting change refused",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_11] = "Settings could not be saved",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_12] = "Program library rebuilt",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_13] = "Controller date and time set",
+    [FURNACE_HMI_UI_STRING_CTRL_LOG_CONFIG_14] = "Controller date and time not set",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_MEASUREMENT_FORMAT] = "Temperature measurement: %s",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_MEASUREMENT_1] = "qualified",
     [FURNACE_HMI_UI_STRING_CTRL_LOG_MEASUREMENT_2] = "reading returned, not yet qualified",
