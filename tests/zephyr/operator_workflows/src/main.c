@@ -116,16 +116,59 @@ static const char *text(furnace_hmi_ui_string_id_t id)
     return furnace_hmi_ui_string(id);
 }
 
-/* An operator's tap on a shown, enabled button; the GUI pass then hands its request on. */
+/* The first label's text under object, for a failure message. */
+static const char *first_text(const lv_obj_t *object)
+{
+    if (object == NULL) {
+        return "";
+    }
+    if (lv_obj_check_type(object, &lv_label_class)) {
+        return lv_label_get_text(object);
+    }
+    for (uint32_t i = 0U; i < lv_obj_get_child_count(object); i++) {
+        const char *found = first_text(lv_obj_get_child(object, (int32_t)i));
+
+        if (found[0] != '\0') {
+            return found;
+        }
+    }
+    return "";
+}
+
+static bool inside(const lv_obj_t *object, const lv_obj_t *container)
+{
+    for (; object != NULL; object = lv_obj_get_parent(object)) {
+        if (object == container) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * An operator's tap on a shown, enabled button; the GUI pass then hands its
+ * request on. A dialog covers the page: then only its own buttons can be tapped.
+ */
 static void tap(lv_obj_t *button, const char *what)
 {
     zassert_not_null(button, "no button for %s", what);
+    zassert_true(SCREENS.modal == NULL || inside(button, SCREENS.modal),
+                 "%s is under the dialog '%s'", what, first_text(SCREENS.modal));
     zassert_true(furnace_hmi_probe_enabled(button), "%s is not offered: hidden %d disabled %d modal %d",
                  what, lv_obj_has_flag(button, LV_OBJ_FLAG_HIDDEN),
                  lv_obj_has_state(button, LV_STATE_DISABLED), SCREENS.modal != NULL);
     printk("workflow: tap %s\n", what);
     furnace_hmi_probe_click(button);
     pump();
+}
+
+/*
+ * A Manual page widget, only while the Manual page is shown: the screens keep
+ * the pointers of a page they have deleted, and they must not be touched then.
+ */
+static lv_obj_t *manual(lv_obj_t *widget)
+{
+    return SCREENS.page == FURNACE_HMI_OPERATOR_PAGE_MANUAL ? widget : NULL;
 }
 
 static lv_obj_t *page_button(furnace_hmi_ui_string_id_t id)
@@ -233,7 +276,7 @@ static bool same_manual_running(void)
 
 static bool manual_start_offered(void)
 {
-    return furnace_hmi_probe_enabled(SCREENS.manual_start_button);
+    return furnace_hmi_probe_enabled(manual(SCREENS.manual_start_button));
 }
 
 static bool modal_open(void)
@@ -263,7 +306,7 @@ static void manual_start(void)
 {
     go_to(FURNACE_HMI_OPERATOR_PAGE_MANUAL);
     zassert_true(wait_for(manual_start_offered, WAIT_MS), "Manual Start is not offered");
-    tap(SCREENS.manual_start_button, "Manual Start");
+    tap(manual(SCREENS.manual_start_button), "Manual Start");
     zassert_true(wait_for(manual_running, WAIT_MS), "no Manual session: state %u kind %u",
                  OBS.run_state, OBS.session_kind);
     expected_run = OBS.run_id;
@@ -274,15 +317,15 @@ static void manual_start(void)
 static bool manual_cooling_shown(void)
 {
     return !OBS.execution_active && SCREENS.manual_cooling &&
-           furnace_hmi_probe_enabled(SCREENS.manual_exit_button);
+           furnace_hmi_probe_enabled(manual(SCREENS.manual_exit_button));
 }
 
 /* Stop on Manual; the session cools; Exit leaves it. */
 static void manual_stop_and_exit(void)
 {
-    tap(SCREENS.manual_stop_button, "Manual Stop");
+    tap(manual(SCREENS.manual_stop_button), "Manual Stop");
     zassert_true(wait_for(manual_cooling_shown, WAIT_MS), "the stopped session is not shown ending");
-    tap(SCREENS.manual_exit_button, "Exit");
+    tap(manual(SCREENS.manual_exit_button), "Exit");
     zassert_equal(SCREENS.page, FURNACE_HMI_OPERATOR_PAGE_HOME,
                   "Exit does not leave the session: page %d modal %d run %u state %u cooling %u "
                   "navigation %d",
@@ -426,7 +469,7 @@ static void after(void *fixture)
     pump_for(500U);
     if (OBS.execution_active) {
         lv_obj_t *stop = SCREENS.page == FURNACE_HMI_OPERATOR_PAGE_MANUAL
-                             ? SCREENS.manual_stop_button
+                             ? manual(SCREENS.manual_stop_button)
                              : page_button(FURNACE_HMI_UI_STRING_UI_LAB_STOP_PREVIEW);
 
         if (furnace_hmi_probe_enabled(stop)) {
@@ -435,8 +478,8 @@ static void after(void *fixture)
         }
         (void)wait_for(not_executing, WAIT_MS);
     }
-    if (furnace_hmi_probe_enabled(SCREENS.manual_exit_button)) {
-        furnace_hmi_probe_click(SCREENS.manual_exit_button);
+    if (furnace_hmi_probe_enabled(manual(SCREENS.manual_exit_button))) {
+        furnace_hmi_probe_click(manual(SCREENS.manual_exit_button));
     }
 }
 
@@ -639,14 +682,14 @@ ZTEST(operator_workflows, test_3_manual)
 {
     manual_start();
     wanted_target = OBS.manual_target_decicelsius + 10;
-    tap(furnace_hmi_probe_button_with_text(SCREENS.manual_steppers,
+    tap(furnace_hmi_probe_button_with_text(manual(SCREENS.manual_steppers),
                                            text(FURNACE_HMI_UI_STRING_UI_LAB_INCREASE)),
         "target +1");
     zassert_true(wait_for(target_followed, WAIT_MS), "the retarget is not the controller's: %d",
                  OBS.manual_target_decicelsius);
-    tap(SCREENS.manual_pause_button, "Pause");
+    tap(manual(SCREENS.manual_pause_button), "Pause");
     zassert_true(wait_for(manual_paused, WAIT_MS), "not paused: state %u", OBS.run_state);
-    tap(SCREENS.manual_pause_button, "Resume");
+    tap(manual(SCREENS.manual_pause_button), "Resume");
     zassert_true(wait_for(same_manual_running, WAIT_MS), "not resumed: state %u", OBS.run_state);
     manual_stop_and_exit();
 }
@@ -684,8 +727,8 @@ ZTEST(operator_workflows, test_4_quality_decision_and_continue)
 static bool manual_faulted(void)
 {
     return OBS.run_state == RUN_FAULTED && OBS.run_id == expected_run &&
-           furnace_hmi_probe_enabled(SCREENS.manual_stop_button) &&
-           !furnace_hmi_probe_enabled(SCREENS.manual_pause_button);
+           furnace_hmi_probe_enabled(manual(SCREENS.manual_stop_button)) &&
+           !furnace_hmi_probe_enabled(manual(SCREENS.manual_pause_button));
 }
 
 ZTEST(operator_workflows, test_5_sensor_fault)
@@ -705,18 +748,21 @@ ZTEST(operator_workflows, test_5_sensor_fault)
 
 /* ---- W10 Link loss and reconnection during a session ---- */
 
+/* The link-lost alert (UX baseline: the alert dialog), and no command offered. */
 static bool link_lost_shown(void)
 {
     return OBS.availability != FURNACE_HMI_STATE_AVAILABILITY_CURRENT &&
-           !furnace_hmi_probe_enabled(SCREENS.manual_stop_button) &&
-           !furnace_hmi_probe_enabled(SCREENS.manual_pause_button);
+           modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_LOST_TITLE)) &&
+           !furnace_hmi_probe_enabled(manual(SCREENS.manual_stop_button)) &&
+           !furnace_hmi_probe_enabled(manual(SCREENS.manual_pause_button));
 }
 
 static bool link_back(void)
 {
     return OBS.link == FURNACE_HMI_LINK_CONNECTED &&
            OBS.availability == FURNACE_HMI_STATE_AVAILABILITY_CURRENT && same_manual_running() &&
-           furnace_hmi_probe_enabled(SCREENS.manual_stop_button);
+           modal_shows(text(FURNACE_HMI_UI_STRING_UI_LAB_ALERT_LINK_RESTORED_TITLE)) &&
+           furnace_hmi_probe_enabled(manual(SCREENS.manual_stop_button));
 }
 
 ZTEST(operator_workflows, test_6_link_loss_and_reconnection)
@@ -735,6 +781,8 @@ ZTEST(operator_workflows, test_6_link_loss_and_reconnection)
                  OBS.link, OBS.availability, OBS.run_id, expected_run);
     printk("workflow: reconnected to run %u, controller session changes %u -> %u\n", OBS.run_id,
            sessions, OBS.controller_session_changes);
+    /* The alert turned "Connection restored"; the operator closes it to reach Stop. */
+    close_alert();
     manual_stop_and_exit();
 }
 
