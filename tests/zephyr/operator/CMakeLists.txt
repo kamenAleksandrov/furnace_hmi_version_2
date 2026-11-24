@@ -17,6 +17,7 @@ file(GLOB FURNACE_HMI_FONT_SOURCES "${FURNACE_HMI_PRESENTATION_DIR}/fonts/genera
 target_sources(app PRIVATE
   src/main.c
   "${FURNACE_HMI_CHECKS_DIR}/src/operator_content_checks.c"
+  "${FURNACE_HMI_CHECKS_DIR}/src/screen_probe.c"
   "${FURNACE_HMI_PRESENTATION_DIR}/operator/src/operator_diagnostics.c"
   "${FURNACE_HMI_PRESENTATION_DIR}/operator/src/operator_screens.c"
   "${FURNACE_HMI_PRESENTATION_DIR}/operator/src/operator_theme.c"
